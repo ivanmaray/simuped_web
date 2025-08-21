@@ -141,6 +141,14 @@ export default function App() {
         </div>
       </section>
 
+      {/* EQUIPO */}
+      <section id="equipo" className="bg-white">
+        <div className="max-w-6xl mx-auto px-5 py-12">
+          <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo SimuPed</h3>
+          <Equipo />
+        </div>
+      </section>
+
       {/* ¿QUÉ ES? */}
       <section id="que-es" className="bg-white">
         <div className="max-w-6xl mx-auto px-5 py-12 text-center">
