@@ -63,7 +63,7 @@ export default function Navbar() {
         ) : (
           // Navbar privado (logueado)
           <div className="flex items-center gap-4">
-            <Link to="/dashboard" className="text-slate-700 hover:text-slate-900">Dashboard</Link>
+            <Link to="/dashboard" className="text-slate-700 hover:text-slate-900">Página Principal</Link>
             <Link to="/perfil" className="text-slate-700 hover:text-slate-900">Perfil</Link>
             <button
               onClick={handleLogout}
