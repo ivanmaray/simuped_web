@@ -20,28 +20,30 @@ export default function Dashboard() {
 
   useEffect(() => {
     let mounted = true;
-
     async function init() {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setSession(data.session ?? null);
-      setLoading(false);
-      if (!data.session) {
-        navigate("/", { replace: true });
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted) return;
+        if (error) console.error('[Dashboard] getSession error:', error);
+        setSession(data?.session ?? null);
+        setLoading(false);
+        if (!data?.session) navigate('/', { replace: true });
+      } catch (e) {
+        console.error('[Dashboard] init crash:', e);
+        setLoading(false);
+        navigate('/', { replace: true });
       }
     }
-
     init();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
-      if (!mounted) return;
-      setSession(sess ?? null);
-      if (!sess) navigate("/", { replace: true });
-    });
-
+    const { data: { subscription } = { subscription: null } } =
+      supabase.auth.onAuthStateChange((_evt, sess) => {
+        if (!mounted) return;
+        setSession(sess ?? null);
+        if (!sess) navigate('/', { replace: true });
+      });
     return () => {
       mounted = false;
-      sub?.subscription?.unsubscribe?.();
+      try { subscription?.unsubscribe?.(); } catch {}
     };
   }, [navigate]);
 
@@ -53,10 +55,22 @@ export default function Dashboard() {
     );
   }
 
+  if (!session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-700">
+        <div>
+          <p className="font-medium">No hay sesión activa.</p>
+          <p className="text-sm opacity-80">Redirigiendo a la página principal…</p>
+        </div>
+      </div>
+    );
+  }
+
   // Ya hay sesión garantizada aquí
   const nombre = session?.user.user_metadata?.nombre;
   const email = session?.user?.email ?? "";
-  const rol = (session?.user.user_metadata?.rol || "").toLowerCase();
+  const rawRol = session?.user?.user_metadata?.rol;
+  const rol = typeof rawRol === 'string' ? rawRol.toLowerCase() : '';
 
   const rolChip = useMemo(() => {
     // Colores por rol, usando la paleta
@@ -88,7 +102,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Navbar />
+      <ErrorBoundary><Navbar /></ErrorBoundary>
 
       {/* HERO / WELCOME */}
       <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1]">
@@ -255,4 +269,25 @@ function UserIcon({ className = "h-5 w-5" }) {
       <path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5Zm7 9H5a1 1 0 0 1-1-1 8 8 0 0 1 16 0 1 1 0 0 1-1 1Z" />
     </svg>
   );
+}
+
+function ErrorBoundary({ children }) {
+  const [err, setErr] = useState(null);
+  if (err) {
+    console.error('[Dashboard] Navbar error boundary:', err);
+    return null;
+  }
+  return (
+    <ErrorCatcher onError={setErr}>
+      {children}
+    </ErrorCatcher>
+  );s
+}
+function ErrorCatcher({ onError, children }) {
+  try {
+    return children;
+  } catch (e) {
+    onError?.(e);
+    return null;
+  }
 }
