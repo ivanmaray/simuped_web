@@ -1,3 +1,4 @@
+import Navbar from "../components/Navbar.jsx"
 export default function Perfil() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">

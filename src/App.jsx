@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import logo from './assets/logo.png'
 import Equipo from './components/Equipo.jsx'
+import Navbar from "./components/Navbar.jsx"
 
 // Paleta SimuPed
 const colors = {
@@ -33,38 +34,7 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       {/* NAVBAR */}
-      <header className="sticky top-0 z-20 bg-gradient-to-r from-[rgb(26,105,184)] to-[rgb(29,153,191)] text-white shadow">
-        <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={logo} alt="SimuPed" className="h-18 w-18 md:h-18 md:w-18 object-contain" />
-            <strong className="text-2xl tracking-wide">SimuPed</strong>
-          </div>
-          <nav className="hidden sm:flex gap-2">
-            {[
-              ['Inicio', '#inicio'],
-              ['¿Qué es?', '#que-es'],
-              ['Equipo', '#equipo'],
-              ['Proyecto', '#proyecto'],
-              ['¿Cómo participar?', '#como-participar'],
-            ].map(([label, href]) => (
-              <a
-                key={label}
-                href={href}
-                className="px-3 py-1.5 rounded-md hover:bg-white/10 transition"
-              >
-                {label}
-              </a>
-            ))}
-            <a
-              href="#login"
-              className="px-3 py-1.5 rounded-md font-semibold text-slate-900"
-              style={{ background: colors.teal }}
-            >
-              Entrar
-            </a>
-          </nav>
-        </div>
-      </header>
+      <Navbar />
 
       {/* HERO */}
       <section
@@ -185,6 +155,14 @@ export default function App() {
               <p className="text-slate-600">Simulación colaborativa entre médicos, enfermería y farmacia hospitalaria en UCI pediátrica.</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* EQUIPO */}
+      <section id="equipo" className="bg-white">
+        <div className="max-w-6xl mx-auto px-5 py-12">
+          <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo</h3>
+          <Equipo />
         </div>
       </section>
 
