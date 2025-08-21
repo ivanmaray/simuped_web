@@ -240,8 +240,6 @@ export default function App() {
   {/* EQUIPO */}
       <section id="equipo" className="bg-white">
         <div className="max-w-6xl mx-auto px-5 py-12">
-          <div className="mb-4 rounded-lg bg-yellow-200 border-2 border-yellow-500 p-3 text-center text-yellow-900 font-extrabold text-xl">[DEBUG TOP] EQUIPO debería verse (sección movida arriba)</div>
-          <div className="mb-4 rounded-lg border-2 border-dashed border-sky-400 p-3 text-center text-sky-700 font-semibold">[DEBUG] Sección EQUIPO debe verse aquí</div>
           <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo SimuPed</h3>
           {(() => {
             const miembros = [
