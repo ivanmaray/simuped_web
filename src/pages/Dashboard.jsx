@@ -45,7 +45,9 @@ export default function Dashboard() {
   }
 
   // Ya hay sesión garantizada aquí
+  const nombre = session?.user.user_metadata?.nombre;
   const email = session?.user?.email ?? "";
+  const rol = session?.user.user_metadata?.rol;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -54,20 +56,28 @@ export default function Dashboard() {
       <main className="max-w-6xl mx-auto px-5 py-10">
         <header className="mb-8">
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-slate-600 mt-1">Bienvenido{email ? `, ${email}` : ""}.</p>
+          <p className="text-slate-600 mt-1">
+            Bienvenido{nombre ? `, ${nombre}` : email}.
+            {rol ? ` Rol: ${rol}` : ""}
+          </p>
         </header>
 
         {/* Accesos rápidos */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card
-            title="Simulación online"
-            description="Ejecuta escenarios guiados por rol con feedback inmediato."
-            to="/simulacion"
-          />
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card
             title="Escenarios"
             description="Explora y continúa tus casos clínicos."
             to="/escenarios"
+          />
+          <Card
+            title="Simulación presencial"
+            description="Sesiones presenciales asistidas con la herramienta SimuPed."
+            to="/presencial"
+          />
+          <Card
+            title="Simulación online"
+            description="Selecciona escenarios interactivos para practicar preguntas tipo test."
+            to="/simulacion"
           />
           <Card
             title="Evaluación del desempeño"
