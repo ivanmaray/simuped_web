@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import logo from "../assets/logo.png";
+import logoWhite from "../assets/logo-white.png";
 
 export default function Navbar() {
   const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -15,11 +17,13 @@ export default function Navbar() {
     // sesión actual
     supabase.auth.getSession().then(({ data }) => {
       if (mounted) setSession(data.session ?? null);
+      if (mounted) setLoading(false);
     });
 
     // escuchar cambios (login/logout)
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
       if (mounted) setSession(sess ?? null);
+      if (mounted) setLoading(false);
     });
 
     return () => {
@@ -33,23 +37,34 @@ export default function Navbar() {
     navigate("/"); // vuelve a la landing
   };
 
-  const isPrivate = !!session; // si hay sesión, navbar “privado”
+  const isPrivate = !!session;
+
+  if (loading) {
+    // Puedes devolver null o un placeholder del header para evitar parpadeos
+    return <header className="h-16" />;
+  }
 
   return (
-    <header className="border-b border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 sticky top-0 z-50">
+    <header
+      className={`border-b border-slate-200 sticky top-0 z-50 ${
+        isPrivate
+          ? "bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60"
+          : "bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1]"
+      }`}
+    >
       <nav className="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3">
-          <img src={logo} alt="SimuPed" className="h-10 w-10 object-contain" />
-          <span className="text-lg font-semibold text-slate-900">SimuPed</span>
+          <img src={isPrivate ? logo : logoWhite} alt="SimuPed" className="h-15 w-15 object-contain" />
+          <span className={`text-lg font-semibold ${isPrivate ? "text-slate-900" : "text-white"}`}>SimuPed</span>
         </Link>
 
         {!isPrivate ? (
           // Navbar público (landing)
           <div className="flex items-center gap-4">
-            <a href="#que-es" className="text-slate-700 hover:text-slate-900">¿Qué es?</a>
-            <a href="#equipo" className="text-slate-700 hover:text-slate-900">Equipo</a>
-            <a href="#proyecto" className="text-slate-700 hover:text-slate-900">Proyecto</a>
-            <a href="#como-participar" className="text-slate-700 hover:text-slate-900">Participar</a>
+            <a href="#que-es" className="text-white hover:text-white/80">¿Qué es?</a>
+            <a href="#equipo" className="text-white hover:text-white/80">Equipo</a>
+            <a href="#proyecto" className="text-white hover:text-white/80">Proyecto</a>
+            <a href="#como-participar" className="text-white hover:text-white/80">Participar</a>
             {pathname !== "/" && (
               <Link
                 to="/"
@@ -68,7 +83,7 @@ export default function Navbar() {
             <button
               onClick={handleLogout}
               className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-              title={session.user?.email || "Cerrar sesión"}
+              title={session?.user?.email || "Cerrar sesión"}
             >
               Cerrar sesión
             </button>
