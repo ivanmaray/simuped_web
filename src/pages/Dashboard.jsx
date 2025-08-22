@@ -187,7 +187,7 @@ export default function Dashboard() {
             <Card
               title="Simulación presencial"
               description="Sesiones guiadas con instructor usando la herramienta SimuPed."
-              to="/simulacion-presencial"
+              to={null}
               badge="En construcción 🚧"
               badgeColor="bg-red-100 text-red-700"
               icon={AcademicCapIcon}
@@ -226,27 +226,40 @@ export default function Dashboard() {
 }
 
 function Card({ title, description, to, badge, badgeColor, icon: Icon }) {
+  const content = (
+    <div className="flex items-start gap-4">
+      <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#1a69b8]/10 via-[#1d99bf]/10 to-[#1fced1]/10 ring-1 ring-[#1a69b8]/15">
+        {Icon ? <Icon className="h-6 w-6 text-[#1a69b8]" /> : null}
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-semibold group-hover:underline">{title}</h3>
+          {badge ? (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-black/10 ${badgeColor}`}>
+              {badge}
+            </span>
+          ) : null}
+        </div>
+        <p className="text-slate-600 mt-1">{description}</p>
+      </div>
+    </div>
+  );
+  if (!to) {
+    // Render as a non-clickable block
+    return (
+      <div
+        className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm opacity-70 cursor-not-allowed"
+      >
+        {content}
+      </div>
+    );
+  }
   return (
     <Link
       to={to}
       className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
     >
-      <div className="flex items-start gap-4">
-        <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#1a69b8]/10 via-[#1d99bf]/10 to-[#1fced1]/10 ring-1 ring-[#1a69b8]/15">
-          {Icon ? <Icon className="h-6 w-6 text-[#1a69b8]" /> : null}
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h3 className="text-lg font-semibold group-hover:underline">{title}</h3>
-            {badge ? (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-black/10 ${badgeColor}`}>
-                {badge}
-              </span>
-            ) : null}
-          </div>
-          <p className="text-slate-600 mt-1">{description}</p>
-        </div>
-      </div>
+      {content}
     </Link>
   );
 }

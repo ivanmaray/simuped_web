@@ -6,6 +6,12 @@ import Navbar from "../components/Navbar.jsx";
 
 console.debug("[Simulacion] componente cargado");
 
+const estadoStyles = {
+  "Disponible": { label: "Disponible", color: "bg-green-100 text-green-800", clickable: true },
+  "En construcción: en proceso": { label: "En construcción: en proceso", color: "bg-yellow-100 text-yellow-800", clickable: true },
+  "En construcción: sin iniciar": { label: "En construcción: sin iniciar", color: "bg-red-100 text-red-800", clickable: false },
+};
+
 function formatLevel(level) {
   const key = String(level || '').toLowerCase();
   const map = { basico: 'Básico', básico: 'Básico', medio: 'Medio', avanzado: 'Avanzado' };
@@ -78,19 +84,34 @@ export default function Simulacion() {
       const { data, error } = await supabase
         .from("scenarios")
         .select(`
-          id, title, summary, level, mode, created_at,
+          id, title, summary, level, mode, created_at, status,
           scenario_categories (
             categories ( name )
           )
         `)
-        .order("created_at", { ascending: false });
+        .order("title", { ascending: true });
 
       if (error) {
         console.error("[Simulacion] cargarEscenarios error:", error);
         setErrorMsg(error.message || "Error cargando escenarios");
         setEscenarios([]);
       } else {
-        setEscenarios(data || []);
+        // Custom sort: status priority then title
+        const statusPriority = {
+          "Disponible": 1,
+          "En construcción: en proceso": 2,
+          "En construcción: sin iniciar": 3,
+        };
+        const sorted = (data || []).slice().sort((a, b) => {
+          const pa = statusPriority[a.status] ?? 99;
+          const pb = statusPriority[b.status] ?? 99;
+          if (pa !== pb) return pa - pb;
+          // fallback: alphabetic by title
+          const ta = (a.title || "").toLocaleLowerCase("es");
+          const tb = (b.title || "").toLocaleLowerCase("es");
+          return ta.localeCompare(tb, "es");
+        });
+        setEscenarios(sorted);
       }
       setLoadingEsc(false);
     }
@@ -194,11 +215,14 @@ export default function Simulacion() {
 
           {!loadingEsc && filtrados.map((esc) => {
             const cats = esc.scenario_categories?.map(sc => sc.categories?.name).filter(Boolean) || [];
+            const estado = esc.status || "Disponible";
+            const estadoStyle = estadoStyles[estado] || { label: estado, color: "bg-gray-100 text-gray-800", clickable: true };
+            const isClickable = estadoStyle.clickable;
             return (
               <article
                 key={esc.id}
-                className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition cursor-pointer"
-                onClick={() => navigate(`/simulacion/${esc.id}`)}
+                className={`group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition ${!isClickable ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                onClick={() => { if (isClickable) navigate(`/simulacion/${esc.id}/confirm`); }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="text-lg font-semibold text-slate-900 group-hover:underline">
@@ -209,12 +233,17 @@ export default function Simulacion() {
                   </span>
                 </div>
                 <p className="text-slate-600 mt-2 overflow-hidden text-ellipsis">{esc.summary}</p>
-                <div className="mt-3 flex items-center gap-2 text-sm">
+                <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                     {formatLevel(esc.level)}
                   </span>
                   {cats.length > 0 && <span className="text-slate-400">•</span>}
                   <span className="text-slate-600 truncate">{cats.join(" · ")}</span>
+                </div>
+                <div className="mt-3">
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${estadoStyle.color}`}>
+                    {estadoStyle.label}
+                  </span>
                 </div>
               </article>
             );

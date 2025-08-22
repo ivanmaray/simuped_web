@@ -4,9 +4,13 @@ import App from './App.jsx'                        // Landing con login
 import ProtectedRoute from './ProtectedRoute.jsx'  // wrapper
 import Dashboard from './pages/Dashboard.jsx'
 import Simulacion from './pages/Simulacion.jsx'
+import SimulacionDetalle from './pages/SimulacionDetalle.jsx'
 import Escenarios from './pages/Escenarios.jsx'
 import Evaluacion from './pages/Evaluacion.jsx'
 import Perfil from './pages/Perfil.jsx'
+import SimulacionConfirm from "./pages/SimulacionConfirm.jsx";
+import Registro from "./pages/Registro.jsx";
+import Pendiente from "./pages/Pendiente.jsx";
 
 export default function MainRouter() {
   return (
@@ -14,13 +18,17 @@ export default function MainRouter() {
       <Routes>
         {/* Pública */}
         <Route path="/" element={<App />} />
+        <Route path="/registro" element={<Registro />} />
+        <Route path="/pendiente" element={<Pendiente />} />
 
         {/* Protegidas */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/simulacion" element={<Simulacion />} />
+          <Route path="/simulacion/:id" element={<SimulacionDetalle />} />
           <Route path="/escenarios" element={<Escenarios />} />
           <Route path="/evaluacion" element={<Evaluacion />} />
+          <Route path="/simulacion/:id/confirm" element={<SimulacionConfirm />} />
           <Route path="/perfil" element={<Perfil />} />
         </Route>
 

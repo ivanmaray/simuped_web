@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import logo from './assets/logo.png'
-import Equipo from './components/Equipo.jsx'
 import Navbar from "./components/Navbar.jsx"
 
 // Paleta SimuPed
@@ -30,6 +29,26 @@ export default function App() {
     if (error) return setErrorMsg(error.message)
     navigate('/dashboard')
   }
+
+useEffect(() => {
+  let mounted = true;
+
+  (async () => {
+    const { data } = await supabase.auth.getSession();
+    if (mounted && data?.session) {
+      navigate("/dashboard", { replace: true });
+    }
+  })();
+
+  const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
+    if (sess) navigate("/dashboard", { replace: true });
+  });
+
+  return () => {
+    mounted = false;
+    try { sub?.subscription?.unsubscribe?.(); } catch {}
+  };
+}, [navigate]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
