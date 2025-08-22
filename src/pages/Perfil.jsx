@@ -191,7 +191,7 @@ export default function Perfil() {
       dni: dniNorm,
       rol,                 // texto en minúsculas (medico|enfermeria|farmacia)
       unidad,              // Farmacia|UCI|Urgencias
-      areas_interes: JSON.stringify(areasInteres), // enviar como string (compat. si la columna es TEXT); PostgREST convertirá si es jsonb
+      areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
       updated_at: new Date().toISOString(),
     };
 
