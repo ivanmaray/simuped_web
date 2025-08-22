@@ -8,7 +8,18 @@ const COLORS = {
   primary: "#1a69b8",
 };
 
+
 const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
+
+// Helpers DNI
+function normalizarDNI(v) {
+  return (v || "").toString().toUpperCase().replace(/\s|-/g, "");
+}
+function validarDNI(v) {
+  const dni = normalizarDNI(v);
+  // Formatos válidos: 12345678Z, X1234567L, Y1234567X, Z1234567R
+  return /^[XYZ]?\d{7,8}[A-Z]$/.test(dni);
+}
 
 
 export default function Perfil() {
@@ -19,6 +30,8 @@ export default function Perfil() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [okMsg, setOkMsg] = useState("");
+
+  const [dniError, setDniError] = useState("");
 
   // Campos de perfil
   const [nombre, setNombre] = useState("");
@@ -66,6 +79,7 @@ export default function Perfil() {
       setApellidos(prof?.apellidos ?? meta.apellidos ?? "");
       setEmail(sess.user?.email ?? "");
       setDni(prof?.dni ?? "");
+      setDniError("");
       setRol((prof?.rol ?? meta.rol ?? "").toString().toLowerCase());
       setUnidad((prof?.unidad ?? "").toString());
 
@@ -111,6 +125,7 @@ export default function Perfil() {
     setSaving(true);
     setErrorMsg("");
     setOkMsg("");
+    setDniError("");
 
     // Si el email cambió, intentamos actualizarlo en auth
     const currentEmail = session?.user?.email ?? "";
@@ -122,8 +137,19 @@ export default function Perfil() {
         return;
       }
     }
+    // Validaciones
+    const dniNorm = normalizarDNI(dni);
+    if (!dniNorm) {
+      setDniError("El DNI es obligatorio.");
+      setSaving(false);
+      return;
+    }
+    if (!validarDNI(dniNorm)) {
+      setDniError("El DNI no tiene un formato válido (ej.: 12345678Z o X1234567L).");
+      setSaving(false);
+      return;
+    }
 
-    // Validación mínima
     if (!nombre.trim()) {
       setErrorMsg("El nombre es obligatorio.");
       setSaving(false);
@@ -144,7 +170,7 @@ export default function Perfil() {
       id: session.user.id, // PK coincide con auth.users.id
       nombre: nombre.trim(),
       apellidos: apellidos.trim(),
-      dni: dni.trim(),
+      dni: dniNorm,
       rol,                 // texto en minúsculas (medico|enfermeria|farmacia)
       unidad,              // Farmacia|UCI|Urgencias
       areas_interes: areasInteres, // jsonb en Supabase
@@ -156,11 +182,21 @@ export default function Perfil() {
     setSaving(false);
     if (error) {
       console.error("[Perfil] upsert error:", error);
-      setErrorMsg("Hubo un error al guardar los datos.");
+      // Mensajes más claros según constraint o columna
+      const code = error.code || "";
+      const msg = (error.message || "").toLowerCase();
+
+      if (code === "23514" || msg.includes("dni") || msg.includes("check constraint")) {
+        setDniError("El DNI no cumple el formato requerido por el sistema.");
+      } else if (code === "42703" || msg.includes("column")) {
+        setErrorMsg("Falta alguna columna en la tabla de perfiles. Revisa el esquema (areas_interes, rol, unidad…).");
+      } else {
+        setErrorMsg("Hubo un error al guardar los datos. Inténtalo de nuevo.");
+      }
       return;
     }
+
     setOkMsg("Guardado correctamente ✔");
-    // Vuelve al dashboard tras un pequeño delay
     setTimeout(() => navigate("/dashboard"), 600);
   }
 
@@ -257,10 +293,16 @@ export default function Perfil() {
                 id="campo-dni"
                 type="text"
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-                value={dni}
-                onChange={(e) => setDni(e.target.value)}
-                placeholder="12345678A"
+              value={dni}
+              onChange={(e) => {
+                setDni(e.target.value.toUpperCase());
+                if (dniError) setDniError("");
+              }}
+              placeholder="12345678A"
               />
+            {dniError && (
+              <p className="text-xs text-red-600 mt-1">{dniError}</p>
+            )}
             </label>
           </div>
 
