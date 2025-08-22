@@ -5,14 +5,28 @@ import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
 const AREAS = [
-  "Simulación clínica",
-  "Uso seguro del medicamento",
-  "Medicamentos de alto riesgo",
-  "Prescripción",
-  "Validación",
-  "Administración",
-  "Reanimación",
-  "UCI pediátrica",
+  "Alergología",
+  "Cardiología",
+  "Cirugía",
+  "Críticos",
+  "Dermatología",
+  "Endocrinología",
+  "Farmacología",
+  "Gastroenterología",
+  "Hematología",
+  "Infecciosas",
+  "Inmunología",
+  "Metabólico",
+  "Neumología",
+  "Neonatología",
+  "Neurología",
+  "Nefrología",
+  "OncoHematología",
+  "Reumatología",
+  "Salud mental",
+  "Toxicología",
+  "Traumatología",
+  "Urgencias",
 ];
 
 export default function Perfil() {
@@ -218,15 +232,18 @@ export default function Perfil() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Unidad / Servicio</label>
-                <input
-                  type="text"
+                <label className="block text-sm font-medium text-slate-700 mb-1">Unidad</label>
+                <select
                   value={unidad}
                   onChange={(e) => setUnidad(e.target.value)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-                  placeholder="UCI Pediátrica / UGC Farmacia"
                   required
-                />
+                >
+                  <option value="">Selecciona tu unidad</option>
+                  <option value="Farmacia">Farmacia</option>
+                  <option value="UCI">UCI</option>
+                  <option value="Urgencias">Urgencias</option>
+                </select>
               </div>
 
               <div>
