@@ -22,6 +22,8 @@ export default function Perfil() {
 
   // Campos de perfil
   const [nombre, setNombre] = useState("");
+  const [apellidos, setApellidos] = useState("");
+  const [email, setEmail] = useState("");
   const [dni, setDni] = useState("");
   const [rol, setRol] = useState(""); // "medico" | "enfermeria" | "farmacia"
   const [unidad, setUnidad] = useState(""); // Farmacia | UCI | Urgencias
@@ -50,7 +52,7 @@ export default function Perfil() {
       // Cargar perfil desde 'profiles'
       const { data: prof, error: pErr } = await supabase
         .from("profiles")
-        .select("id, nombre, dni, rol, unidad, areas_interes")
+        .select("id, nombre, apellidos, dni, rol, unidad, areas_interes")
         .eq("id", sess.user.id)
         .maybeSingle();
 
@@ -61,6 +63,8 @@ export default function Perfil() {
       const meta = sess.user?.user_metadata || {};
 
       setNombre(prof?.nombre ?? meta.nombre ?? "");
+      setApellidos(prof?.apellidos ?? meta.apellidos ?? "");
+      setEmail(sess.user?.email ?? "");
       setDni(prof?.dni ?? "");
       setRol((prof?.rol ?? meta.rol ?? "").toString().toLowerCase());
       setUnidad((prof?.unidad ?? "").toString());
@@ -108,6 +112,17 @@ export default function Perfil() {
     setErrorMsg("");
     setOkMsg("");
 
+    // Si el email cambió, intentamos actualizarlo en auth
+    const currentEmail = session?.user?.email ?? "";
+    if (email && email !== currentEmail) {
+      const { error: emailErr } = await supabase.auth.updateUser({ email });
+      if (emailErr) {
+        setSaving(false);
+        setErrorMsg("No se pudo actualizar el email: " + (emailErr.message || ""));
+        return;
+      }
+    }
+
     // Validación mínima
     if (!nombre.trim()) {
       setErrorMsg("El nombre es obligatorio.");
@@ -128,6 +143,7 @@ export default function Perfil() {
     const payload = {
       id: session.user.id, // PK coincide con auth.users.id
       nombre: nombre.trim(),
+      apellidos: apellidos.trim(),
       dni: dni.trim(),
       rol,                 // texto en minúsculas (medico|enfermeria|farmacia)
       unidad,              // Farmacia|UCI|Urgencias
@@ -192,7 +208,7 @@ export default function Perfil() {
           onSubmit={handleGuardar}
           className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6"
         >
-          {/* Nombre y DNI */}
+          {/* Nombre y Apellidos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="block">
               <span className="text-sm text-slate-700">Nombre</span>
@@ -202,12 +218,41 @@ export default function Perfil() {
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre y apellidos"
+                placeholder="Nombre"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm text-slate-700">DNI (opcional)</span>
+              <span className="text-sm text-slate-700">Apellidos</span>
+              <input
+                id="campo-apellidos"
+                type="text"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
+                value={apellidos}
+                onChange={(e) => setApellidos(e.target.value)}
+                placeholder="Apellidos"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-sm text-slate-700">Email</span>
+              <input
+                id="campo-email"
+                type="email"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@correo.com"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Al cambiar el email puede requerirse verificación por correo.
+              </p>
+            </label>
+
+            <label className="block">
+              <span className="text-sm text-slate-700">DNI</span>
               <input
                 id="campo-dni"
                 type="text"
@@ -224,9 +269,9 @@ export default function Perfil() {
             <span className="block text-sm text-slate-700 mb-2">Rol</span>
             <div className="flex flex-wrap gap-2">
               {[
-                { value: "medico", label: "Médico/a" },
-                { value: "enfermeria", label: "Enfermería" },
-                { value: "farmacia", label: "Farmacia" },
+                { value: "pediatra", label: "Pediatra" },
+                { value: "enfermera", label: "Enfermera" },
+                { value: "farmaceutico", label: "Farmacéutico" },
               ].map((r) => {
                 const active = rol === r.value;
                 return (
