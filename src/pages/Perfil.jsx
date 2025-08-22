@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx
+// src/pages/Perfil.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
@@ -6,223 +6,338 @@ import Navbar from "../components/Navbar.jsx";
 
 const COLORS = {
   primary: "#1a69b8",
-  sky: "#1d99bf",
-  cyan: "#1fced1",
-  coral: "#f6a9a3",
-  sand: "#f2c28c",
 };
 
-export default function Dashboard() {
+const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
+
+
+export default function Perfil() {
   const navigate = useNavigate();
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [okMsg, setOkMsg] = useState("");
 
-  // Perfil
+  // Campos de perfil
   const [nombre, setNombre] = useState("");
-  const [rol, setRol] = useState("");
-
-  // Escenarios
-  const [escenarios, setEscenarios] = useState([]);
-  const [q, setQ] = useState("");
-  const [nivel, setNivel] = useState(""); // Basic | Medium | Advanced
-  const [modo, setModo] = useState("");   // Online | Presencial
-  const [loadingEsc, setLoadingEsc] = useState(false);
+  const [dni, setDni] = useState("");
+  const [rol, setRol] = useState(""); // "medico" | "enfermeria" | "farmacia"
+  const [unidad, setUnidad] = useState(""); // Farmacia | UCI | Urgencias
+  const [areasInteres, setAreasInteres] = useState([]); // array de strings
+  const [categorias, setCategorias] = useState([]); // categories desde Supabase
 
   useEffect(() => {
     let mounted = true;
 
     async function init() {
-      const { data: sData } = await supabase.auth.getSession();
-      const sess = sData?.session || null;
+      setLoading(true);
+      const { data, error } = await supabase.auth.getSession();
       if (!mounted) return;
+      if (error) {
+        console.error("[Perfil] getSession error:", error);
+        setErrorMsg(error.message || "Error obteniendo sesión");
+      }
+      const sess = data?.session ?? null;
       setSession(sess);
-
       if (!sess) {
+        setLoading(false);
         navigate("/", { replace: true });
         return;
       }
 
-      // Perfil
-      const { data: prof } = await supabase
+      // Cargar perfil desde 'profiles'
+      const { data: prof, error: pErr } = await supabase
         .from("profiles")
-        .select("nombre, rol")
+        .select("id, nombre, dni, rol, unidad, areas_interes")
         .eq("id", sess.user.id)
         .maybeSingle();
 
-      const meta = sess.user?.user_metadata || {};
-      setNombre(prof?.nombre ?? meta.nombre ?? "");
-      setRol(prof?.rol ?? meta.rol ?? "");
+      if (pErr) {
+        console.warn("[Perfil] profiles select error:", pErr);
+      }
 
-      // Escenarios (solo títulos por ahora)
-      await cargarEscenarios();
+      const meta = sess.user?.user_metadata || {};
+
+      setNombre(prof?.nombre ?? meta.nombre ?? "");
+      setDni(prof?.dni ?? "");
+      setRol((prof?.rol ?? meta.rol ?? "").toString().toLowerCase());
+      setUnidad((prof?.unidad ?? "").toString());
+
+      // Normaliza areas_interes (jsonb o string JSON)
+      const aiRaw = prof?.areas_interes;
+      let ai = [];
+      if (Array.isArray(aiRaw)) ai = aiRaw;
+      else if (typeof aiRaw === "string") {
+        try {
+          ai = JSON.parse(aiRaw);
+          if (!Array.isArray(ai)) ai = [];
+        } catch {
+          ai = [];
+        }
+      }
+      setAreasInteres(ai);
+
+      // Cargar categorías dinámicamente desde public.categories
+      const { data: cats, error: cErr } = await supabase
+        .from("categories")
+        .select("id, name")
+        .order("name", { ascending: true });
+      if (cErr) {
+        console.error("[Perfil] error cargando categorías:", cErr);
+        setCategorias([]);
+      } else {
+        setCategorias(cats || []);
+      }
 
       setLoading(false);
     }
 
-    async function cargarEscenarios() {
-      setLoadingEsc(true);
-      // Traemos id, title, level, mode; si no tienes columnas exactas, ajusta aquí
-      let query = supabase
-        .from("scenarios")
-        .select("id, title, level, mode")
-        .order("created_at", { ascending: false });
-
-      // Filtros en cliente al principio; más adelante se pueden pasar al server
-      const { data, error } = await query;
-      if (error) {
-        console.error("[Dashboard] cargarEscenarios error:", error);
-        setEscenarios([]);
-        setLoadingEsc(false);
-        return;
-      }
-      setEscenarios(data || []);
-      setLoadingEsc(false);
-    }
-
     init();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [navigate]);
 
-  // Filtro en cliente (simple)
-  const filtrados = escenarios.filter((e) => {
-    const matchQ =
-      !q ||
-      e.title?.toLowerCase().includes(q.trim().toLowerCase());
-    const matchNivel = !nivel || (e.level || "").toLowerCase() === nivel.toLowerCase();
-    const matchModo = !modo || (e.mode || "").toLowerCase() === modo.toLowerCase();
-    return matchQ && matchNivel && matchModo;
-  });
+  async function handleGuardar(e) {
+    e.preventDefault();
+    if (!session?.user?.id) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    setOkMsg("");
+
+    // Validación mínima
+    if (!nombre.trim()) {
+      setErrorMsg("El nombre es obligatorio.");
+      setSaving(false);
+      return;
+    }
+    if (!rol) {
+      setErrorMsg("Selecciona tu rol.");
+      setSaving(false);
+      return;
+    }
+    if (!unidad) {
+      setErrorMsg("Selecciona tu unidad.");
+      setSaving(false);
+      return;
+    }
+
+    const payload = {
+      id: session.user.id, // PK coincide con auth.users.id
+      nombre: nombre.trim(),
+      dni: dni.trim(),
+      rol,                 // texto en minúsculas (medico|enfermeria|farmacia)
+      unidad,              // Farmacia|UCI|Urgencias
+      areas_interes: areasInteres, // jsonb en Supabase
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from("profiles").upsert(payload);
+
+    setSaving(false);
+    if (error) {
+      console.error("[Perfil] upsert error:", error);
+      setErrorMsg("Hubo un error al guardar los datos.");
+      return;
+    }
+    setOkMsg("Guardado correctamente ✔");
+    // Vuelve al dashboard tras un pequeño delay
+    setTimeout(() => navigate("/dashboard"), 600);
+  }
+
+  function toggleArea(area) {
+    setAreasInteres((prev) =>
+      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]
+    );
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Cargando panel…</div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-slate-600">Cargando perfil…</div>
       </div>
     );
   }
 
+  if (!session) return null;
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navbar />
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <Navbar isPrivate />
 
-      <header className="max-w-6xl mx-auto px-5 pt-8 pb-4">
-        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
-          Bienvenido{nombre ? `, ${nombre}` : ""} 👋
-        </h1>
-        <p className="text-slate-600 mt-1">
-          {rol ? `Registrado como ${rol}.` : "Completa tu perfil para personalizar la plataforma."}
-        </p>
-      </header>
+      <main className="max-w-5xl mx-auto px-5 py-8">
+        <header className="mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold">Mi perfil</h1>
+          <p className="text-slate-600 mt-1">
+            Gestiona tus datos personales y preferencias.
+          </p>
+        </header>
 
-      {/* CTA rápida */}
-      <div className="max-w-6xl mx-auto px-5">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">Simulación online</h2>
-            <p className="text-slate-600">Selecciona un escenario y empieza a entrenar.</p>
+        {(errorMsg || okMsg) && (
+          <div
+            className={`mb-4 rounded-lg border px-4 py-2 text-sm ${
+              errorMsg
+                ? "bg-red-50 border-red-200 text-red-800"
+                : "bg-emerald-50 border-emerald-200 text-emerald-800"
+            }`}
+          >
+            {errorMsg || okMsg}
           </div>
-          <div className="flex gap-2">
+        )}
+
+        <form
+          onSubmit={handleGuardar}
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6"
+        >
+          {/* Nombre y DNI */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-sm text-slate-700">Nombre</span>
+              <input
+                id="campo-nombre"
+                type="text"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Nombre y apellidos"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm text-slate-700">DNI (opcional)</span>
+              <input
+                id="campo-dni"
+                type="text"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
+                value={dni}
+                onChange={(e) => setDni(e.target.value)}
+                placeholder="12345678A"
+              />
+            </label>
+          </div>
+
+          {/* Rol (botones) */}
+          <div>
+            <span className="block text-sm text-slate-700 mb-2">Rol</span>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: "medico", label: "Médico/a" },
+                { value: "enfermeria", label: "Enfermería" },
+                { value: "farmacia", label: "Farmacia" },
+              ].map((r) => {
+                const active = rol === r.value;
+                return (
+                  <button
+                    key={r.value}
+                    type="button"
+                    id={`rol-${r.value}`}
+                    onClick={() => setRol(r.value)}
+                    className={`px-4 py-2 rounded-lg border transition ${
+                      active
+                        ? "border-transparent text-white"
+                        : "border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+                    }`}
+                    style={active ? { backgroundColor: COLORS.primary } : {}}
+                  >
+                    {r.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Unidad (radio) */}
+          <div>
+            <span className="block text-sm text-slate-700 mb-2">Unidad</span>
+            <div className="flex flex-wrap gap-3">
+              {UNIDADES.map((u) => (
+                <label
+                  key={u}
+                  htmlFor={`unidad-${u}`}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${
+                    unidad === u
+                      ? "border-transparent text-white"
+                      : "border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+                  }`}
+                  style={unidad === u ? { backgroundColor: COLORS.primary } : {}}
+                >
+                  <input
+                    id={`unidad-${u}`}
+                    type="radio"
+                    name="unidad"
+                    value={u}
+                    checked={unidad === u}
+                    onChange={(e) => setUnidad(e.target.value)}
+                    className="sr-only"
+                  />
+                  <span>{u}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Áreas de interés (checkboxes) */}
+          <div>
+            <span className="block text-sm text-slate-700 mb-2">
+              Áreas de interés
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              {categorias.map((cat) => {
+                const checked = areasInteres.includes(cat.name);
+                return (
+                  <label
+                    key={cat.id}
+                    htmlFor={`area-${cat.id}`}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${
+                      checked
+                        ? "border-transparent text-white"
+                        : "border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+                    }`}
+                    style={checked ? { backgroundColor: COLORS.primary } : {}}
+                  >
+                    <input
+                      id={`area-${cat.id}`}
+                      type="checkbox"
+                      value={cat.name}
+                      checked={checked}
+                      onChange={() => toggleArea(cat.name)}
+                      className="sr-only"
+                    />
+                    <span className="text-sm">{cat.name}</span>
+                  </label>
+                );
+              })}
+              {categorias.length === 0 && (
+                <div className="text-slate-500 text-sm col-span-full">
+                  No hay categorías disponibles.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Botones */}
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate("/perfil")}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
-            >
-              Editar perfil
-            </button>
-            <button
-              onClick={() => document.getElementById('filtros-esc')?.scrollIntoView({ behavior: 'smooth' })}
-              className="px-4 py-2 rounded-lg text-white"
+              type="submit"
+              disabled={saving}
+              className="px-5 py-2.5 rounded-lg text-white disabled:opacity-70"
               style={{ backgroundColor: COLORS.primary }}
             >
-              Ver escenarios
+              {saving ? "Guardando…" : "Guardar cambios"}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard")}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              Cancelar
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* Escenarios + Simulación online (fusionado) */}
-      <section className="max-w-6xl mx-auto px-5 py-8">
-        <div id="filtros-esc" className="mb-4 flex flex-col md:flex-row gap-3">
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por título…"
-            className="w-full md:flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-          />
-          <select
-            value={nivel}
-            onChange={(e) => setNivel(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2"
-          >
-            <option value="">Todos los niveles</option>
-            <option value="basic">Básico</option>
-            <option value="medium">Medio</option>
-            <option value="advanced">Avanzado</option>
-          </select>
-          <select
-            value={modo}
-            onChange={(e) => setModo(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-2"
-          >
-            <option value="">Todos los modos</option>
-            <option value="online">Online</option>
-            <option value="presencial">Presencial</option>
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {loadingEsc && (
-            <div className="col-span-full text-slate-600">Cargando escenarios…</div>
-          )}
-
-          {!loadingEsc && filtrados.length === 0 && (
-            <div className="col-span-full text-slate-600">No hay escenarios que coincidan.</div>
-          )}
-
-          {!loadingEsc && filtrados.map((esc) => (
-            <article
-              key={esc.id}
-              className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition cursor-pointer"
-              onClick={() => navigate(`/simulacion/${esc.id}`)} // vista futura
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="text-lg font-semibold text-slate-900 group-hover:underline">
-                  {esc.title || "Escenario sin título"}
-                </h3>
-                <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-                  {esc.mode || "online"}
-                </span>
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-sm">
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                  {esc.level || "basic"}
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-slate-600">ID: {esc.id.slice(0, 8)}…</span>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* Presencial (sección ligera) */}
-      <section className="max-w-6xl mx-auto px-5 pb-12">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 md:p-6">
-          <h2 className="text-xl font-semibold text-slate-900 mb-1">Simulación presencial</h2>
-          <p className="text-slate-600 mb-3">
-            Próximamente: coordinación de sesiones con instructor asistidas por SimuPed.
-          </p>
-          <button
-            type="button"
-            className="px-4 py-2 rounded-lg text-white"
-            style={{ backgroundColor: COLORS.primary }}
-            onClick={() => alert("Muy pronto")}
-          >
-            Solicitar sesión
-          </button>
-        </div>
-      </section>
+        </form>
+      </main>
     </div>
   );
 }
