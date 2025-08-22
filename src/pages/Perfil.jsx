@@ -62,12 +62,30 @@ export default function Perfil() {
         return;
       }
 
-      // Cargar perfil desde 'profiles'
-      const { data: prof, error: pErr } = await supabase
-        .from("profiles")
-        .select("id, nombre, apellidos, dni, rol, unidad, areas_interes")
-        .eq("id", sess.user.id)
-        .maybeSingle();
+      // Cargar perfil desde 'profiles' con fallback si falta areas_interes
+      let prof = null;
+      let pErr = null;
+      {
+        const res = await supabase
+          .from("profiles")
+          .select("id, nombre, apellidos, dni, rol, unidad, areas_interes")
+          .eq("id", sess.user.id)
+          .maybeSingle();
+        prof = res.data ?? null;
+        pErr = res.error ?? null;
+
+        // Si la columna no existe (42703), reintenta sin areas_interes
+        if (pErr?.code === "42703" || (pErr?.message || "").toLowerCase().includes("areas_interes")) {
+          console.warn("[Perfil] 'areas_interes' no existe aún. Reintentando sin esa columna.");
+          const res2 = await supabase
+            .from("profiles")
+            .select("id, nombre, apellidos, dni, rol, unidad")
+            .eq("id", sess.user.id)
+            .maybeSingle();
+          prof = res2.data ?? null;
+          pErr = res2.error ?? null;
+        }
+      }
 
       if (pErr) {
         console.warn("[Perfil] profiles select error:", pErr);
@@ -182,6 +200,7 @@ export default function Perfil() {
     setSaving(false);
     if (error) {
       console.error("[Perfil] upsert error:", error);
+      setOkMsg("");
       // Mensajes más claros según constraint o columna
       const code = error.code || "";
       const msg = (error.message || "").toLowerCase();
@@ -196,6 +215,7 @@ export default function Perfil() {
       return;
     }
 
+    setErrorMsg("");
     setOkMsg("Guardado correctamente ✔");
     setTimeout(() => navigate("/dashboard"), 600);
   }
@@ -251,6 +271,7 @@ export default function Perfil() {
               <input
                 id="campo-nombre"
                 type="text"
+                autoComplete="given-name"
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
@@ -263,6 +284,7 @@ export default function Perfil() {
               <input
                 id="campo-apellidos"
                 type="text"
+                autoComplete="family-name"
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={apellidos}
                 onChange={(e) => setApellidos(e.target.value)}
@@ -277,6 +299,7 @@ export default function Perfil() {
               <input
                 id="campo-email"
                 type="email"
+                autoComplete="email"
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -292,13 +315,16 @@ export default function Perfil() {
               <input
                 id="campo-dni"
                 type="text"
+                autoComplete="off"
+                inputMode="text"
+                maxLength={10}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-              value={dni}
-              onChange={(e) => {
-                setDni(e.target.value.toUpperCase());
-                if (dniError) setDniError("");
-              }}
-              placeholder="12345678A"
+                value={dni}
+                onChange={(e) => {
+                  setDni(e.target.value.toUpperCase());
+                  if (dniError) setDniError("");
+                }}
+                placeholder="12345678A"
               />
             {dniError && (
               <p className="text-xs text-red-600 mt-1">{dniError}</p>
