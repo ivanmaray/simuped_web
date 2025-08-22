@@ -1,339 +1,228 @@
-// src/pages/Perfil.jsx
+// src/pages/Dashboard.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
-const AREAS = [
-  "Alergología",
-  "Cardiología",
-  "Cirugía",
-  "Críticos",
-  "Dermatología",
-  "Endocrinología",
-  "Farmacología",
-  "Gastroenterología",
-  "Hematología",
-  "Infecciosas",
-  "Inmunología",
-  "Metabólico",
-  "Neumología",
-  "Neonatología",
-  "Neurología",
-  "Nefrología",
-  "OncoHematología",
-  "Reumatología",
-  "Salud mental",
-  "Toxicología",
-  "Traumatología",
-  "Urgencias",
-];
+const COLORS = {
+  primary: "#1a69b8",
+  sky: "#1d99bf",
+  cyan: "#1fced1",
+  coral: "#f6a9a3",
+  sand: "#f2c28c",
+};
 
-export default function Perfil() {
+export default function Dashboard() {
   const navigate = useNavigate();
 
-  // Estado de usuario/sesión
   const [session, setSession] = useState(null);
-  const [cargando, setCargando] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  // Form (pre-cargable)
-  const [nombreCompleto, setNombreCompleto] = useState("");
-  const [dni, setDni] = useState("");
-  const [unidad, setUnidad] = useState("");
-  const [hospital, setHospital] = useState("");
-  const [categoria, setCategoria] = useState(""); // Adjunto / Residente / Estudiante
-  const [areas, setAreas] = useState([]); // string[]
+  // Perfil
+  const [nombre, setNombre] = useState("");
   const [rol, setRol] = useState("");
 
-  // UI
-  const [guardado, setGuardado] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  // Escenarios
+  const [escenarios, setEscenarios] = useState([]);
+  const [q, setQ] = useState("");
+  const [nivel, setNivel] = useState(""); // Basic | Medium | Advanced
+  const [modo, setModo] = useState("");   // Online | Presencial
+  const [loadingEsc, setLoadingEsc] = useState(false);
 
-  // Cargar sesión + perfil existente
   useEffect(() => {
     let mounted = true;
+
     async function init() {
-      try {
-        const { data: sData, error: sErr } = await supabase.auth.getSession();
-        if (sErr) console.error("[Perfil] getSession error:", sErr);
-        const sess = sData?.session ?? null;
-        if (!mounted) return;
-        setSession(sess);
+      const { data: sData } = await supabase.auth.getSession();
+      const sess = sData?.session || null;
+      if (!mounted) return;
+      setSession(sess);
 
-        if (!sess) {
-          setCargando(false);
-          navigate("/", { replace: true });
-          return;
-        }
-
-        // 1) Intentar leer de profiles
-        const { data: p, error: pErr } = await supabase
-          .from("profiles")
-          .select("nombre, unidad, rol, dni, hospital, categoria_profesional, areas_interes")
-          .eq("id", sess.user.id)
-          .maybeSingle();
-
-        if (pErr) {
-          console.warn("[Perfil] load profile warning:", pErr);
-        }
-
-        // 2) Fallback a user_metadata si falta algo
-        const meta = sess.user?.user_metadata || {};
-        setNombreCompleto(p?.nombre ?? meta.nombre ?? "");
-        setDni(p?.dni ?? "");
-        setUnidad(p?.unidad ?? "");
-        setHospital(p?.hospital ?? "");
-        setCategoria(p?.categoria_profesional ?? "");
-        setAreas(Array.isArray(p?.areas_interes) ? p.areas_interes : []);
-        setRol(p?.rol ?? meta.rol ?? "");
-
-        setCargando(false);
-      } catch (e) {
-        console.error("[Perfil] init error:", e);
-        setCargando(false);
+      if (!sess) {
+        navigate("/", { replace: true });
+        return;
       }
+
+      // Perfil
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("nombre, rol")
+        .eq("id", sess.user.id)
+        .maybeSingle();
+
+      const meta = sess.user?.user_metadata || {};
+      setNombre(prof?.nombre ?? meta.nombre ?? "");
+      setRol(prof?.rol ?? meta.rol ?? "");
+
+      // Escenarios (solo títulos por ahora)
+      await cargarEscenarios();
+
+      setLoading(false);
     }
+
+    async function cargarEscenarios() {
+      setLoadingEsc(true);
+      // Traemos id, title, level, mode; si no tienes columnas exactas, ajusta aquí
+      let query = supabase
+        .from("scenarios")
+        .select("id, title, level, mode")
+        .order("created_at", { ascending: false });
+
+      // Filtros en cliente al principio; más adelante se pueden pasar al server
+      const { data, error } = await query;
+      if (error) {
+        console.error("[Dashboard] cargarEscenarios error:", error);
+        setEscenarios([]);
+        setLoadingEsc(false);
+        return;
+      }
+      setEscenarios(data || []);
+      setLoadingEsc(false);
+    }
+
     init();
     return () => { mounted = false; };
   }, [navigate]);
 
-  const handleRol = (nuevoRol) => setRol(nuevoRol);
-  const toggleArea = (a) =>
-    setAreas((arr) => (arr.includes(a) ? arr.filter((x) => x !== a) : [...arr, a]));
+  // Filtro en cliente (simple)
+  const filtrados = escenarios.filter((e) => {
+    const matchQ =
+      !q ||
+      e.title?.toLowerCase().includes(q.trim().toLowerCase());
+    const matchNivel = !nivel || (e.level || "").toLowerCase() === nivel.toLowerCase();
+    const matchModo = !modo || (e.mode || "").toLowerCase() === modo.toLowerCase();
+    return matchQ && matchNivel && matchModo;
+  });
 
-  function dniValido(valor) {
-    const v = (valor || "").trim().toUpperCase();
-    // Validación simple DNI/NIE (sin cálculo de letra)
-    return v === "" || /^[0-9XYZ][0-9]{7}[A-Z]$/.test(v);
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    setGuardado(false);
-
-    try {
-      // Usuario autenticado
-      const { data: { user }, error: uErr } = await supabase.auth.getUser();
-      if (uErr) throw uErr;
-      if (!user) {
-        setError("No se encontró usuario autenticado.");
-        setLoading(false);
-        return;
-      }
-
-      if (!dniValido(dni)) {
-        setError("DNI/NIE no tiene un formato válido.");
-        setLoading(false);
-        return;
-      }
-
-      // Guardar en profiles
-      const payload = {
-        id: user.id,
-        nombre: nombreCompleto?.trim() || null,
-        unidad: unidad?.trim() || null,
-        rol: rol || null,
-        dni: dni?.trim().toUpperCase() || null,
-        hospital: hospital?.trim() || null,
-        categoria_profesional: categoria || null,
-        areas_interes: areas,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: upsertError } = await supabase
-        .from("profiles")
-        .upsert([payload], { onConflict: "id" });
-
-      if (upsertError) {
-        setError(
-          "Hubo un error al guardar los datos: " +
-            (upsertError.message || upsertError.details || "")
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Sincronizar a user_metadata para chips del Dashboard
-      const { error: mErr } = await supabase.auth.updateUser({
-        data: { nombre: nombreCompleto || undefined, rol: rol || undefined },
-      });
-      if (mErr) {
-        console.warn("[Perfil] update metadata warning:", mErr);
-      }
-
-      setGuardado(true);
-      setLoading(false);
-
-      // Redirigir tras breve confirmación
-      setTimeout(() => navigate("/dashboard", { replace: true }), 900);
-    } catch (e) {
-      console.error("[Perfil] save error:", e);
-      setError("Error inesperado.");
-      setLoading(false);
-    }
-  };
-
-  if (cargando) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Cargando perfil…</div>
+        <div className="text-gray-600">Cargando panel…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <Navbar />
 
-      <div className="max-w-2xl mx-auto px-5 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold text-slate-900">Mi Perfil</h1>
-          <button
-            type="button"
-            onClick={() => navigate("/dashboard")}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
-          >
-            ← Volver al panel
-          </button>
-        </div>
-
-        <p className="text-gray-700 text-base mb-6">
-          Actualiza tu información básica, documento de identidad y rol.
+      <header className="max-w-6xl mx-auto px-5 pt-8 pb-4">
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
+          Bienvenido{nombre ? `, ${nombre}` : ""} 👋
+        </h1>
+        <p className="text-slate-600 mt-1">
+          {rol ? `Registrado como ${rol}.` : "Completa tu perfil para personalizar la plataforma."}
         </p>
+      </header>
 
-        <div className="bg-white shadow-md rounded-lg p-6">
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            {/* Datos básicos */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre completo</label>
-                <input
-                  type="text"
-                  value={nombreCompleto}
-                  onChange={(e) => setNombreCompleto(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-                  placeholder="Ej. Ana Pérez"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">DNI / NIE (opcional)</label>
-                <input
-                  type="text"
-                  value={dni}
-                  onChange={(e) => setDni(e.target.value.toUpperCase())}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-                  placeholder="12345678Z o X1234567L"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Unidad</label>
-                <select
-                  value={unidad}
-                  onChange={(e) => setUnidad(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-                  required
-                >
-                  <option value="">Selecciona tu unidad</option>
-                  <option value="Farmacia">Farmacia</option>
-                  <option value="UCI">UCI</option>
-                  <option value="Urgencias">Urgencias</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Hospital (opcional)</label>
-                <input
-                  type="text"
-                  value={hospital}
-                  onChange={(e) => setHospital(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-                  placeholder="HUCA"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Categoría profesional</label>
-                <select
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-                >
-                  <option value="">Selecciona…</option>
-                  <option value="Adjunto">Adjunto</option>
-                  <option value="Residente">Residente</option>
-                  <option value="Estudiante">Estudiante</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Áreas de interés</label>
-                <div className="flex flex-wrap gap-2">
-                  {AREAS.map((a) => (
-                    <button
-                      key={a}
-                      type="button"
-                      onClick={() => toggleArea(a)}
-                      className={`px-3 py-1 rounded-full text-sm border transition ${
-                        areas.includes(a)
-                          ? "bg-[#1a69b8] text-white border-[#1a69b8]"
-                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                      }`}
-                    >
-                      {a}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Rol */}
-            <div>
-              <label className="block mb-1 text-gray-700">Selecciona tu rol</label>
-              <div className="flex justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleRol("Médico")}
-                  className={`flex-1 py-2 rounded ${rol === "Médico" ? "bg-[#1a69b8] text-white" : "bg-gray-200 text-gray-700"} font-semibold`}
-                >
-                  Médico
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRol("Farmacia")}
-                  className={`flex-1 py-2 rounded ${rol === "Farmacia" ? "bg-[#1a69b8] text-white" : "bg-gray-200 text-gray-700"} font-semibold`}
-                >
-                  Farmacéutico
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRol("Enfermería")}
-                  className={`flex-1 py-2 rounded ${rol === "Enfermería" ? "bg-[#1a69b8] text-white" : "bg-gray-200 text-gray-700"} font-semibold`}
-                >
-                  Enfermería
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={loading || !rol}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white bg-[#1a69b8] hover:bg-[#165898] disabled:opacity-60"
-              >
-                {loading ? "Guardando…" : "Guardar cambios"}
-              </button>
-              {guardado && <span className="text-sm text-green-700">Guardado correctamente ✔</span>}
-              {error && <span className="text-sm text-red-600">{error}</span>}
-            </div>
-          </form>
+      {/* CTA rápida */}
+      <div className="max-w-6xl mx-auto px-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">Simulación online</h2>
+            <p className="text-slate-600">Selecciona un escenario y empieza a entrenar.</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate("/perfil")}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
+            >
+              Editar perfil
+            </button>
+            <button
+              onClick={() => document.getElementById('filtros-esc')?.scrollIntoView({ behavior: 'smooth' })}
+              className="px-4 py-2 rounded-lg text-white"
+              style={{ backgroundColor: COLORS.primary }}
+            >
+              Ver escenarios
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Escenarios + Simulación online (fusionado) */}
+      <section className="max-w-6xl mx-auto px-5 py-8">
+        <div id="filtros-esc" className="mb-4 flex flex-col md:flex-row gap-3">
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por título…"
+            className="w-full md:flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
+          />
+          <select
+            value={nivel}
+            onChange={(e) => setNivel(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2"
+          >
+            <option value="">Todos los niveles</option>
+            <option value="basic">Básico</option>
+            <option value="medium">Medio</option>
+            <option value="advanced">Avanzado</option>
+          </select>
+          <select
+            value={modo}
+            onChange={(e) => setModo(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2"
+          >
+            <option value="">Todos los modos</option>
+            <option value="online">Online</option>
+            <option value="presencial">Presencial</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {loadingEsc && (
+            <div className="col-span-full text-slate-600">Cargando escenarios…</div>
+          )}
+
+          {!loadingEsc && filtrados.length === 0 && (
+            <div className="col-span-full text-slate-600">No hay escenarios que coincidan.</div>
+          )}
+
+          {!loadingEsc && filtrados.map((esc) => (
+            <article
+              key={esc.id}
+              className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition cursor-pointer"
+              onClick={() => navigate(`/simulacion/${esc.id}`)} // vista futura
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-lg font-semibold text-slate-900 group-hover:underline">
+                  {esc.title || "Escenario sin título"}
+                </h3>
+                <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                  {esc.mode || "online"}
+                </span>
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  {esc.level || "basic"}
+                </span>
+                <span className="text-slate-400">•</span>
+                <span className="text-slate-600">ID: {esc.id.slice(0, 8)}…</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* Presencial (sección ligera) */}
+      <section className="max-w-6xl mx-auto px-5 pb-12">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 md:p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-1">Simulación presencial</h2>
+          <p className="text-slate-600 mb-3">
+            Próximamente: coordinación de sesiones con instructor asistidas por SimuPed.
+          </p>
+          <button
+            type="button"
+            className="px-4 py-2 rounded-lg text-white"
+            style={{ backgroundColor: COLORS.primary }}
+            onClick={() => alert("Muy pronto")}
+          >
+            Solicitar sesión
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
