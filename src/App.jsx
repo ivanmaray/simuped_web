@@ -125,6 +125,13 @@ useEffect(() => {
               <p className="text-xs text-slate-500">
                 * Los usuarios los crea el administrador.
               </p>
+              <p className="text-sm text-slate-700">
+                ¿No tienes cuenta?{" "}
+                <a href="/registro" className="text-[rgb(26,105,184)] hover:underline">
+                  Solicita acceso
+                </a>
+                .
+              </p>
             </form>
           </div>
         </div>
@@ -295,7 +302,7 @@ useEffect(() => {
                 entrenar en la plataforma online y participar en sesiones presenciales de simulación clínica.
               </p>
               <div className="flex flex-wrap gap-3">
-                <a href="#login" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.teal }}>Solicitar acceso</a>
+                <a href="/registro" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.teal }}>Solicitar acceso</a>
                 <a href="#proyecto" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">Más info</a>
               </div>
             </div>
