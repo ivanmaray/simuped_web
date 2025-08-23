@@ -34,34 +34,28 @@ function safeStringifyJSON(value) {
 function normalizarDNI(v) {
   return (v || "").toString().toUpperCase().replace(/\s|-/g, "");
 }
-// Valida DNI/NIE con control de letra (DNI: 12345678Z, NIE: X1234567L, Y, Z)
+
+// Valida DNI (12345678Z) o NIE (X1234567L, Y..., Z...) con letra de control correcta
 function validarDNI(v) {
   const dni = normalizarDNI(v);
-  // Formatos válidos: 12345678Z, X1234567L, Y1234567X, Z1234567R
-  if (!/^[XYZ]?\d{7,8}[A-Z]$/.test(dni)) return false;
-  // Extraer número y letra
-  let numero = dni.slice(0, -1);
-  const letra = dni.slice(-1);
-  // NIE: X = 0, Y = 1, Z = 2
-  if (numero.length === 8) {
-    // DNI
-    if (!/^\d{8}$/.test(numero)) return false;
-  } else if (numero.length === 8 && /^[XYZ]/.test(numero)) {
-    // Should not happen, NIE always 7 digits after letter
-    return false;
-  } else if (numero.length === 8 || numero.length === 9) {
-    // Defensive: too long
-    return false;
-  } else if (/^[XYZ]/.test(numero)) {
-    // NIE
+
+  const isDNI = /^\d{8}[A-Z]$/.test(dni);
+  const isNIE = /^[XYZ]\d{7}[A-Z]$/.test(dni);
+  if (!isDNI && !isNIE) return false;
+
+  // Obtiene número sin la letra final
+  let num = dni.slice(0, -1);
+  const letter = dni.slice(-1);
+
+  // Para NIE, sustituye la inicial X/Y/Z por 0/1/2
+  if (/^[XYZ]/.test(num)) {
     const map = { X: "0", Y: "1", Z: "2" };
-    numero = map[numero[0]] + numero.slice(1);
-    if (!/^\d{8}$/.test(numero)) return false;
+    num = map[num[0]] + num.slice(1);
   }
-  // Calcular letra de control
-  const letras = "TRWAGMYFPDXBNJZSQVHLCKE";
-  const idx = parseInt(numero, 10) % 23;
-  return letras[idx] === letra;
+
+  const letters = "TRWAGMYFPDXBNJZSQVHLCKE";
+  const expected = letters[parseInt(num, 10) % 23];
+  return expected === letter;
 }
 
 
