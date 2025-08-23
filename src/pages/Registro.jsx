@@ -37,6 +37,7 @@ export default function Registro() {
   const [okMsg, setOkMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [dniError, setDniError] = useState("");
+  const [catsError, setCatsError] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -45,11 +46,15 @@ export default function Registro() {
         .from("categories")
         .select("id, name")
         .order("name", { ascending: true });
+
       if (!mounted) return;
+
       if (error) {
         console.error("[Registro] error cargando categorías:", error);
+        setCatsError(true);
         setCategorias([]);
       } else {
+        setCatsError(false);
         setCategorias(data || []);
       }
     }
@@ -88,57 +93,78 @@ export default function Registro() {
     }
 
     setLoading(true);
+    console.debug("[Registro] intentando signUp + upsert profiles");
 
     // 1) Alta en auth con metadatos básicos
-    const { data: sign, error: signErr } = await supabase.auth.signUp({
+    const { data: signData, error: signErr } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { nombre: nombre.trim(), apellidos: apellidos.trim(), rol, unidad },
+        emailRedirectTo: window.location.origin, // opcional: dónde volver tras confirmar email
       },
     });
 
     if (signErr) {
       setLoading(false);
-      setErrorMsg(signErr.message || "No se pudo crear la cuenta.");
+      const m = (signErr.message || "").toLowerCase();
+      if (m.includes("user already registered")) {
+        setErrorMsg("Ya existe una cuenta con ese email.");
+      } else {
+        setErrorMsg(signErr.message || "No se pudo crear la cuenta.");
+      }
       return;
     }
 
-    const userId = sign.user?.id;
-    if (!userId) {
+    // 1.5) Verificar si hay sesión activa (si hay confirmación por email, NO la habrá)
+    const { data: sessData } = await supabase.auth.getSession();
+    const session = sessData?.session || null;
+
+    if (!session) {
+      // No hay sesión todavía -> no podemos escribir en 'profiles' por RLS.
+      // Mostramos mensaje y vamos a "pendiente".
       setLoading(false);
-      setErrorMsg("No se pudo obtener el usuario tras el registro.");
+      setOkMsg("Te hemos enviado un correo para confirmar tu email. Tras confirmarlo, un administrador aprobará tu acceso.");
+      setTimeout(() => navigate("/pendiente"), 700);
       return;
     }
+
+    const userId = session.user.id;
 
     // 2) Crear fila en profiles con approved=false
-    const payload = {
-      id: userId,
-      nombre: nombre.trim(),
-      apellidos: apellidos.trim(),
-      dni: dniNorm,
-      rol,
-      unidad,
-      areas_interes: areasInteres,
-      approved: false,
-      is_admin: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error: upErr } = await supabase.from("profiles").upsert(payload);
+    const { error: upErr } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: userId,
+          nombre: nombre.trim(),
+          apellidos: apellidos.trim(),
+          dni: dniNorm,
+          rol,
+          unidad,
+          areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
+          approved: false,
+          is_admin: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
     setLoading(false);
 
     if (upErr) {
       console.error("[Registro] upsert profiles error:", upErr);
       const code = upErr.code || "";
       const msg = (upErr.message || "").toLowerCase();
+
       if (code === "23505" || msg.includes("duplicate")) {
-        setErrorMsg("Ya existe un perfil con ese DNI o email.");
-      } else if (code === "23514" || msg.includes("dni")) {
+        setErrorMsg("Ya existe un perfil con datos duplicados (DNI o email).");
+      } else if (code === "23514" && msg.includes("dni")) {
         setDniError("El DNI no cumple el formato requerido por el sistema.");
+      } else if (code === "42501" || msg.includes("rls")) {
+        setErrorMsg("No se pudo guardar tu perfil por permisos. Contacta con soporte.");
       } else {
-        setErrorMsg("No se pudo guardar tu perfil. Inténtalo de nuevo.");
+        setErrorMsg(upErr.message || "No se pudo guardar tu perfil. Inténtalo de nuevo.");
       }
       return;
     }
@@ -229,6 +255,8 @@ export default function Registro() {
             <span className="text-sm text-slate-700">DNI</span>
             <input
               type="text"
+              inputMode="text"
+              autoCorrect="off"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
               value={dni}
               onChange={(e) => {
@@ -301,36 +329,41 @@ export default function Registro() {
           {/* Áreas de interés (opcional) */}
           <div>
             <span className="block text-sm text-slate-700 mb-2">Áreas de interés (opcional)</span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-              {categorias.map((cat) => {
-                const checked = areasInteres.includes(cat.name);
-                return (
-                  <label
-                    key={cat.id}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${
-                      checked
-                        ? "border-transparent text-white"
-                        : "border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
-                    }`}
-                    style={checked ? { backgroundColor: COLORS.primary } : {}}
-                  >
-                    <input
-                      type="checkbox"
-                      value={cat.name}
-                      checked={checked}
-                      onChange={() => toggleArea(cat.name)}
-                      className="sr-only"
-                    />
-                    <span className="text-sm">{cat.name}</span>
-                  </label>
-                );
-              })}
-              {categorias.length === 0 && (
-                <div className="text-slate-500 text-sm col-span-full">
-                  No hay categorías disponibles.
-                </div>
-              )}
-            </div>
+            {catsError ? (
+              <div className="text-slate-500 text-sm">
+                No se pudieron cargar las categorías en este momento.
+              </div>
+            ) : categorias.length === 0 ? (
+              <div className="text-slate-500 text-sm">
+                No hay categorías disponibles.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                {categorias.map((cat) => {
+                  const checked = areasInteres.includes(cat.name);
+                  return (
+                    <label
+                      key={cat.id}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${
+                        checked
+                          ? "border-transparent text-white"
+                          : "border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+                      }`}
+                      style={checked ? { backgroundColor: COLORS.primary } : {}}
+                    >
+                      <input
+                        type="checkbox"
+                        value={cat.name}
+                        checked={checked}
+                        onChange={() => toggleArea(cat.name)}
+                        className="sr-only"
+                      />
+                      <span className="text-sm">{cat.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Botones */}
@@ -350,6 +383,13 @@ export default function Registro() {
               Cancelar
             </Link>
           </div>
+
+          <p className="text-sm text-slate-600">
+            ¿Ya tienes cuenta?{" "}
+            <Link to="/" className="text-[#1a69b8] underline underline-offset-2 hover:opacity-80">
+              Inicia sesión
+            </Link>
+          </p>
         </form>
       </main>
     </div>

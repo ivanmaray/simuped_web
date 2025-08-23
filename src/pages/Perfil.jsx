@@ -11,6 +11,25 @@ const COLORS = {
 
 const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
 
+// Helpers seguros para JSON (compatibles si la columna es TEXT o JSONB)
+function safeParseJSON(value) {
+  if (value == null) return null;
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(String(value));
+  } catch {
+    return null;
+  }
+}
+function safeStringifyJSON(value) {
+  try {
+    return JSON.stringify(value ?? []);
+  } catch {
+    return "[]";
+  }
+}
+
 // Helpers DNI
 function normalizarDNI(v) {
   return (v || "").toString().toUpperCase().replace(/\s|-/g, "");
@@ -101,19 +120,9 @@ export default function Perfil() {
       setRol((prof?.rol ?? meta.rol ?? "").toString().toLowerCase());
       setUnidad((prof?.unidad ?? "").toString());
 
-      // Normaliza areas_interes (jsonb o string JSON)
-      const aiRaw = prof?.areas_interes;
-      let ai = [];
-      if (Array.isArray(aiRaw)) ai = aiRaw;
-      else if (typeof aiRaw === "string") {
-        try {
-          ai = JSON.parse(aiRaw);
-          if (!Array.isArray(ai)) ai = [];
-        } catch {
-          ai = [];
-        }
-      }
-      setAreasInteres(ai);
+      // Normaliza areas_interes (jsonb o TEXT con JSON)
+      const ai = safeParseJSON(prof?.areas_interes) || [];
+      setAreasInteres(Array.isArray(ai) ? ai : []);
 
       // Cargar categorías dinámicamente desde public.categories
       const { data: cats, error: cErr } = await supabase
@@ -191,7 +200,8 @@ export default function Perfil() {
       dni: dniNorm,
       rol,                 // texto en minúsculas (medico|enfermeria|farmacia)
       unidad,              // Farmacia|UCI|Urgencias
-      areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
+      // Guardamos siempre como string JSON para ser compatibles si la columna es TEXT
+      areas_interes: safeStringifyJSON(Array.isArray(areasInteres) ? areasInteres : []),
       updated_at: new Date().toISOString(),
     };
 
@@ -208,7 +218,7 @@ export default function Perfil() {
       if (code === "23514" || msg.includes("dni") || msg.includes("check constraint")) {
         setDniError("El DNI no cumple el formato requerido por el sistema.");
       } else if (code === "42703" || msg.includes("column")) {
-        setErrorMsg("Falta alguna columna en la tabla de perfiles. Revisa el esquema (areas_interes, rol, unidad…).");
+        setErrorMsg("Falta alguna columna en la tabla de perfiles o el tipo no coincide. Revisa el esquema (areas_interes, rol, unidad…).");
       } else {
         setErrorMsg("Hubo un error al guardar los datos. Inténtalo de nuevo.");
       }
