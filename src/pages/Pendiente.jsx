@@ -1,101 +1,133 @@
-// src/auth.jsx
-import { useState } from "react";
-import { supabase } from "./supabaseClient";
+// src/pages/Pendiente.jsx
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient";
 
-export default function Auth() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(null);
+export default function Pendiente() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState("");
+  const [emailConfirmed, setEmailConfirmed] = useState(false);
+  const [approved, setApproved] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  async function handleLogin() {
-    setError(null);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      // 1) Sesión / usuario
+      const { data: sessData } = await supabase.auth.getSession();
+      const session = sessData?.session ?? null;
+      if (!mounted) return;
 
-    if (error) {
-      // Si el correo no está confirmado, mandamos a Pendiente
-      const msg = (error.message || "").toLowerCase();
-      if (msg.includes("email not confirmed") || msg.includes("email_not_confirmed") || msg.includes("email not verified")) {
-        navigate("/pendiente", { replace: true });
+      if (!session) {
+        // Sin sesión → vuelve al inicio
+        navigate("/", { replace: true });
         return;
       }
-      // Otros errores: setError y salir
-      setError(error.message || "Error al iniciar sesión");
-      return;
-    }
 
-    // Tras login correcto, comprobamos si está aprobado
-    try {
-      const userId = data?.user?.id;
-      if (userId) {
-        const { data: prof, error: profErr } = await supabase
-          .from("profiles")
-          .select("approved")
-          .eq("id", userId)
-          .maybeSingle();
-        if (!profErr) {
-          if (prof?.approved === false) {
-            navigate("/pendiente", { replace: true });
-            return;
-          }
-        }
+      setEmail(session.user.email || "");
+
+      // 2) Email confirmado
+      const { data: userData } = await supabase.auth.getUser();
+      const confirmed = !!userData?.user?.email_confirmed_at;
+      setEmailConfirmed(confirmed);
+
+      // 3) ¿Aprobado por admin?
+      const { data: prof, error: profErr } = await supabase
+        .from("profiles")
+        .select("approved")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (profErr) {
+        console.warn("[Pendiente] error cargando perfil:", profErr);
       }
-    } catch (e) {
-      // si falla la consulta, no bloqueamos, continuamos al flujo normal
-      console.warn("[Auth] No se pudo comprobar 'approved':", e);
-    }
+      setApproved(!!prof?.approved);
 
-    navigate("/dashboard");
+      setLoading(false);
+
+      // 4) Si todo ok → a /dashboard
+      if (confirmed && prof?.approved) {
+        navigate("/dashboard", { replace: true });
+      }
+    })();
+
+    return () => { mounted = false; };
+  }, [navigate]);
+
+  async function reenviarEmail() {
+    setMsg("");
+    const { error } = await supabase.auth.resend({ type: "signup", email });
+    if (error) {
+      setMsg("No se pudo reenviar el email. Inténtalo de nuevo.");
+    } else {
+      setMsg("Te hemos reenviado el email de verificación.");
+    }
+  }
+
+  async function salir() {
+    await supabase.auth.signOut();
+    // Limpieza por si acaso
+    try { localStorage.clear(); sessionStorage.clear(); } catch {}
+    navigate("/", { replace: true });
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-slate-50 text-slate-700">
+        Cargando…
+      </div>
+    );
   }
 
   return (
-    <div>
-      {/* UI for login form */}
-      <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
-      <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
-      <button onClick={handleLogin}>Login</button>
-      {error && <p>{error}</p>}
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="max-w-xl mx-auto px-5 py-12">
+        <h1 className="text-2xl font-semibold mb-3">Cuenta pendiente de aprobación</h1>
+        <p className="text-slate-700">
+          Hemos recibido tu solicitud. Revisaremos tu cuenta en breve.
+        </p>
+
+        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+          <p className="text-sm text-slate-700">
+            <strong>Email:</strong> {email || "—"}
+          </p>
+          <p className="text-sm mt-2">
+            <strong>Verificación de email:</strong>{" "}
+            {emailConfirmed ? "Verificado ✅" : "Pendiente ⏳"}
+          </p>
+          <p className="text-sm mt-1">
+            <strong>Aprobación de administrador:</strong>{" "}
+            {approved ? "Aprobado ✅" : "Pendiente ⏳"}
+          </p>
+
+          {!emailConfirmed && (
+            <button
+              onClick={reenviarEmail}
+              className="mt-4 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100"
+            >
+              Reenviar email de verificación
+            </button>
+          )}
+
+          <div className="mt-4 text-sm text-slate-700">{msg}</div>
+
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={() => navigate("/")}
+              className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100"
+            >
+              Volver al inicio
+            </button>
+            <button
+              onClick={salir}
+              className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:opacity-90"
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
-}
-
-// src/MainRouter.jsx
-import { Routes, Route } from "react-router-dom";
-import Pendiente from "./pages/Pendiente.jsx";
-import Auth from "./auth.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-// other imports
-
-export default function MainRouter() {
-  return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/login" element={<Auth />} />
-      <Route path="/pendiente" element={<Pendiente />} />
-
-      {/* Protected routes */}
-      <Route path="/dashboard" element={<Dashboard />} />
-      {/* other routes */}
-    </Routes>
-  );
-}
-
-// src/ProtectedRoute.jsx
-import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "./authContext";
-
-export default function ProtectedRoute({ children }) {
-  const { user, profile } = useAuth();
-  const location = useLocation();
-
-  if (!user) {
-    return <Navigate to="/" replace />;
-  }
-
-  if (location.pathname !== "/pendiente" && profile?.approved === false) {
-    return <Navigate to="/pendiente" replace />;
-  }
-
-  return children;
 }
