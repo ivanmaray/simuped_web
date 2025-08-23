@@ -55,6 +55,52 @@ export default function Pendiente() {
     return () => { mounted = false; };
   }, [navigate]);
 
+  // Auto-refresco: cada 15s revalidar confirmación de email y aprobación admin
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkStatus() {
+      // 1) sesión aún válida
+      const { data: sessData } = await supabase.auth.getSession();
+      const session = sessData?.session ?? null;
+      if (!mounted) return;
+      if (!session) return; // si se pierde sesión, no navegamos aquí
+
+      // 2) email confirmado
+      const { data: userData } = await supabase.auth.getUser();
+      const confirmed = !!userData?.user?.email_confirmed_at;
+
+      // 3) aprobado
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("approved")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      const isApproved = !!prof?.approved;
+
+      // actualizar UI
+      if (mounted) {
+        setEmailConfirmed(confirmed);
+        setApproved(isApproved);
+      }
+
+      // 4) si todo ok → dashboard
+      if (confirmed && isApproved) {
+        navigate("/dashboard", { replace: true });
+      }
+    }
+
+    // primera comprobación rápida por si el admin acaba de aprobar
+    checkStatus();
+
+    const id = setInterval(checkStatus, 15000); // 15s
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [navigate]);
+
   async function reenviarEmail() {
     setMsg("");
     const { error } = await supabase.auth.resend({ type: "signup", email });
@@ -111,6 +157,9 @@ export default function Pendiente() {
           )}
 
           <div className="mt-4 text-sm text-slate-700">{msg}</div>
+          <p className="mt-2 text-xs text-slate-500">
+            Esta página comprueba tu estado automáticamente cada 15&nbsp;segundos.
+          </p>
 
           <div className="mt-6 flex gap-3">
             <button
