@@ -34,10 +34,34 @@ function safeStringifyJSON(value) {
 function normalizarDNI(v) {
   return (v || "").toString().toUpperCase().replace(/\s|-/g, "");
 }
+// Valida DNI/NIE con control de letra (DNI: 12345678Z, NIE: X1234567L, Y, Z)
 function validarDNI(v) {
   const dni = normalizarDNI(v);
   // Formatos válidos: 12345678Z, X1234567L, Y1234567X, Z1234567R
-  return /^[XYZ]?\d{7,8}[A-Z]$/.test(dni);
+  if (!/^[XYZ]?\d{7,8}[A-Z]$/.test(dni)) return false;
+  // Extraer número y letra
+  let numero = dni.slice(0, -1);
+  const letra = dni.slice(-1);
+  // NIE: X = 0, Y = 1, Z = 2
+  if (numero.length === 8) {
+    // DNI
+    if (!/^\d{8}$/.test(numero)) return false;
+  } else if (numero.length === 8 && /^[XYZ]/.test(numero)) {
+    // Should not happen, NIE always 7 digits after letter
+    return false;
+  } else if (numero.length === 8 || numero.length === 9) {
+    // Defensive: too long
+    return false;
+  } else if (/^[XYZ]/.test(numero)) {
+    // NIE
+    const map = { X: "0", Y: "1", Z: "2" };
+    numero = map[numero[0]] + numero.slice(1);
+    if (!/^\d{8}$/.test(numero)) return false;
+  }
+  // Calcular letra de control
+  const letras = "TRWAGMYFPDXBNJZSQVHLCKE";
+  const idx = parseInt(numero, 10) % 23;
+  return letras[idx] === letra;
 }
 
 
@@ -61,6 +85,8 @@ export default function Perfil() {
   const [unidad, setUnidad] = useState(""); // Farmacia | UCI | Urgencias
   const [areasInteres, setAreasInteres] = useState([]); // array de strings
   const [categorias, setCategorias] = useState([]); // categories desde Supabase
+  // Nuevo: flag para saber si areas_interes es jsonb
+  const [isAreasJsonb, setIsAreasJsonb] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -121,7 +147,10 @@ export default function Perfil() {
       setUnidad((prof?.unidad ?? "").toString());
 
       // Normaliza areas_interes (jsonb o TEXT con JSON)
-      const ai = safeParseJSON(prof?.areas_interes) || [];
+      const rawAI = prof?.areas_interes;
+      const looksJsonb = rawAI && typeof rawAI === "object";
+      setIsAreasJsonb(!!looksJsonb);
+      const ai = safeParseJSON(rawAI) || [];
       setAreasInteres(Array.isArray(ai) ? ai : []);
 
       // Cargar categorías dinámicamente desde public.categories
@@ -200,10 +229,19 @@ export default function Perfil() {
       dni: dniNorm,
       rol,                 // texto en minúsculas (medico|enfermeria|farmacia)
       unidad,              // Farmacia|UCI|Urgencias
-      // Guardamos siempre como string JSON para ser compatibles si la columna es TEXT
-      areas_interes: safeStringifyJSON(Array.isArray(areasInteres) ? areasInteres : []),
+      // Guardamos como array si es jsonb, si no como string JSON
+      areas_interes: isAreasJsonb
+        ? (Array.isArray(areasInteres) ? areasInteres : [])
+        : safeStringifyJSON(Array.isArray(areasInteres) ? areasInteres : []),
       updated_at: new Date().toISOString(),
     };
+
+    // Log para depuración de tipos enviados
+    console.log("[Perfil] upsert payload types:", {
+      rol: [payload.rol, typeof payload.rol],
+      unidad: [payload.unidad, typeof payload.unidad],
+      areas_interes: [payload.areas_interes, typeof payload.areas_interes],
+    });
 
     const { error } = await supabase.from("profiles").upsert(payload);
 
@@ -214,9 +252,23 @@ export default function Perfil() {
       // Mensajes más claros según constraint o columna
       const code = error.code || "";
       const msg = (error.message || "").toLowerCase();
-
-      if (code === "23514" || msg.includes("dni") || msg.includes("check constraint")) {
+      // PG error 23514: check violation
+      if (
+        code === "23514" ||
+        msg.includes("profiles_dni_check") ||
+        msg.includes("dni")
+      ) {
         setDniError("El DNI no cumple el formato requerido por el sistema.");
+      } else if (
+        msg.includes("profiles_rol_check") ||
+        msg.includes("rol")
+      ) {
+        setErrorMsg("Rol inválido. Selecciona un rol permitido.");
+      } else if (
+        msg.includes("profiles_unidad_check") ||
+        msg.includes("unidad")
+      ) {
+        setErrorMsg("Unidad inválida. Selecciona una unidad permitida.");
       } else if (code === "42703" || msg.includes("column")) {
         setErrorMsg("Falta alguna columna en la tabla de perfiles o el tipo no coincide. Revisa el esquema (areas_interes, rol, unidad…).");
       } else {

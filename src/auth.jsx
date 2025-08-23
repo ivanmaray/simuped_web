@@ -1,84 +1,115 @@
 // src/auth.jsx
-import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { supabase } from "./supabaseClient";
 
-// Helper: robust email-confirmed check (supports different Supabase fields)
-function isEmailConfirmed(user) {
-  if (!user) return false;
-  if (user.email_confirmed_at || user.confirmed_at) return true;
-  if (Array.isArray(user.identities)) {
-    return user.identities.some((id) => id?.identity_data?.email && (id?.verified === true));
-  }
-  return false;
-}
-
-const AuthCtx = createContext(null);
+const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
-  const [ready, setReady] = useState(false);
+  const [user, setUser] = useState(null);
   const [emailConfirmed, setEmailConfirmed] = useState(false);
-  const [approved, setApproved] = useState(false);
+  const [approved, setApproved] = useState(null); // null = aún no sabemos
   const [isAdmin, setIsAdmin] = useState(false);
-  const [lastError, setLastError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Public method: force refresh of auth + profile
-  const refresh = async () => {
-    try {
-      setLastError(null);
-      const { data } = await supabase.auth.getSession();
-      const sess = data?.session ?? null;
-      setSession(sess);
-      setEmailConfirmed(isEmailConfirmed(sess?.user));
-
-      if (sess?.user?.id) {
-        const { data: prof, error } = await supabase
-          .from('profiles')
-          .select('approved,is_admin')
-          .eq('id', sess.user.id)
-          .maybeSingle();
-        if (error) throw error;
-        setApproved(!!prof?.approved);
-        setIsAdmin(!!prof?.is_admin);
-      } else {
-        setApproved(false);
-        setIsAdmin(false);
-      }
-    } catch (e) {
-      console.warn('[Auth] refresh error:', e);
-      setLastError(e);
-      // fallback conservative: tratar como no aprobado
-      setApproved(false);
-      setIsAdmin(false);
-    } finally {
-      setReady(true);
-    }
-  };
-
+  // Carga inicial + suscripción a cambios de sesión
   useEffect(() => {
     let mounted = true;
 
-    async function prime() {
-      await refresh();
+    async function hydrate() {
+      try {
+        setLoading(true);
+        const { data: s } = await supabase.auth.getSession();
+        const session = s?.session ?? null;
+        const u = session?.user ?? null;
+        if (!mounted) return;
+
+        setUser(u);
+        setEmailConfirmed(Boolean(u?.email_confirmed_at)); // si no está, será false
+
+        if (u) {
+          // Trae approved y is_admin de profiles (RLS: la política debe permitir leer tu propia fila)
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("approved,is_admin")
+            .eq("id", u.id)
+            .maybeSingle();
+
+          if (error) {
+            console.warn("[Auth] error loading profile:", error);
+            // Cuando no se puede leer, pon approved=null -> ProtectedRoute te llevará a /pendiente
+            setApproved(null);
+            setIsAdmin(false);
+          } else {
+            setApproved(Boolean(data?.approved));
+            setIsAdmin(Boolean(data?.is_admin));
+          }
+        } else {
+          // Sin user
+          setApproved(null);
+          setIsAdmin(false);
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
     }
 
-    prime();
+    hydrate();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
-      setSession(sess ?? null);
-      setEmailConfirmed(isEmailConfirmed(sess?.user));
-      // Reutilizamos refresh para mantener una sola vía de carga
-      refresh();
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, sess) => {
+      const u = sess?.user ?? null;
+      setUser(u);
+      setEmailConfirmed(Boolean(u?.email_confirmed_at));
+
+      if (u) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("approved,is_admin")
+          .eq("id", u.id)
+          .maybeSingle();
+
+        if (error) {
+          console.warn("[Auth] error loading profile:", error);
+          setApproved(null);
+          setIsAdmin(false);
+        } else {
+          setApproved(Boolean(data?.approved));
+          setIsAdmin(Boolean(data?.is_admin));
+        }
+      } else {
+        setApproved(null);
+        setIsAdmin(false);
+      }
     });
 
     return () => {
-      sub?.subscription?.unsubscribe?.();
       mounted = false;
+      sub?.subscription?.unsubscribe?.();
     };
   }, []);
 
-  const value = { ready, session, emailConfirmed, approved, isAdmin, refresh, lastError };
-  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
+  const value = useMemo(
+    () => ({
+      user,
+      emailConfirmed,
+      approved,  // true/false/null
+      isAdmin,
+      loading,
+      async signOut() {
+        await supabase.auth.signOut({ scope: "global" }).catch(() => {});
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch {}
+      },
+    }),
+    [user, emailConfirmed, approved, isAdmin, loading]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export const useAuth = () => useContext(AuthCtx);
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
+  return ctx;
+}
