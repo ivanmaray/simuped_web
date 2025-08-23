@@ -1,5 +1,6 @@
 // src/auth.jsx
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 
 const AuthContext = createContext(null);
@@ -11,12 +12,25 @@ const AuthContext = createContext(null);
  * - Handles: session changes, profile loading, resilient email-confirmed detection
  */
 export function AuthProvider({ children }) {
+  const navigate = useNavigate();
+
   const [user, setUser] = useState(null);
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [profile, setProfile] = useState(null);
   const [approved, setApproved] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Small helper to clear local client auth state and storage
+  function clearClientState() {
+    try { localStorage.removeItem("sb-" + new URL(supabase.supabaseUrl).host + "-auth-token"); } catch {}
+    try { sessionStorage.clear(); } catch {}
+    setUser(null);
+    setProfile(null);
+    setApproved(false);
+    setIsAdmin(false);
+    setEmailConfirmed(false);
+  }
 
   // Compute email confirmed from multiple possible fields (magic link, OAuth, etc)
   const computeEmailConfirmed = useCallback((u) => {
@@ -76,20 +90,35 @@ export function AuthProvider({ children }) {
     console.debug("[Auth] refresh() start");
     try {
       const { data, error } = await supabase.auth.getSession();
-      if (error) console.warn("[Auth] getSession error:", error);
+      if (error) {
+        console.warn("[Auth] getSession error:", error);
+      }
       const sess = data?.session ?? null;
       const u = sess?.user ?? null;
 
+      if (!u) {
+        // No sesión válida: limpiamos y mandamos al login público
+        clearClientState();
+        setLoading(false);
+        try { await supabase.auth.signOut(); } catch {}
+        navigate("/", { replace: true });
+        return;
+      }
+
       setUser(u);
       setEmailConfirmed(computeEmailConfirmed(u));
-      await fetchProfile(u?.id);
+      await fetchProfile(u.id);
     } catch (e) {
       console.error("[Auth] refresh() exception:", e);
+      clearClientState();
+      setLoading(false);
+      navigate("/", { replace: true });
+      return;
     } finally {
       setLoading(false);
       console.debug("[Auth] refresh() end -> loading=false");
     }
-  }, [computeEmailConfirmed, fetchProfile]);
+  }, [computeEmailConfirmed, fetchProfile, navigate]);
 
   // Initial load + subscribe to auth changes
   useEffect(() => {
@@ -102,9 +131,15 @@ export function AuthProvider({ children }) {
     const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, sess) => {
       const u = sess?.user ?? null;
       console.debug("[Auth] onAuthStateChange user:", u?.id || null);
+      if (!u) {
+        clearClientState();
+        if (mounted) setLoading(false);
+        navigate("/", { replace: true });
+        return;
+      }
       setUser(u);
       setEmailConfirmed(computeEmailConfirmed(u));
-      await fetchProfile(u?.id);
+      await fetchProfile(u.id);
       if (mounted) setLoading(false);
     });
 
@@ -116,21 +151,17 @@ export function AuthProvider({ children }) {
         /* no-op */
       }
     };
-  }, [refresh, computeEmailConfirmed, fetchProfile]);
+  }, [refresh, computeEmailConfirmed, fetchProfile, navigate]);
 
   // Sign out helper
   const signOut = useCallback(async () => {
     try {
       await supabase.auth.signOut();
     } finally {
-      // Clear local state
-      setUser(null);
-      setProfile(null);
-      setApproved(false);
-      setIsAdmin(false);
-      setEmailConfirmed(false);
+      clearClientState();
+      navigate("/", { replace: true });
     }
-  }, []);
+  }, [navigate]);
 
   // Memoized context value to avoid unnecessary renders
   const value = useMemo(
