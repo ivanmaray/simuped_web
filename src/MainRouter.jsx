@@ -1,5 +1,5 @@
 // src/MainRouter.jsx
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import App from './App.jsx'                        // Landing con login
 import ProtectedRoute from './ProtectedRoute.jsx'  // wrapper
 import Dashboard from './pages/Dashboard.jsx'
@@ -21,7 +21,7 @@ function DebugRouteLogger() {
 
 export default function MainRouter() {
   return (
-    <BrowserRouter>
+    <>
       <DebugRouteLogger />
       <Routes>
         {/* Públicas: acceso libre */}
@@ -43,6 +43,6 @@ export default function MainRouter() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </>
   )
 }
