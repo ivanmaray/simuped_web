@@ -3,7 +3,8 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from './auth'
 
 export default function ProtectedRoute() {
-  const { user, loading } = useAuth()
+  const { user, loading, emailConfirmed, profile } = useAuth()
+  const approved = profile?.approved ?? false
 
   if (loading) {
     return (
@@ -12,6 +13,17 @@ export default function ProtectedRoute() {
       </div>
     )
   }
-  if (!user) return <Navigate to="/" replace />
+
+  if (!user) {
+    console.debug("[ProtectedRoute] No hay usuario -> redirigir a /")
+    return <Navigate to="/" replace />
+  }
+
+  if (!emailConfirmed || !approved) {
+    console.debug("[ProtectedRoute] Email no confirmado o cuenta no aprobada -> redirigir a /pendiente")
+    return <Navigate to="/pendiente" replace />
+  }
+
+  console.debug("[ProtectedRoute] Acceso concedido")
   return <Outlet />
 }
