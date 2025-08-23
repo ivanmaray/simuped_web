@@ -60,64 +60,27 @@ export default function Dashboard() {
 
   useEffect(() => {
     let mounted = true;
-
-    // Fallback: por si algo se queda colgado, nunca dejar el spinner infinito
-    const timeoutId = setTimeout(() => {
-      if (mounted) {
-        console.warn("[Dashboard] fallback timeout -> setLoading(false)");
-        setLoading(false);
-      }
-    }, 4000);
-
-    async function cargarEscenarios() {
-      console.debug("[Dashboard] cargarEscenarios: lanzando select");
-      setLoadingEsc(true);
-      try {
-        const { data, error } = await supabase
-          .from("scenarios")
-          .select("id")
-          .limit(1);
-        console.debug("[Dashboard] cargarEscenarios: ok?", !error, "count:", (data?.length ?? 0));
-
-        if (error) {
-          console.error("[Dashboard] cargarEscenarios error:", error);
-          setErrorMsg((prev) => prev || (error.message || "Error cargando datos"));
-          setEscenarios([]);
-        } else {
-          setEscenarios(data || []);
-        }
-      } catch (err) {
-        console.error("[Dashboard] cargarEscenarios throw:", err);
-        setErrorMsg((prev) => prev || "Error cargando datos");
-        setEscenarios([]);
-      } finally {
-        setLoadingEsc(false);
-      }
-    }
+    let watchdog;
 
     async function init() {
-      console.debug("[Dashboard] init start");
       try {
+        // 1) Sesión actual
         const { data, error } = await supabase.auth.getSession();
+
         if (!mounted) return;
 
-        if (error) {
-          console.error("[Dashboard] getSession error:", error);
-          setErrorMsg(error.message || "Error obteniendo sesión");
-        }
-
-        const sess = data?.session ?? null;
-        console.debug("[Dashboard] session:", !!sess);
-        setSession(sess);
-
-        if (!sess) {
-          // MUY IMPORTANTE: quitar el loading antes de navegar
+        // Si Supabase devolvió error o no hay sesión -> fuera
+        if (error || !data?.session) {
+          console.warn("[Dashboard] sin sesión o error getSession:", error);
           setLoading(false);
           navigate("/", { replace: true });
           return;
         }
 
-        // Cargar perfil de forma segura
+        const sess = data.session;
+        setSession(sess);
+
+        // 2) Cargar perfil / escenarios SOLO si hay sesión
         try {
           const { data: prof, error: pErr } = await supabase
             .from("profiles")
@@ -135,35 +98,53 @@ export default function Dashboard() {
           console.warn("[Dashboard] profiles select throw (no bloqueante):", err);
         }
 
-        // No bloqueamos la UI por escenarios
-        cargarEscenarios();
-      } catch (err) {
-        console.error("[Dashboard] init throw:", err);
-        setErrorMsg("Ha ocurrido un error inicializando el panel");
-      } finally {
-        // Garantiza que nunca nos quedamos en "Cargando…"
-        if (mounted) setLoading(false);
+        await cargarEscenarios();
+        setLoading(false);
+      } catch (e) {
+        console.error("[Dashboard] init catch:", e);
+        if (!mounted) return;
+        setLoading(false);
+        navigate("/", { replace: true });
       }
     }
 
-    init();
-
-    // Suscribirse a cambios de auth (logout)
-    const { data: authSub } = supabase.auth.onAuthStateChange((_evt, s) => {
+    // Suscripción a cambios de auth: si se cierra sesión o falla refresh, salimos
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (!mounted) return;
-      setSession(s ?? null);
-      if (!s) {
-        try {
-          console.debug("[Dashboard] onAuthStateChange: sin sesión -> /");
-          navigate("/", { replace: true });
-        } catch {}
+
+      if (!sess) {
+        console.warn("[Dashboard] onAuthStateChange -> sin sesión, saliendo");
+        setSession(null);
+        setLoading(false);
+        navigate("/", { replace: true });
+        return;
+      }
+
+      if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+        setSession(sess);
+      }
+      if (event === "SIGNED_OUT" || event === "USER_DELETED") {
+        setSession(null);
+        setLoading(false);
+        navigate("/", { replace: true });
       }
     });
 
+    // Watchdog: si algo se queda colgado >10s, salir con seguridad
+    watchdog = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn("[Dashboard] watchdog: cargando demasiado, redirijo a inicio");
+        setLoading(false);
+        navigate("/", { replace: true });
+      }
+    }, 10000);
+
+    init();
+
     return () => {
       mounted = false;
-      clearTimeout(timeoutId);
-      try { authSub?.subscription?.unsubscribe?.(); } catch {}
+      try { sub?.subscription?.unsubscribe?.(); } catch {}
+      clearTimeout(watchdog);
     };
   }, [navigate]);
 
