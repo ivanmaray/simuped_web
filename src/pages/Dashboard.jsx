@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
+import { useAuth } from "../auth";
 import { AcademicCapIcon, DevicePhoneMobileIcon, ChartBarIcon } from "@heroicons/react/24/outline";
 
 // Debug: marcar que Dashboard.jsx se ha cargado
@@ -46,7 +47,7 @@ function ErrorBoundary({ children }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [session, setSession] = useState(null);
+  const { ready, session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -60,95 +61,71 @@ export default function Dashboard() {
 
   useEffect(() => {
     let mounted = true;
-    let watchdog;
 
     async function init() {
+      if (!ready) return; // espera a que AuthProvider resuelva
       try {
-        // 1) Sesión actual
-        const { data, error } = await supabase.auth.getSession();
-
-        if (!mounted) return;
-
-        // Si Supabase devolvió error o no hay sesión -> fuera
-        if (error || !data?.session) {
-          console.warn("[Dashboard] sin sesión o error getSession:", error);
+        if (!session) {
           setLoading(false);
+          // Si se cayó la sesión, volvemos al inicio
           navigate("/", { replace: true });
           return;
         }
 
-        const sess = data.session;
-        setSession(sess);
-
-        // 2) Cargar perfil / escenarios SOLO si hay sesión
+        // Cargar perfil (no bloqueante si falla)
         try {
           const { data: prof, error: pErr } = await supabase
             .from("profiles")
             .select("nombre, rol")
-            .eq("id", sess.user.id)
+            .eq("id", session.user.id)
             .maybeSingle();
 
           if (pErr) {
             console.warn("[Dashboard] profiles select error (no bloqueante):", pErr);
           }
 
-          setNombre(prof?.nombre ?? sess.user?.user_metadata?.nombre ?? "");
-          setRol((prof?.rol ?? sess.user?.user_metadata?.rol ?? "").toString());
+          setNombre(prof?.nombre ?? session.user?.user_metadata?.nombre ?? "");
+          setRol((prof?.rol ?? session.user?.user_metadata?.rol ?? "").toString());
         } catch (err) {
           console.warn("[Dashboard] profiles select throw (no bloqueante):", err);
         }
 
         await cargarEscenarios();
-        setLoading(false);
       } catch (e) {
         console.error("[Dashboard] init catch:", e);
-        if (!mounted) return;
-        setLoading(false);
-        navigate("/", { replace: true });
+        setErrorMsg(e?.message || "Error inicializando el panel");
+      } finally {
+        if (mounted) setLoading(false);
       }
     }
 
-    // Suscripción a cambios de auth: si se cierra sesión o falla refresh, salimos
-    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
-      if (!mounted) return;
+    async function cargarEscenarios() {
+      setLoadingEsc(true);
+      const { data, error } = await supabase
+        .from("scenarios")
+        .select(`
+          id, title, summary, level, mode, created_at
+        `)
+        .order("created_at", { ascending: false });
 
-      if (!sess) {
-        console.warn("[Dashboard] onAuthStateChange -> sin sesión, saliendo");
-        setSession(null);
-        setLoading(false);
-        navigate("/", { replace: true });
-        return;
+      if (error) {
+        console.error("[Dashboard] cargarEscenarios error:", error);
+        setErrorMsg(error.message || "Error cargando escenarios");
+        setEscenarios([]);
+      } else {
+        setEscenarios(data || []);
       }
-
-      if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
-        setSession(sess);
-      }
-      if (event === "SIGNED_OUT" || event === "USER_DELETED") {
-        setSession(null);
-        setLoading(false);
-        navigate("/", { replace: true });
-      }
-    });
-
-    // Watchdog: si algo se queda colgado >10s, salir con seguridad
-    watchdog = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn("[Dashboard] watchdog: cargando demasiado, redirijo a inicio");
-        setLoading(false);
-        navigate("/", { replace: true });
-      }
-    }, 10000);
+      setLoadingEsc(false);
+    }
 
     init();
 
     return () => {
       mounted = false;
-      try { sub?.subscription?.unsubscribe?.(); } catch {}
-      clearTimeout(watchdog);
     };
-  }, [navigate]);
+  }, [ready, session, navigate]);
 
-  if (loading) {
+  if (!ready || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-slate-600">Cargando panel…</div>
