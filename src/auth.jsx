@@ -97,8 +97,11 @@ export function AuthProvider({ children }) {
       const u = sess?.user ?? null;
 
       if (!u) {
-        // Sin sesión: limpiamos, NO redirigimos aquí. Deja que ProtectedRoute decida.
+        // No sesión válida: limpiamos y mandamos al login público
         clearClientState();
+        setLoading(false);
+        try { await supabase.auth.signOut(); } catch {}
+        navigate("/", { replace: true });
         return;
       }
 
@@ -108,43 +111,47 @@ export function AuthProvider({ children }) {
     } catch (e) {
       console.error("[Auth] refresh() exception:", e);
       clearClientState();
+      setLoading(false);
+      navigate("/", { replace: true });
+      return;
     } finally {
       setLoading(false);
       console.debug("[Auth] refresh() end -> loading=false");
     }
-  }, [computeEmailConfirmed, fetchProfile]);
+  }, [computeEmailConfirmed, fetchProfile, navigate]);
 
   // Initial load + subscribe to auth changes
   useEffect(() => {
     let mounted = true;
 
     (async () => {
-      await refresh(); // establecerá loading=false en finally
+      await refresh(); // refresh already sets loading=false in finally
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, sess) => {
-      if (!mounted) return;
       const u = sess?.user ?? null;
       console.debug("[Auth] onAuthStateChange user:", u?.id || null);
       if (!u) {
         clearClientState();
-        setLoading(false);
-        // Importante: no navegamos aquí; ProtectedRoute decide.
+        if (mounted) setLoading(false);
+        navigate("/", { replace: true });
         return;
       }
       setUser(u);
       setEmailConfirmed(computeEmailConfirmed(u));
       await fetchProfile(u.id);
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
 
     return () => {
       mounted = false;
       try {
         sub?.subscription?.unsubscribe?.();
-      } catch { /* no-op */ }
+      } catch {
+        /* no-op */
+      }
     };
-  }, [refresh, computeEmailConfirmed, fetchProfile]);
+  }, [refresh, computeEmailConfirmed, fetchProfile, navigate]);
 
   // Sign out helper
   const signOut = useCallback(async () => {

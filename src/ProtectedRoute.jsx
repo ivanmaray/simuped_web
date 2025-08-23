@@ -1,82 +1,122 @@
 // src/ProtectedRoute.jsx
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useAuth } from './auth'
-
-// Helper robusto para castear booleanos que puedan venir como true/'true'/'t'/1
-function toBool(v) {
-  if (typeof v === 'boolean') return v
-  if (typeof v === 'number') return v === 1
-  if (typeof v === 'string') return ['true', 't', '1', 'yes', 'si', 'sí'].includes(v.toLowerCase())
-  return false
-}
+import { useEffect, useState } from "react";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "./supabaseClient";
 
 export default function ProtectedRoute() {
-  const location = useLocation()
-  const { user, loading, emailConfirmed: emailConfirmedFromCtx, profile } = useAuth()
+  const [checking, setChecking] = useState(true);
+  const [allow, setAllow] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Fallbacks por si el perfil aún no cargó
-  const userMeta = user?.user_metadata || {}
+  useEffect(() => {
+    let mounted = true;
 
-  // Normalizamos admin/aprobado desde profile o metadata
-  const isAdmin = toBool(profile?.is_admin ?? userMeta?.is_admin)
-  const approved = toBool(profile?.approved ?? userMeta?.approved)
+    async function check() {
+      try {
+        // 1) Sesión
+        const { data: sessData, error: sessErr } = await supabase.auth.getSession();
+        if (!mounted) return;
+        if (sessErr) {
+          console.warn("[ProtectedRoute] getSession error:", sessErr);
+        }
+        const session = sessData?.session ?? null;
+        if (!session) {
+          console.log("[ProtectedRoute] No hay sesión -> '/'");
+          setAllow(false);
+          setChecking(false);
+          navigate("/", { replace: true, state: { from: location.pathname } });
+          return;
+        }
 
-  // Confirmación de email de forma defensiva (Supabase puede exponer distintos campos)
-  const emailOk = Boolean(
-    emailConfirmedFromCtx ??
-    user?.email_confirmed_at ??
-    user?.confirmed_at ??
-    (Array.isArray(user?.identities) && user.identities.some(i => i?.identity_data?.email_verified))
-  )
+        // 2) Usuario y email confirmado
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (!mounted) return;
+        if (userErr) {
+          console.warn("[ProtectedRoute] getUser error:", userErr);
+        }
+        const user = userData?.user ?? null;
+        const emailConfirmed = !!user?.email_confirmed_at;
+        if (!emailConfirmed) {
+          console.log("[ProtectedRoute] Email NO confirmado -> '/pendiente?reason=email'");
+          setAllow(false);
+          setChecking(false);
+          navigate("/pendiente?reason=email", { replace: true });
+          return;
+        }
 
-  // 1) Mientras el contexto Auth esté resolviendo sesión/perfil
-  if (loading) {
+        // 3) Perfil (approved / is_admin)
+        const { data: prof, error: profErr } = await supabase
+          .from("profiles")
+          .select("approved, is_admin")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!mounted) return;
+
+        if (profErr) {
+          console.warn("[ProtectedRoute] profiles select error:", profErr);
+          // en caso de error de lectura de perfil, bloqueamos y mandamos a pendiente con motivo genérico
+          setAllow(false);
+          setChecking(false);
+          navigate("/pendiente?reason=profile", { replace: true });
+          return;
+        }
+
+        const approved = !!prof?.approved;
+        const isAdmin = !!prof?.is_admin;
+
+        if (approved || isAdmin) {
+          console.log("[ProtectedRoute] Aprobado/Admin -> acceso concedido");
+          setAllow(true);
+          setChecking(false);
+          return;
+        }
+
+        // Si no está aprobado y no es admin -> pendiente
+        console.log("[ProtectedRoute] Cuenta NO aprobada -> '/pendiente?reason=approval'");
+        setAllow(false);
+        setChecking(false);
+        navigate("/pendiente?reason=approval", { replace: true });
+      } catch (e) {
+        console.error("[ProtectedRoute] Error inesperado:", e);
+        setAllow(false);
+        setChecking(false);
+        navigate("/pendiente?reason=error", { replace: true });
+      }
+    }
+
+    check();
+
+    // también nos suscribimos a cambios de auth para re-evaluar
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, _sess) => {
+      if (!mounted) return;
+      // re-evaluar rápido
+      setChecking(true);
+      setAllow(false);
+      check();
+    });
+
+    return () => {
+      mounted = false;
+      try { sub?.subscription?.unsubscribe?.(); } catch {}
+    };
+    // IMPORTANTE: no pongas 'navigate' ni 'location' de dependencias para evitar bucles
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (checking) {
     return (
-      <div style={{ minHeight:'100vh', display:'grid', placeItems:'center' }}>
-        <span>Cargando…</span>
+      <div className="min-h-screen grid place-items-center bg-slate-50">
+        <div className="text-slate-600">Cargando…</div>
       </div>
-    )
+    );
   }
 
-  // 2) Sin usuario => a inicio (guardamos origen)
-  if (!user) {
-    console.debug('[ProtectedRoute] No hay usuario -> redirigir a /')
-    return <Navigate to="/" state={{ from: location }} replace />
+  if (!allow) {
+    // El navigate ya se hizo en el efecto; devolvemos un fallback por si acaso
+    return <Navigate to="/pendiente" replace />;
   }
 
-  // 3) Admin siempre entra
-  if (isAdmin) {
-    console.debug('[ProtectedRoute] Admin detectado -> acceso concedido')
-    return <Outlet />
-  }
-
-  // 4) Email no verificado/creado -> mostramos aviso (sin redirección para evitar bucles)
-  if (!emailOk) {
-    console.debug('[ProtectedRoute] Email no creado -> bloquear acceso', { emailOk, approved })
-    return (
-      <div style={{ minHeight:'100vh', display:'grid', placeItems:'center', padding:'1rem' }}>
-        <div style={{ maxWidth: 560, width:'100%', textAlign:'center' }}>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: 8 }}>Email no creado</h1>
-          <p style={{ color: '#475569' }}>
-            Tu dirección de correo aún no está verificada/creada. Por favor, revisa tu bandeja y completa el proceso.
-          </p>
-          <div style={{ marginTop: 16 }}>
-            <a href="/" style={{ padding:'8px 12px', border:'1px solid #cbd5e1', borderRadius:8, textDecoration:'none' }}>
-              Volver al inicio
-            </a>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // 5) Email ok pero no aprobado por admin => redirigimos a /pendiente (guardando origen)
-  if (emailOk && !approved) {
-    console.debug('[ProtectedRoute] Cuenta no aprobada -> /pendiente', { emailOk, approved })
-    return <Navigate to="/pendiente" state={{ from: location }} replace />
-  }
-
-  // 6) Todo correcto
-  console.debug('[ProtectedRoute] Acceso concedido')
-  return <Outlet />
+  return <Outlet />;
 }
