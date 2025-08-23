@@ -40,8 +40,8 @@ export default function Pendiente() {
 
       setStatus({ loading: false, approved, isAdmin, emailConfirmed, error: null, email });
 
-      // si ya cumple, al dashboard
-      if ((approved || isAdmin) && emailConfirmed) {
+      // si ya cumple, al dashboard solo si email confirmado
+      if (emailConfirmed && (approved || isAdmin)) {
         navigate("/dashboard", { replace: true });
       }
     } catch (e) {

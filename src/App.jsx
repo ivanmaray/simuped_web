@@ -19,15 +19,35 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState('')
 
   async function handleLogin(e) {
-    e.preventDefault()
-    setErrorMsg('')
-    setLoading(true)
-    const email = e.target.email.value.trim()
-    const password = e.target.password.value
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) return setErrorMsg(error.message)
-    navigate('/dashboard')
+    e.preventDefault();
+    setErrorMsg('');
+    setLoading(true);
+
+    const email = e.target.email.value.trim();
+    const password = e.target.password.value;
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        const msg = (error.message || '').toLowerCase();
+
+        // Si el email no está confirmado, redirige a /pendiente
+        if (msg.includes('email not confirmed')) {
+          navigate('/pendiente?reason=email', { replace: true });
+          return;
+        }
+
+        // Otros errores: mostrarlos en la tarjeta de login
+        setErrorMsg(error.message || 'Error al iniciar sesión');
+        return;
+      }
+
+      // Login correcto: ir al dashboard (ProtectedRoute validará "approved")
+      navigate('/dashboard', { replace: true });
+    } finally {
+      setLoading(false);
+    }
   }
 
 useEffect(() => {
