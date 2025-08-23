@@ -40,8 +40,17 @@ export default function ProtectedRoute() {
   }
 
   // Resto de usuarios: requieren email verificado y aprobación
-  if (!emailOk || !approved) {
-    console.debug('[ProtectedRoute] Email no confirmado o cuenta no aprobada -> /pendiente', { emailOk, approved })
+  if (!emailOk) {
+    console.debug('[ProtectedRoute] Email no creado -> mostrar mensaje', { emailOk, approved })
+    return (
+      <div style={{ minHeight:'100vh', display:'grid', placeItems:'center' }}>
+        <span>Email no creado</span>
+      </div>
+    )
+  }
+
+  if (emailOk && !approved) {
+    console.debug('[ProtectedRoute] Cuenta no aprobada -> /pendiente', { emailOk, approved })
     // Guarda la ruta previa para poder volver tras aprobar/verificar
     return <Navigate to="/pendiente" state={{ from: location }} replace />
   }
