@@ -15,6 +15,11 @@ function validarDNI(v) {
   const dni = normalizarDNI(v);
   return /^[XYZ]?\d{7,8}[A-Z]$/.test(dni);
 }
+function validarEmail(v) {
+  const s = (v || "").toString().trim().toLowerCase();
+  // RFC 5322-ish simple check
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
 
 export default function Registro() {
   const navigate = useNavigate();
@@ -42,20 +47,27 @@ export default function Registro() {
   useEffect(() => {
     let mounted = true;
     async function loadCats() {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("id, name")
-        .order("name", { ascending: true });
+      try {
+        const { data, error } = await supabase
+          .from("categories")
+          .select("id, name")
+          .order("name", { ascending: true });
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (error) {
-        console.error("[Registro] error cargando categorías:", error);
+        if (error) {
+          console.error("[Registro] error cargando categorías:", error);
+          setCatsError(true);
+          setCategorias([]);
+        } else {
+          setCatsError(false);
+          setCategorias(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error("[Registro] exception cargando categorías:", err);
+        if (!mounted) return;
         setCatsError(true);
         setCategorias([]);
-      } else {
-        setCatsError(false);
-        setCategorias(data || []);
       }
     }
     loadCats();
@@ -74,11 +86,14 @@ export default function Registro() {
     setOkMsg("");
     setDniError("");
 
-    // Validaciones
+    // Normalizaciones
     const dniNorm = normalizarDNI(dni);
+    const emailNorm = (email || "").toString().trim().toLowerCase();
+
+    // Validaciones
     if (!nombre.trim()) return setErrorMsg("El nombre es obligatorio.");
     if (!apellidos.trim()) return setErrorMsg("Los apellidos son obligatorios.");
-    if (!email.trim()) return setErrorMsg("El email es obligatorio.");
+    if (!validarEmail(emailNorm)) return setErrorMsg("Introduce un email válido.");
     if (!password || password.length < 6)
       return setErrorMsg("La contraseña debe tener al menos 6 caracteres.");
     if (!rol) return setErrorMsg("Selecciona tu rol.");
@@ -95,83 +110,92 @@ export default function Registro() {
     setLoading(true);
     console.debug("[Registro] intentando signUp + upsert profiles");
 
-    // 1) Alta en auth con metadatos básicos
-    const { data: signData, error: signErr } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { nombre: nombre.trim(), apellidos: apellidos.trim(), rol, unidad },
-        emailRedirectTo: window.location.origin, // opcional: dónde volver tras confirmar email
-      },
-    });
-
-    if (signErr) {
-      setLoading(false);
-      const m = (signErr.message || "").toLowerCase();
-      if (m.includes("user already registered")) {
-        setErrorMsg("Ya existe una cuenta con ese email.");
-      } else {
-        setErrorMsg(signErr.message || "No se pudo crear la cuenta.");
-      }
-      return;
-    }
-
-    // 1.5) Verificar si hay sesión activa (si hay confirmación por email, NO la habrá)
-    const { data: sessData } = await supabase.auth.getSession();
-    const session = sessData?.session || null;
-
-    if (!session) {
-      // No hay sesión todavía -> no podemos escribir en 'profiles' por RLS.
-      // Mostramos mensaje y vamos a "pendiente".
-      setLoading(false);
-      setOkMsg("Te hemos enviado un correo para confirmar tu email. Tras confirmarlo, un administrador aprobará tu acceso.");
-      setTimeout(() => navigate("/pendiente"), 700);
-      return;
-    }
-
-    const userId = session.user.id;
-
-    // 2) Crear fila en profiles con approved=false
-    const { error: upErr } = await supabase
-      .from("profiles")
-      .upsert(
-        {
-          id: userId,
-          nombre: nombre.trim(),
-          apellidos: apellidos.trim(),
-          dni: dniNorm,
-          rol,
-          unidad,
-          areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
-          approved: false,
-          is_admin: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+    try {
+      // 1) Alta en auth con metadatos básicos
+      const { data: signData, error: signErr } = await supabase.auth.signUp({
+        email: emailNorm,
+        password,
+        options: {
+          data: { nombre: nombre.trim(), apellidos: apellidos.trim(), rol, unidad },
+          emailRedirectTo: window.location.origin,
         },
-        { onConflict: "id" }
-      );
-    setLoading(false);
+      });
 
-    if (upErr) {
-      console.error("[Registro] upsert profiles error:", upErr);
-      const code = upErr.code || "";
-      const msg = (upErr.message || "").toLowerCase();
-
-      if (code === "23505" || msg.includes("duplicate")) {
-        setErrorMsg("Ya existe un perfil con datos duplicados (DNI o email).");
-      } else if (code === "23514" && msg.includes("dni")) {
-        setDniError("El DNI no cumple el formato requerido por el sistema.");
-      } else if (code === "42501" || msg.includes("rls")) {
-        setErrorMsg("No se pudo guardar tu perfil por permisos. Contacta con soporte.");
-      } else {
-        setErrorMsg(upErr.message || "No se pudo guardar tu perfil. Inténtalo de nuevo.");
+      if (signErr) {
+        const m = (signErr.message || "").toLowerCase();
+        if (m.includes("user already registered")) {
+          setErrorMsg("Ya existe una cuenta con ese email.");
+        } else if (m.includes("password")) {
+          setErrorMsg("La contraseña no cumple los requisitos.");
+        } else {
+          setErrorMsg(signErr.message || "No se pudo crear la cuenta.");
+        }
+        setLoading(false);
+        return;
       }
-      return;
-    }
 
-    setOkMsg("Registro enviado. Tu cuenta está pendiente de aprobación.");
-    // Redirige a la pantalla de pendiente
-    setTimeout(() => navigate("/pendiente"), 700);
+      // 1.5) Si no hay sesión (porque falta confirmar email), no podremos escribir en profiles por RLS
+      const { data: sessData } = await supabase.auth.getSession();
+      const session = sessData?.session || null;
+
+      if (!session) {
+        setLoading(false);
+        setOkMsg("Te hemos enviado un correo para confirmar tu email. Tras confirmarlo, un administrador aprobará tu acceso.");
+        setTimeout(() => navigate("/pendiente"), 800);
+        return;
+      }
+
+      const userId = session.user.id;
+
+      // 2) Crear/actualizar fila en profiles con approved=false
+      const cleanAreas = Array.isArray(areasInteres)
+        ? areasInteres.filter(Boolean).map((s) => s.toString())
+        : [];
+
+      const { error: upErr } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: userId,
+            nombre: nombre.trim(),
+            apellidos: apellidos.trim(),
+            dni: dniNorm,
+            rol,
+            unidad,
+            areas_interes: cleanAreas,
+            approved: false,
+            is_admin: false,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+
+      setLoading(false);
+
+      if (upErr) {
+        console.error("[Registro] upsert profiles error:", upErr);
+        const code = upErr.code || "";
+        const msg = (upErr.message || "").toLowerCase();
+
+        if (code === "23505" || msg.includes("duplicate")) {
+          setErrorMsg("Ya existe un perfil con datos duplicados (DNI o email).");
+        } else if (code === "23514" && msg.includes("dni")) {
+          setDniError("El DNI no cumple el formato requerido por el sistema.");
+        } else if (code === "42501" || msg.includes("rls")) {
+          setErrorMsg("No se pudo guardar tu perfil por permisos. Contacta con soporte.");
+        } else {
+          setErrorMsg(upErr.message || "No se pudo guardar tu perfil. Inténtalo de nuevo.");
+        }
+        return;
+      }
+
+      setOkMsg("Registro enviado. Tu cuenta está pendiente de aprobación.");
+      setTimeout(() => navigate("/pendiente"), 800);
+    } catch (err) {
+      console.error("[Registro] excepción inesperada:", err);
+      setLoading(false);
+      setErrorMsg("Ocurrió un error inesperado. Inténtalo de nuevo.");
+    }
   }
 
   return (
@@ -181,7 +205,7 @@ export default function Registro() {
         <header className="mb-6">
           <h1 className="text-2xl md:text-3xl font-bold">Crear cuenta</h1>
           <p className="text-slate-600 mt-1">
-            Regístrate para acceder a la plataforma. Tu cuenta deberá ser aprobada por un administrador.
+            Regístrate para acceder a la plataforma. Tu cuenta deberá ser aprobada por un administrador tras confirmar tu email.
           </p>
         </header>
 
@@ -204,6 +228,7 @@ export default function Registro() {
               <span className="text-sm text-slate-700">Nombre</span>
               <input
                 type="text"
+                required
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
@@ -215,6 +240,7 @@ export default function Registro() {
               <span className="text-sm text-slate-700">Apellidos</span>
               <input
                 type="text"
+                required
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={apellidos}
                 onChange={(e) => setApellidos(e.target.value)}
@@ -230,6 +256,7 @@ export default function Registro() {
               <span className="text-sm text-slate-700">Email</span>
               <input
                 type="email"
+                required
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -241,6 +268,7 @@ export default function Registro() {
               <span className="text-sm text-slate-700">Contraseña</span>
               <input
                 type="password"
+                required
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -256,6 +284,7 @@ export default function Registro() {
             <input
               type="text"
               inputMode="text"
+              required
               autoCorrect="off"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
               value={dni}
@@ -370,7 +399,7 @@ export default function Registro() {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !nombre.trim() || !apellidos.trim() || !validarEmail(email) || !password || !rol || !unidad || !dni}
               className="px-5 py-2.5 rounded-lg text-white disabled:opacity-70"
               style={{ backgroundColor: COLORS.primary }}
             >

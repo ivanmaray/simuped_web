@@ -1,10 +1,23 @@
 // src/ProtectedRoute.jsx
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './auth'
 
 export default function ProtectedRoute() {
-  const { user, loading, emailConfirmed, profile } = useAuth()
-  const approved = profile?.approved ?? false
+  const location = useLocation()
+  const { user, loading, emailConfirmed: emailConfirmedFromCtx, profile } = useAuth()
+
+  // Fallbacks por si el perfil aún no cargó
+  const userMeta = user?.user_metadata || {}
+  const isAdmin = (profile?.is_admin ?? userMeta?.is_admin) === true
+  const approved = (profile?.approved ?? userMeta?.approved) === true
+
+  // Confirmación de email de forma defensiva
+  const emailOk = Boolean(
+    emailConfirmedFromCtx ??
+    user?.email_confirmed_at ??
+    user?.confirmed_at ??
+    (Array.isArray(user?.identities) && user.identities.some(i => i?.identity_data?.email_verified))
+  )
 
   if (loading) {
     return (
@@ -15,15 +28,24 @@ export default function ProtectedRoute() {
   }
 
   if (!user) {
-    console.debug("[ProtectedRoute] No hay usuario -> redirigir a /")
-    return <Navigate to="/" replace />
+    console.debug('[ProtectedRoute] No hay usuario -> redirigir a /')
+    // Guarda la ruta previa para poder volver tras aprobar/verificar
+    return <Navigate to="/" state={{ from: location }} replace />
   }
 
-  if (!emailConfirmed || !approved) {
-    console.debug("[ProtectedRoute] Email no confirmado o cuenta no aprobada -> redirigir a /pendiente")
-    return <Navigate to="/pendiente" replace />
+  // Admin siempre entra
+  if (isAdmin) {
+    console.debug('[ProtectedRoute] Admin detectado -> acceso concedido')
+    return <Outlet />
   }
 
-  console.debug("[ProtectedRoute] Acceso concedido")
+  // Resto de usuarios: requieren email verificado y aprobación
+  if (!emailOk || !approved) {
+    console.debug('[ProtectedRoute] Email no confirmado o cuenta no aprobada -> /pendiente', { emailOk, approved })
+    // Guarda la ruta previa para poder volver tras aprobar/verificar
+    return <Navigate to="/pendiente" state={{ from: location }} replace />
+  }
+
+  console.debug('[ProtectedRoute] Acceso concedido')
   return <Outlet />
 }

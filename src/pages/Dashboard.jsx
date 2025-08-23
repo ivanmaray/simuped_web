@@ -61,66 +61,109 @@ export default function Dashboard() {
   useEffect(() => {
     let mounted = true;
 
-    async function init() {
-      const { data, error } = await supabase.auth.getSession();
-      if (!mounted) return;
-
-      if (error) {
-        console.error("[Dashboard] getSession error:", error);
-        setErrorMsg(error.message || "Error obteniendo sesión");
-      }
-      const sess = data?.session ?? null;
-      setSession(sess);
-
-      if (!sess) {
+    // Fallback: por si algo se queda colgado, nunca dejar el spinner infinito
+    const timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.warn("[Dashboard] fallback timeout -> setLoading(false)");
         setLoading(false);
-        navigate("/", { replace: true });
-        return;
       }
-
-      // Perfil: intenta profiles, si no, user_metadata
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("nombre, rol")
-        .eq("id", sess.user.id)
-        .maybeSingle();
-
-      setNombre(prof?.nombre ?? sess.user?.user_metadata?.nombre ?? "");
-      setRol((prof?.rol ?? sess.user?.user_metadata?.rol ?? "").toString());
-
-      // (Opcional) precargar escenarios por si luego mostramos KPIs
-      await cargarEscenarios();
-
-      setLoading(false);
-    }
+    }, 4000);
 
     async function cargarEscenarios() {
+      console.debug("[Dashboard] cargarEscenarios: lanzando select");
       setLoadingEsc(true);
-      const { data, error } = await supabase
-        .from("scenarios")
-        .select("id")
-        .limit(1);
+      try {
+        const { data, error } = await supabase
+          .from("scenarios")
+          .select("id")
+          .limit(1);
+        console.debug("[Dashboard] cargarEscenarios: ok?", !error, "count:", (data?.length ?? 0));
 
-      if (error) {
-        console.error("[Dashboard] cargarEscenarios error:", error);
-        setErrorMsg(prev => prev || (error.message || "Error cargando datos"));
-      } else {
-        setEscenarios(data || []);
+        if (error) {
+          console.error("[Dashboard] cargarEscenarios error:", error);
+          setErrorMsg((prev) => prev || (error.message || "Error cargando datos"));
+          setEscenarios([]);
+        } else {
+          setEscenarios(data || []);
+        }
+      } catch (err) {
+        console.error("[Dashboard] cargarEscenarios throw:", err);
+        setErrorMsg((prev) => prev || "Error cargando datos");
+        setEscenarios([]);
+      } finally {
+        setLoadingEsc(false);
       }
-      setLoadingEsc(false);
+    }
+
+    async function init() {
+      console.debug("[Dashboard] init start");
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (error) {
+          console.error("[Dashboard] getSession error:", error);
+          setErrorMsg(error.message || "Error obteniendo sesión");
+        }
+
+        const sess = data?.session ?? null;
+        console.debug("[Dashboard] session:", !!sess);
+        setSession(sess);
+
+        if (!sess) {
+          // MUY IMPORTANTE: quitar el loading antes de navegar
+          setLoading(false);
+          navigate("/", { replace: true });
+          return;
+        }
+
+        // Cargar perfil de forma segura
+        try {
+          const { data: prof, error: pErr } = await supabase
+            .from("profiles")
+            .select("nombre, rol")
+            .eq("id", sess.user.id)
+            .maybeSingle();
+
+          if (pErr) {
+            console.warn("[Dashboard] profiles select error (no bloqueante):", pErr);
+          }
+
+          setNombre(prof?.nombre ?? sess.user?.user_metadata?.nombre ?? "");
+          setRol((prof?.rol ?? sess.user?.user_metadata?.rol ?? "").toString());
+        } catch (err) {
+          console.warn("[Dashboard] profiles select throw (no bloqueante):", err);
+        }
+
+        // No bloqueamos la UI por escenarios
+        cargarEscenarios();
+      } catch (err) {
+        console.error("[Dashboard] init throw:", err);
+        setErrorMsg("Ha ocurrido un error inicializando el panel");
+      } finally {
+        // Garantiza que nunca nos quedamos en "Cargando…"
+        if (mounted) setLoading(false);
+      }
     }
 
     init();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_evt, sess) => {
+    // Suscribirse a cambios de auth (logout)
+    const { data: authSub } = supabase.auth.onAuthStateChange((_evt, s) => {
       if (!mounted) return;
-      setSession(sess ?? null);
-      if (!sess) navigate("/", { replace: true });
+      setSession(s ?? null);
+      if (!s) {
+        try {
+          console.debug("[Dashboard] onAuthStateChange: sin sesión -> /");
+          navigate("/", { replace: true });
+        } catch {}
+      }
     });
 
     return () => {
       mounted = false;
-      try { listener?.subscription?.unsubscribe?.(); } catch {}
+      clearTimeout(timeoutId);
+      try { authSub?.subscription?.unsubscribe?.(); } catch {}
     };
   }, [navigate]);
 
@@ -157,7 +200,7 @@ export default function Dashboard() {
         <Navbar />
 
         {/* Hero */}
-        <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1]">
+        <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] border-b border-white/20">
           <div className="max-w-6xl mx-auto px-5 py-10 text-white">
             <p className="opacity-95">Bienvenido{nombre ? `, ${nombre}` : ""}</p>
             <h1 className="text-3xl md:text-4xl font-semibold mt-1">Tu panel de simulación clínica</h1>
@@ -191,6 +234,7 @@ export default function Dashboard() {
               badge="En construcción 🚧"
               badgeColor="bg-red-100 text-red-700"
               icon={AcademicCapIcon}
+              titleAttr="En construcción: pronto disponible"
             />
             <Card
               title="Evaluación del desempeño"
@@ -225,7 +269,7 @@ export default function Dashboard() {
   );
 }
 
-function Card({ title, description, to, badge, badgeColor, icon: Icon }) {
+function Card({ title, description, to, badge, badgeColor, icon: Icon, titleAttr }) {
   const content = (
     <div className="flex items-start gap-4">
       <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#1a69b8]/10 via-[#1d99bf]/10 to-[#1fced1]/10 ring-1 ring-[#1a69b8]/15">
@@ -249,6 +293,7 @@ function Card({ title, description, to, badge, badgeColor, icon: Icon }) {
     return (
       <div
         className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm opacity-70 cursor-not-allowed"
+        title={titleAttr || "Disponible próximamente"}
       >
         {content}
       </div>
@@ -257,6 +302,7 @@ function Card({ title, description, to, badge, badgeColor, icon: Icon }) {
   return (
     <Link
       to={to}
+      title={titleAttr || title}
       className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
     >
       {content}

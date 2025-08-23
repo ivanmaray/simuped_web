@@ -1,5 +1,5 @@
 // src/MainRouter.jsx
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import App from './App.jsx'                        // Landing con login
 import ProtectedRoute from './ProtectedRoute.jsx'  // wrapper
 import Dashboard from './pages/Dashboard.jsx'
@@ -12,16 +12,24 @@ import SimulacionConfirm from "./pages/SimulacionConfirm.jsx";
 import Registro from "./pages/Registro.jsx";
 import Pendiente from "./pages/Pendiente.jsx";
 
+function DebugRouteLogger() {
+  const location = useLocation();
+  // eslint-disable-next-line no-console
+  console.debug('Montando ruta:', location.pathname);
+  return null;
+}
+
 export default function MainRouter() {
   return (
     <BrowserRouter>
+      <DebugRouteLogger />
       <Routes>
-        {/* Pública */}
+        {/* Públicas: acceso libre */}
         <Route path="/" element={<App />} />
         <Route path="/registro" element={<Registro />} />
         <Route path="/pendiente" element={<Pendiente />} />
 
-        {/* Protegidas */}
+        {/* Protegidas: requieren autenticación */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/simulacion" element={<Simulacion />} />
