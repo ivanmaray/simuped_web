@@ -1,4 +1,5 @@
 ﻿// src/pages/Dashboard.jsx
+import React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
@@ -29,19 +30,29 @@ export function formatRole(rol) {
 }
 /* ---------------------------------------------------- */
 
-function ErrorBoundary({ children }) {
-  try {
-    return children;
-  } catch (e) {
-    console.error("[Dashboard render error]", e);
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="max-w-xl mx-auto p-6 rounded-xl border border-red-200 bg-red-50 text-red-800">
-          <h2 className="text-lg font-semibold mb-2">Se ha producido un error en el panel</h2>
-          <p className="text-sm">Revisa la consola del navegador para más detalles.</p>
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[Dashboard ErrorBoundary]", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="max-w-xl mx-auto p-6 rounded-xl border border-red-200 bg-red-50 text-red-800">
+            <h2 className="text-lg font-semibold mb-2">Se ha producido un error en el panel</h2>
+            <p className="text-sm">{String(this.state.error?.message || "Error inesperado")}</p>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+    return this.props.children;
   }
 }
 
@@ -64,6 +75,7 @@ export default function Dashboard() {
 
     async function init() {
       if (!ready) return; // espera a que AuthProvider resuelva
+      console.debug("[Dashboard] init: ready =", ready);
       try {
         if (!session) {
           setLoading(false);
@@ -71,6 +83,7 @@ export default function Dashboard() {
           navigate("/", { replace: true });
           return;
         }
+        console.debug("[Dashboard] init: session OK ->", session?.user?.id);
 
         // Cargar perfil (no bloqueante si falla)
         try {
@@ -96,11 +109,12 @@ export default function Dashboard() {
         setErrorMsg(e?.message || "Error inicializando el panel");
       } finally {
         if (mounted) setLoading(false);
+        console.debug("[Dashboard] init: finished");
       }
     }
 
     async function cargarEscenarios() {
-      setLoadingEsc(true);
+      console.debug("[Dashboard] cargarEscenarios: fetching...");
       const { data, error } = await supabase
         .from("scenarios")
         .select(`
@@ -114,6 +128,7 @@ export default function Dashboard() {
         setEscenarios([]);
       } else {
         setEscenarios(data || []);
+        console.debug("[Dashboard] cargarEscenarios: loaded", (data || []).length);
       }
       setLoadingEsc(false);
     }
