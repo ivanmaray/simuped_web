@@ -34,7 +34,6 @@ export default function MainRouter() {
           <Route path="/simulacion" element={<Simulacion />} />
           <Route path="/simulacion/:id/confirm" element={<SimulacionConfirm />} />
           <Route path="/simulacion/:id" element={<SimulacionDetalle />} />
-          <Route path="/escenarios" element={<Escenarios />} />
           <Route path="/evaluacion" element={<Evaluacion />} />
           <Route path="/perfil" element={<Perfil />} />
         </Route>
