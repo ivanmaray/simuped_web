@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
 
+// Mantiene la misma forma del contexto para no romper consumidores
 const AuthCtx = createContext({ ready: false, session: null, profile: null });
 
 export function AuthProvider({ children }) {
@@ -9,7 +10,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
 
-  // Exponer estado para depuración rápida en consola
+  // Exponer estado para depuración rápida en consola (sin romper nada)
   if (typeof window !== "undefined") {
     try {
       Object.defineProperty(window, "__auth", {
@@ -25,63 +26,52 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
-    let timeoutId;
+    setReady(true); // ✅ Provider optimista: no bloqueamos la UI
 
-    async function boot() {
-      console.debug("[Auth] boot start");
+    async function loadProfile(uid) {
       try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) console.warn("[Auth] getSession error:", error);
-
-        const sess = data?.session ?? null;
-        if (!mounted) return;
-        setSession(sess);
-        console.debug("[Auth] getSession -> hasSession:", !!sess, "email:", sess?.user?.email);
-
-        if (sess) {
-          // Carga de perfil (NO bloqueante)
-          const { data: prof, error: pErr } = await supabase
-            .from("profiles")
-            .select("id, nombre, apellidos, rol, unidad, approved, is_admin, updated_at")
-            .eq("id", sess.user.id)
-            .maybeSingle();
-
-          if (pErr) console.warn("[Auth] profile select error:", pErr);
-          if (mounted) setProfile(prof ?? null);
-        } else {
-          if (mounted) setProfile(null);
-        }
+        const { data: prof, error: pErr } = await supabase
+          .from("profiles")
+          .select("id, nombre, apellidos, rol, unidad, approved, is_admin, updated_at")
+          .eq("id", uid)
+          .maybeSingle();
+        if (pErr) console.warn("[Auth] profile select error:", pErr);
+        if (mounted) setProfile(prof ?? null);
       } catch (e) {
-        console.error("[Auth] boot catch:", e);
-      } finally {
-        if (mounted) {
-          setReady(true);
-          console.debug("[Auth] boot finished -> ready=true");
-        }
+        console.warn("[Auth] profile select throw:", e);
+        if (mounted) setProfile(null);
       }
     }
 
-    // Corte de seguridad: nunca quedarnos colgados más de 5s
-    timeoutId = setTimeout(() => {
-      if (!ready) {
-        console.warn("[Auth] timeout 5s -> forzando ready=true (evitar spinner infinito)");
-        setReady(true);
-      }
-    }, 5000);
+    // 1) Hidratar sesión en 2º plano (no bloquea)
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (!mounted) return;
+        if (error) console.warn("[Auth] getSession error:", error);
+        const sess = data?.session ?? null;
+        setSession(sess);
+        if (sess?.user?.id) loadProfile(sess.user.id);
+        else setProfile(null);
+      })
+      .catch((e) => {
+        if (mounted) {
+          console.warn("[Auth] getSession throw:", e);
+          setSession(null);
+          setProfile(null);
+        }
+      });
 
-    boot();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((evt, newSess) => {
+    // 2) Suscribirse a cambios de autenticación
+    const { data } = supabase.auth.onAuthStateChange((_evt, newSess) => {
       if (!mounted) return;
-      console.debug("[Auth] onAuthStateChange:", evt, "hasSession:", !!newSess);
       setSession(newSess ?? null);
-      if (!newSess) setProfile(null);
+      if (newSess?.user?.id) loadProfile(newSess.user.id);
+      else setProfile(null);
     });
 
     return () => {
       mounted = false;
-      try { sub?.subscription?.unsubscribe?.(); } catch {}
-      clearTimeout(timeoutId);
+      try { data?.subscription?.unsubscribe?.(); } catch {}
     };
   }, []);
 
