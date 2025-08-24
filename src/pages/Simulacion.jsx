@@ -4,7 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
+
 console.debug("[Simulacion] componente cargado");
+
+const ROLES_VALIDOS = ["pediatra", "enfermera", "farmaceutico"];
 
 const estadoStyles = {
   "Disponible": { label: "Disponible", color: "bg-green-100 text-green-800", clickable: true },
@@ -28,6 +31,8 @@ export default function Simulacion() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  const [rol, setRol] = useState("");
+  const [roleChecked, setRoleChecked] = useState(false);
 
   // Escenarios + filtros
   const [escenarios, setEscenarios] = useState([]);
@@ -70,6 +75,28 @@ export default function Simulacion() {
       }
       const sess = data?.session ?? null;
       setSession(sess);
+      if (sess) {
+        // Cargar el rol del perfil
+        try {
+          const { data: prof, error: perr } = await supabase
+            .from("profiles")
+            .select("rol")
+            .eq("id", sess.user.id)
+            .maybeSingle();
+
+          if (perr) {
+            console.error("[Simulacion] cargar rol error:", perr);
+          }
+          const r = (prof?.rol || "").toString().toLowerCase();
+          setRol(r);
+        } catch (e) {
+          console.error("[Simulacion] excepción cargando rol:", e);
+        } finally {
+          setRoleChecked(true);
+        }
+      } else {
+        setRoleChecked(true);
+      }
       if (!sess) {
         setLoading(false);
         return;
@@ -131,6 +158,20 @@ export default function Simulacion() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-slate-600">Cargando…</div>
+      </div>
+    );
+  }
+  // Si ya sabemos el rol y no es válido, redirige a Perfil
+  if (session && roleChecked && (!rol || !ROLES_VALIDOS.includes(rol))) {
+    // Redirige a perfil para que el usuario complete su rol
+    navigate("/perfil", { replace: true });
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <h1 className="text-xl font-semibold text-slate-800">Completa tu perfil</h1>
+          <p className="text-slate-600 mt-2">Debes seleccionar un rol (Pediatra, Enfermera o Farmacéutico) antes de continuar.</p>
+          <a href="/perfil" className="inline-block mt-4 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100">Ir a mi perfil</a>
+        </div>
       </div>
     );
   }

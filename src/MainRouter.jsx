@@ -7,7 +7,6 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Simulacion from "./pages/Simulacion.jsx";
 import SimulacionDetalle from "./pages/SimulacionDetalle.jsx";
 import SimulacionConfirm from "./pages/SimulacionConfirm.jsx";
-import Escenarios from "./pages/Escenarios.jsx";
 import Evaluacion from "./pages/Evaluacion.jsx";
 import Perfil from "./pages/Perfil.jsx";
 import Registro from "./pages/Registro.jsx";
