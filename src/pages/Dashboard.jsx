@@ -114,6 +114,7 @@ export default function Dashboard() {
     }
 
     async function cargarEscenarios() {
+      setLoadingEsc(true);
       console.debug("[Dashboard] cargarEscenarios: fetching...");
       const { data, error } = await supabase
         .from("scenarios")
