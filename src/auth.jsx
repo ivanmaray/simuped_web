@@ -2,114 +2,93 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
 
-const AuthContext = createContext(null);
+const AuthCtx = createContext({ ready: false, session: null, profile: null });
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [emailConfirmed, setEmailConfirmed] = useState(false);
-  const [approved, setApproved] = useState(null); // null = aún no sabemos
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
 
-  // Carga inicial + suscripción a cambios de sesión
+  // Exponer estado para depuración rápida en consola
+  if (typeof window !== "undefined") {
+    try {
+      Object.defineProperty(window, "__auth", {
+        configurable: true,
+        value: {
+          get ready() { return ready; },
+          get session() { return session; },
+          get profile() { return profile; },
+        },
+      });
+    } catch {}
+  }
+
   useEffect(() => {
     let mounted = true;
+    let timeoutId;
 
-    async function hydrate() {
+    async function boot() {
+      console.debug("[Auth] boot start");
       try {
-        setLoading(true);
-        const { data: s } = await supabase.auth.getSession();
-        const session = s?.session ?? null;
-        const u = session?.user ?? null;
+        const { data, error } = await supabase.auth.getSession();
+        if (error) console.warn("[Auth] getSession error:", error);
+
+        const sess = data?.session ?? null;
         if (!mounted) return;
+        setSession(sess);
+        console.debug("[Auth] getSession -> hasSession:", !!sess, "email:", sess?.user?.email);
 
-        setUser(u);
-        setEmailConfirmed(Boolean(u?.email_confirmed_at)); // si no está, será false
-
-        if (u) {
-          // Trae approved y is_admin de profiles (RLS: la política debe permitir leer tu propia fila)
-          const { data, error } = await supabase
+        if (sess) {
+          // Carga de perfil (NO bloqueante)
+          const { data: prof, error: pErr } = await supabase
             .from("profiles")
-            .select("approved,is_admin")
-            .eq("id", u.id)
+            .select("id, nombre, apellidos, rol, unidad, approved, is_admin, updated_at")
+            .eq("id", sess.user.id)
             .maybeSingle();
 
-          if (error) {
-            console.warn("[Auth] error loading profile:", error);
-            // Cuando no se puede leer, pon approved=null -> ProtectedRoute te llevará a /pendiente
-            setApproved(null);
-            setIsAdmin(false);
-          } else {
-            setApproved(Boolean(data?.approved));
-            setIsAdmin(Boolean(data?.is_admin));
-          }
+          if (pErr) console.warn("[Auth] profile select error:", pErr);
+          if (mounted) setProfile(prof ?? null);
         } else {
-          // Sin user
-          setApproved(null);
-          setIsAdmin(false);
+          if (mounted) setProfile(null);
         }
+      } catch (e) {
+        console.error("[Auth] boot catch:", e);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setReady(true);
+          console.debug("[Auth] boot finished -> ready=true");
+        }
       }
     }
 
-    hydrate();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, sess) => {
-      const u = sess?.user ?? null;
-      setUser(u);
-      setEmailConfirmed(Boolean(u?.email_confirmed_at));
-
-      if (u) {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("approved,is_admin")
-          .eq("id", u.id)
-          .maybeSingle();
-
-        if (error) {
-          console.warn("[Auth] error loading profile:", error);
-          setApproved(null);
-          setIsAdmin(false);
-        } else {
-          setApproved(Boolean(data?.approved));
-          setIsAdmin(Boolean(data?.is_admin));
-        }
-      } else {
-        setApproved(null);
-        setIsAdmin(false);
+    // Corte de seguridad: nunca quedarnos colgados más de 5s
+    timeoutId = setTimeout(() => {
+      if (!ready) {
+        console.warn("[Auth] timeout 5s -> forzando ready=true (evitar spinner infinito)");
+        setReady(true);
       }
+    }, 5000);
+
+    boot();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((evt, newSess) => {
+      if (!mounted) return;
+      console.debug("[Auth] onAuthStateChange:", evt, "hasSession:", !!newSess);
+      setSession(newSess ?? null);
+      if (!newSess) setProfile(null);
     });
 
     return () => {
       mounted = false;
-      sub?.subscription?.unsubscribe?.();
+      try { sub?.subscription?.unsubscribe?.(); } catch {}
+      clearTimeout(timeoutId);
     };
   }, []);
 
-  const value = useMemo(
-    () => ({
-      user,
-      emailConfirmed,
-      approved,  // true/false/null
-      isAdmin,
-      loading,
-      async signOut() {
-        await supabase.auth.signOut({ scope: "global" }).catch(() => {});
-        try {
-          localStorage.clear();
-          sessionStorage.clear();
-        } catch {}
-      },
-    }),
-    [user, emailConfirmed, approved, isAdmin, loading]
-  );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const value = useMemo(() => ({ ready, session, profile }), [ready, session, profile]);
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
-  return ctx;
+  return useContext(AuthCtx);
 }
