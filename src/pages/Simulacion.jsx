@@ -42,6 +42,9 @@ export default function Simulacion() {
   const [categoria, setCategoria] = useState(""); // nombre de categoría
   const [loadingEsc, setLoadingEsc] = useState(false);
 
+  // Cuenta atrás para redirigir al perfil si falta el rol
+  const [redirectCountdown, setRedirectCountdown] = useState(3);
+
   // Lista de categorías (para el select)
   const categoriasDisponibles = useMemo(() => {
     const set = new Set();
@@ -154,6 +157,24 @@ export default function Simulacion() {
     };
   }, []);
 
+  // Si falta el rol, arrancamos una pequeña cuenta atrás
+  useEffect(() => {
+    if (session && roleChecked && (!rol || !ROLES_VALIDOS.includes(rol))) {
+      setRedirectCountdown(3);
+      const t = setInterval(() => {
+        setRedirectCountdown((c) => (c > 0 ? c - 1 : 0));
+      }, 1000);
+      return () => clearInterval(t);
+    }
+  }, [session, roleChecked, rol]);
+
+  // Cuando llega a 0, navegamos a /perfil automáticamente
+  useEffect(() => {
+    if (redirectCountdown === 0 && session && roleChecked && (!rol || !ROLES_VALIDOS.includes(rol))) {
+      navigate("/perfil", { replace: true });
+    }
+  }, [redirectCountdown, session, roleChecked, rol, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -161,16 +182,30 @@ export default function Simulacion() {
       </div>
     );
   }
-  // Si ya sabemos el rol y no es válido, redirige a Perfil
+  // Si ya sabemos el rol y no es válido, mostramos aviso y CTA para completar perfil
   if (session && roleChecked && (!rol || !ROLES_VALIDOS.includes(rol))) {
-    // Redirige a perfil para que el usuario complete su rol
-    navigate("/perfil", { replace: true });
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-slate-800">Completa tu perfil</h1>
-          <p className="text-slate-600 mt-2">Debes seleccionar un rol (Pediatra, Enfermera o Farmacéutico) antes de continuar.</p>
-          <a href="/perfil" className="inline-block mt-4 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100">Ir a mi perfil</a>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-5">
+        <div className="max-w-lg w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-center">
+          <h1 className="text-xl font-semibold text-slate-900">Rol no seleccionado</h1>
+          <p className="text-slate-700 mt-2">
+            Para poder realizar simulaciones, debes indicar tu perfil profesional
+            (<span className="font-medium">Pediatra</span>, <span className="font-medium">Enfermera</span> o <span className="font-medium">Farmacéutico</span>).
+          </p>
+          <p className="text-slate-600 mt-2">
+            Te redirigiremos a <span className="font-medium">Mi perfil</span> para completarlo.
+          </p>
+          <div className="mt-4 flex items-center justify-center gap-3">
+            <button
+              onClick={() => navigate("/perfil")}
+              className="px-4 py-2 rounded-lg bg-[#1d99bf] text-white hover:opacity-90 transition"
+            >
+              Ir a mi perfil ahora
+            </button>
+            <span className="text-sm text-slate-500">
+              Redirigiendo en {redirectCountdown}s…
+            </span>
+          </div>
         </div>
       </div>
     );
