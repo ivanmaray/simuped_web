@@ -26,7 +26,6 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
-    setReady(true); // ✅ Provider optimista: no bloqueamos la UI
 
     async function loadProfile(uid) {
       try {
@@ -43,35 +42,84 @@ export function AuthProvider({ children }) {
       }
     }
 
-    // 1) Hidratar sesión en 2º plano (no bloquea)
-    supabase.auth.getSession()
-      .then(({ data, error }) => {
+    async function hydrateSessionFromUrl() {
+      if (typeof window === "undefined") return;
+      try {
+        const url = new URL(window.location.href);
+        const hasCode = url.searchParams.get("code"); // PKCE / email OTP con ?code=
+        const hasError = url.searchParams.get("error");
+        const hasHashAccessToken = window.location.hash.includes("access_token="); // email magic-link con #access_token
+
+        if (hasError) {
+          console.warn("[Auth] auth error in URL:", url.searchParams.get("error_description") || hasError);
+        }
+
+        // 1) Flujos con ?code= requieren el intercambio explícito
+        if (hasCode) {
+          try {
+            await supabase.auth.exchangeCodeForSession(window.location.href);
+          } catch (ex) {
+            console.warn("[Auth] exchangeCodeForSession failed:", ex);
+          }
+        }
+
+        // 2) Para los magic-link con #access_token, el cliente del browser ya lo procesa
+        // al llamar a getSession() por primera vez, pero lo dejamos claro en el orden.
+
+        // 3) Limpiar la URL (sin query ni hash) para evitar re-intentos/errores visuales
+        if (hasCode || hasHashAccessToken || hasError) {
+          try {
+            const clean = url.origin + url.pathname; // conserva ruta base
+            window.history.replaceState({}, "", clean);
+          } catch {}
+        }
+      } catch (e) {
+        console.warn("[Auth] hydrateSessionFromUrl throw:", e);
+      }
+    }
+
+    async function init() {
+      await hydrateSessionFromUrl();
+
+      // 1) Hidratar sesión inicial
+      try {
+        const { data, error } = await supabase.auth.getSession();
         if (!mounted) return;
         if (error) console.warn("[Auth] getSession error:", error);
         const sess = data?.session ?? null;
         setSession(sess);
-        if (sess?.user?.id) loadProfile(sess.user.id);
+        if (sess?.user?.id) await loadProfile(sess.user.id);
         else setProfile(null);
-      })
-      .catch((e) => {
+      } catch (e) {
         if (mounted) {
           console.warn("[Auth] getSession throw:", e);
           setSession(null);
           setProfile(null);
         }
+      } finally {
+        // ✅ `ready` se marca al terminar la hidratación inicial (evita parpadeos de UI)
+        if (mounted) setReady(true);
+      }
+
+      // 2) Suscribirse a cambios de autenticación
+      const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, newSess) => {
+        if (!mounted) return;
+        setSession(newSess ?? null);
+        if (newSess?.user?.id) await loadProfile(newSess.user.id);
+        else setProfile(null);
       });
 
-    // 2) Suscribirse a cambios de autenticación
-    const { data } = supabase.auth.onAuthStateChange((_evt, newSess) => {
-      if (!mounted) return;
-      setSession(newSess ?? null);
-      if (newSess?.user?.id) loadProfile(newSess.user.id);
-      else setProfile(null);
-    });
+      return () => {
+        try { sub?.subscription?.unsubscribe?.(); } catch {}
+      };
+    }
+
+    const cleanup = init();
 
     return () => {
       mounted = false;
-      try { data?.subscription?.unsubscribe?.(); } catch {}
+      // ejecutar el cleanup del onAuthStateChange si llega a ser una promesa que devuelve función
+      if (typeof cleanup === "function") cleanup();
     };
   }, []);
 

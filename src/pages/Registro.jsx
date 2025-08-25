@@ -109,22 +109,18 @@ export default function Registro() {
     }
 
     setLoading(true);
-    console.debug("[Registro] intentando signUp + upsert profiles");
+    console.debug("[Registro] intentando signUp (sin upsert profiles)");
 
     try {
-      // 1) Alta en auth con metadatos básicos
+      // 1) Alta en auth (sin metadata) para evitar triggers/policies raras
+      const redirectBase =
+        import.meta.env.VITE_SITE_URL?.trim() ||
+        (typeof window !== "undefined" ? window.location.origin : "");
       const { data: signData, error: signErr } = await supabase.auth.signUp({
         email: emailNorm,
         password,
         options: {
-          data: {
-            nombre: nombre.trim(),
-            apellidos: apellidos.trim(),
-            rol,
-            unidad,
-          },
-          // tras confirmar desde el email, redirige a /pendiente en este mismo dominio
-          emailRedirectTo: `${window.location.origin}/pendiente`,
+          emailRedirectTo: `${redirectBase}/pendiente`,
         },
       });
 
@@ -141,7 +137,7 @@ export default function Registro() {
         } else if (m.includes("password")) {
           setErrorMsg("La contraseña no cumple los requisitos.");
         } else if (m.includes("database error saving new user")) {
-          setErrorMsg("No se pudo crear la cuenta (Auth). Revisa que el email no exista y vuelve a intentarlo.");
+          setErrorMsg("No se pudo crear la cuenta (Auth). Vuelve a intentarlo en unos minutos o usa otro email.");
         } else {
           setErrorMsg(signErr.message || "No se pudo crear la cuenta.");
         }
@@ -149,7 +145,7 @@ export default function Registro() {
         return;
       }
 
-      // Notificar al admin por email (aunque aún no haya sesión)
+      // 2) Notificar al admin por email (no bloqueante)
       try {
         await fetch("/api/new-user-email", {
           method: "POST",
@@ -164,68 +160,13 @@ export default function Registro() {
           })
         });
       } catch (err) {
-        console.error("[Registro] error notificando admin (previo a sesión):", err);
+        console.error("[Registro] error notificando admin:", err);
       }
 
-      // 1.5) Si no hay sesión (porque falta confirmar email), no podremos escribir en profiles por RLS
-      const { data: sessData } = await supabase.auth.getSession();
-      const session = sessData?.session || null;
-
-      if (!session) {
-        setLoading(false);
-        setOkMsg("Te hemos enviado un correo para confirmar tu email. Tras confirmarlo, un administrador aprobará tu acceso.");
-        // No hay sesión todavía: llevamos a /pendiente para que vea el estado.
-        setTimeout(() => navigate("/pendiente"), 800);
-        return;
-      }
-
-      const userId = session.user.id;
-
-      // 2) Crear/actualizar fila en profiles con approved=false
-      const cleanAreas = Array.isArray(areasInteres)
-        ? areasInteres.filter(Boolean).map((s) => s.toString())
-        : [];
-
-      const { error: upErr } = await supabase
-        .from("profiles")
-        .upsert(
-          {
-            id: userId,
-            nombre: nombre.trim(),
-            apellidos: apellidos.trim(),
-            dni: dniNorm,
-            rol,
-            unidad,
-            areas_interes: cleanAreas,
-            approved: false,
-            is_admin: false,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "id" }
-        );
-
+      // 3) No escribimos en 'profiles' aquí: se hará tras el primer login con sesión.
+      setOkMsg("Te hemos enviado un email para confirmar tu cuenta. Tras confirmarlo, revisaremos tu acceso.");
       setLoading(false);
-
-      if (upErr) {
-        console.error("[Registro] upsert profiles error:", upErr);
-        const code = upErr.code || "";
-        const msg = (upErr.message || "").toLowerCase();
-
-        if (code === "23505" || msg.includes("duplicate")) {
-          setErrorMsg("Ya existe un perfil con datos duplicados (DNI o email).");
-        } else if (code === "23514" && msg.includes("dni")) {
-          setDniError("El DNI no cumple el formato requerido por el sistema.");
-        } else if (code === "42501" || msg.includes("rls")) {
-          setErrorMsg("No se pudo guardar tu perfil por permisos. Contacta con soporte.");
-        } else {
-          setErrorMsg(upErr.message || "No se pudo guardar tu perfil. Inténtalo de nuevo.");
-        }
-        return;
-      }
-
-
-      setOkMsg("Registro enviado. Tu cuenta está pendiente de aprobación.");
-      setTimeout(() => navigate("/pendiente"), 800);
+      setTimeout(() => navigate("/pendiente", { replace: true }), 800);
     } catch (err) {
       console.error("[Registro] excepción inesperada:", err);
       setLoading(false);
