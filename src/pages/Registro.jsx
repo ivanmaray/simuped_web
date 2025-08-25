@@ -116,12 +116,19 @@ export default function Registro() {
       const redirectBase =
         import.meta.env.VITE_SITE_URL?.trim() ||
         (typeof window !== "undefined" ? window.location.origin : "");
+
+      // Construimos options de forma segura para no romper si la URL no está permitida en Supabase
+      const signUpOptions = {};
+      if (redirectBase) {
+        // Si la URL no está en la lista de Redirect URLs de Supabase, GoTrue puede fallar.
+        // Al incluirla solo si existe, evitamos pasar valores vacíos o incorrectos.
+        signUpOptions.emailRedirectTo = `${redirectBase}/pendiente`;
+      }
+
       const { data: signData, error: signErr } = await supabase.auth.signUp({
         email: emailNorm,
         password,
-        options: {
-          emailRedirectTo: `${redirectBase}/pendiente`,
-        },
+        options: signUpOptions,
       });
 
       if (signErr) {
@@ -131,12 +138,20 @@ export default function Registro() {
           status: signErr.status,
           code: signErr.code,
         });
-        const m = (signErr.message || "").toLowerCase();
-        if (m.includes("user already registered") || m.includes("already registered")) {
+        const raw = (signErr.message || "").toLowerCase();
+        const code = (signErr.code || "").toLowerCase();
+
+        if (raw.includes("user already registered") || raw.includes("already registered") || code === "user_already_exists") {
           setErrorMsg("Ya existe una cuenta con ese email.");
-        } else if (m.includes("password")) {
+        } else if (raw.includes("password") || code === "weak_password") {
           setErrorMsg("La contraseña no cumple los requisitos.");
-        } else if (m.includes("database error saving new user")) {
+        } else if (code === "over_email_send_rate_limit") {
+          setErrorMsg("Has solicitado demasiados correos en poco tiempo. Inténtalo de nuevo más tarde.");
+        } else if (code === "signup_disabled") {
+          setErrorMsg("El registro está deshabilitado por el administrador.");
+        } else if (raw.includes("redirect") || raw.includes("url") || code === "invalid_redirect_url") {
+          setErrorMsg("La URL de redirección no es válida. Revisa la configuración de Redirect URLs en Supabase.");
+        } else if (raw.includes("database error saving new user")) {
           setErrorMsg("No se pudo crear la cuenta (Auth). Vuelve a intentarlo en unos minutos o usa otro email.");
         } else {
           setErrorMsg(signErr.message || "No se pudo crear la cuenta.");
