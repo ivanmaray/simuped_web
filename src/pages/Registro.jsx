@@ -82,6 +82,7 @@ export default function Registro() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loading) return; // evita doble envío
     setErrorMsg("");
     setOkMsg("");
     setDniError("");
@@ -148,6 +149,24 @@ export default function Registro() {
         return;
       }
 
+      // Notificar al admin por email (aunque aún no haya sesión)
+      try {
+        await fetch("/api/new-user-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre: nombre.trim(),
+            apellidos: apellidos.trim(),
+            email: emailNorm,
+            dni: dniNorm,
+            rol,
+            unidad
+          })
+        });
+      } catch (err) {
+        console.error("[Registro] error notificando admin (previo a sesión):", err);
+      }
+
       // 1.5) Si no hay sesión (porque falta confirmar email), no podremos escribir en profiles por RLS
       const { data: sessData } = await supabase.auth.getSession();
       const session = sessData?.session || null;
@@ -204,25 +223,6 @@ export default function Registro() {
         return;
       }
 
-      // Notificar al admin por email
-      try {
-        await fetch("/api/new-user-email", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            nombre: nombre.trim(),
-            apellidos: apellidos.trim(),
-            email: emailNorm,
-            dni: dniNorm,
-            rol,
-            unidad
-          })
-        });
-      } catch (err) {
-        console.error("[Registro] error notificando admin:", err);
-      }
 
       setOkMsg("Registro enviado. Tu cuenta está pendiente de aprobación.");
       setTimeout(() => navigate("/pendiente"), 800);
@@ -434,7 +434,16 @@ export default function Registro() {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={loading || !nombre.trim() || !apellidos.trim() || !validarEmail(email) || !password || !rol || !unidad || !dni}
+              disabled={
+                loading ||
+                !nombre.trim() ||
+                !apellidos.trim() ||
+                !validarEmail((email || '').trim()) ||
+                !(password || '').trim() ||
+                !rol ||
+                !unidad ||
+                !dni
+              }
               className="px-5 py-2.5 rounded-lg text-white disabled:opacity-70"
               style={{ backgroundColor: COLORS.primary }}
             >
