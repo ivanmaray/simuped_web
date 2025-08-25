@@ -116,17 +116,31 @@ export default function Registro() {
         email: emailNorm,
         password,
         options: {
-          data: { nombre: nombre.trim(), apellidos: apellidos.trim(), rol, unidad },
-          emailRedirectTo: window.location.origin,
+          data: {
+            nombre: nombre.trim(),
+            apellidos: apellidos.trim(),
+            rol,
+            unidad,
+          },
+          // tras confirmar desde el email, redirige a /pendiente en este mismo dominio
+          emailRedirectTo: `${window.location.origin}/pendiente`,
         },
       });
 
       if (signErr) {
+        console.error("[Registro] signUp error:", {
+          name: signErr.name,
+          message: signErr.message,
+          status: signErr.status,
+          code: signErr.code,
+        });
         const m = (signErr.message || "").toLowerCase();
-        if (m.includes("user already registered")) {
+        if (m.includes("user already registered") || m.includes("already registered")) {
           setErrorMsg("Ya existe una cuenta con ese email.");
         } else if (m.includes("password")) {
           setErrorMsg("La contraseña no cumple los requisitos.");
+        } else if (m.includes("database error saving new user")) {
+          setErrorMsg("No se pudo crear la cuenta (Auth). Revisa que el email no exista y vuelve a intentarlo.");
         } else {
           setErrorMsg(signErr.message || "No se pudo crear la cuenta.");
         }
@@ -141,6 +155,7 @@ export default function Registro() {
       if (!session) {
         setLoading(false);
         setOkMsg("Te hemos enviado un correo para confirmar tu email. Tras confirmarlo, un administrador aprobará tu acceso.");
+        // No hay sesión todavía: llevamos a /pendiente para que vea el estado.
         setTimeout(() => navigate("/pendiente"), 800);
         return;
       }
@@ -187,6 +202,26 @@ export default function Registro() {
           setErrorMsg(upErr.message || "No se pudo guardar tu perfil. Inténtalo de nuevo.");
         }
         return;
+      }
+
+      // Notificar al admin por email
+      try {
+        await fetch("/api/new-user-email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            nombre: nombre.trim(),
+            apellidos: apellidos.trim(),
+            email: emailNorm,
+            dni: dniNorm,
+            rol,
+            unidad
+          })
+        });
+      } catch (err) {
+        console.error("[Registro] error notificando admin:", err);
       }
 
       setOkMsg("Registro enviado. Tu cuenta está pendiente de aprobación.");

@@ -43,7 +43,7 @@ export default function Simulacion() {
   const [loadingEsc, setLoadingEsc] = useState(false);
 
   // Cuenta atrás para redirigir al perfil si falta el rol
-  const [redirectCountdown, setRedirectCountdown] = useState(3);
+  const [redirectCountdown, setRedirectCountdown] = useState(5);
 
   // Lista de categorías (para el select)
   const categoriasDisponibles = useMemo(() => {
@@ -160,7 +160,7 @@ export default function Simulacion() {
   // Si falta el rol, arrancamos una pequeña cuenta atrás
   useEffect(() => {
     if (session && roleChecked && (!rol || !ROLES_VALIDOS.includes(rol))) {
-      setRedirectCountdown(3);
+      setRedirectCountdown(5);
       const t = setInterval(() => {
         setRedirectCountdown((c) => (c > 0 ? c - 1 : 0));
       }, 1000);

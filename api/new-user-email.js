@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     `;
 
     await resend.emails.send({
-      from: 'SimuPed <notificaciones@simuped.app>', // en Resend puedes usar un dominio verificado o `onboarding@resend.dev` para pruebas
+      from: 'SimuPed <notificaciones@simuped.com>', // en Resend puedes usar un dominio verificado o `onboarding@resend.dev` para pruebas
       to,
       subject,
       html,
