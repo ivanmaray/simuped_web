@@ -6,25 +6,37 @@ import { useAuth } from "../auth.jsx";
 import Navbar from "../components/Navbar.jsx";
 
 export default function Pendiente() {
-  const { session, emailConfirmed } = useAuth();
+  const { session } = useAuth();
   const navigate = useNavigate();
+  const [emailVerified, setEmailVerified] = useState(false);
   const [approved, setApproved] = useState(null); // true/false/null
   const [checking, setChecking] = useState(true);
 
   async function fetchStatus() {
     try {
-      if (!session?.user?.id) {
+      setChecking(true);
+
+      // 1) Refrescar usuario de Auth (trae email_confirmed_at actualizado si volviste del enlace)
+      const { data: { user }, error: uErr } = await supabase.auth.getUser();
+      if (uErr) console.warn("[Pendiente] getUser error:", uErr);
+      const ev = !!user?.email_confirmed_at;
+      setEmailVerified(ev);
+
+      // 2) Si no hay usuario/uid aún, salir dejando approved en null
+      if (!user?.id) {
         setApproved(null);
         return;
       }
+
+      // 3) Refrescar approved desde profiles
       const { data, error } = await supabase
         .from("profiles")
         .select("approved")
-        .eq("id", session.user.id)
+        .eq("id", user.id)
         .maybeSingle();
 
       if (error) {
-        console.warn("[Pendiente] error:", error);
+        console.warn("[Pendiente] profiles select error:", error);
         setApproved(null);
       } else {
         setApproved(!!data?.approved);
@@ -42,10 +54,10 @@ export default function Pendiente() {
 
   // Si ya está todo OK, mandar a dashboard
   useEffect(() => {
-    if (emailConfirmed && approved === true) {
+    if (emailVerified && approved === true) {
       navigate("/dashboard", { replace: true });
     }
-  }, [emailConfirmed, approved, navigate]);
+  }, [emailVerified, approved, navigate]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -61,7 +73,7 @@ export default function Pendiente() {
             <div>
               <dt className="text-sm text-slate-500">Verificación de email</dt>
               <dd className="mt-1">
-                {emailConfirmed ? "✅ Verificado" : "❌ No verificado"}
+                {emailVerified ? "✅ Verificado" : "❌ No verificado"}
               </dd>
             </div>
             <div>
