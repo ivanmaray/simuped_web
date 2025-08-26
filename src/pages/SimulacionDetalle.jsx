@@ -194,7 +194,10 @@ export default function SimulacionDetalle() {
   const [answers, setAnswers] = useState({});
   const [hintsUsed, setHintsUsed] = useState({}); // { [questionId]: number }
   const [revealedHints, setRevealedHints] = useState({}); // { [questionId]: string[] }
+  const [qTimers, setQTimers] = useState({}); // { [qid]: { start: number, remaining: number, expired: boolean } }
+  const [qTick, setQTick] = useState(0);
   function requestHint(q) {
+    if (qTimers[q.id]?.expired) return;
     if (!q?.hints) return;
     let list = q.hints;
     if (typeof list === "string") {
@@ -223,6 +226,19 @@ export default function SimulacionDetalle() {
   const [timeUp, setTimeUp] = useState(false);
 
   const currentStep = steps[currentIdx] || null;
+
+  useEffect(() => {
+    if (!currentStep) return;
+    setQTimers((prev) => {
+      const next = { ...prev };
+      for (const q of currentStep.questions || []) {
+        if (q?.time_limit && !next[q.id]) {
+          next[q.id] = { start: Date.now(), remaining: Number(q.time_limit) || 0, expired: false };
+        }
+      }
+      return next;
+    });
+  }, [currentStep]);
 
   const totalQuestions = useMemo(() => {
     return steps.reduce((acc, s) => acc + (s.questions?.length || 0), 0);
@@ -408,6 +424,41 @@ export default function SimulacionDetalle() {
     return () => clearInterval(idInt);
   }, [expiresAt, timeUp]);
 
+  useEffect(() => {
+    if (!currentStep || showSummary) return;
+    const int = setInterval(() => {
+      setQTick((t) => t + 1);
+      setQTimers((prev) => {
+        const next = { ...prev };
+        const now = Date.now();
+        const newlyExpired = [];
+        for (const q of (currentStep?.questions || [])) {
+          const t = next[q.id];
+          if (!q?.time_limit || !t) continue;
+          const limit = Number(q.time_limit) || 0;
+          const elapsed = Math.floor((now - t.start) / 1000);
+          const remaining = Math.max(0, limit - elapsed);
+          const expired = remaining <= 0;
+          if (!t.expired && expired) newlyExpired.push(q.id);
+          next[q.id] = { ...t, remaining, expired };
+        }
+        if (newlyExpired.length) {
+          setAnswers((ans) => {
+            const updated = { ...ans };
+            for (const qid of newlyExpired) {
+              if (!updated[qid]) {
+                updated[qid] = { selectedKey: null, selectedIndex: null, isCorrect: false };
+              }
+            }
+            return updated;
+          });
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(int);
+  }, [currentStep, showSummary]);
+
   // Auto-finalizar cuando se acaba el tiempo (moved to top-level)
   useEffect(() => {
     if (!timeUp || showSummary) return;
@@ -419,6 +470,10 @@ export default function SimulacionDetalle() {
   }, [timeUp, showSummary, allAnswered]);
 
   async function selectAnswer(q, optKey, optIndex) {
+    if (qTimers[q.id]?.expired) {
+      console.warn("[SimulacionDetalle] Pregunta expirada: no se puede responder");
+      return;
+    }
     // Evitar re-selección: si ya existe una respuesta para esta pregunta, no hacer nada
     if (answers[q.id]?.selectedKey != null) {
       return;
@@ -987,8 +1042,27 @@ export default function SimulacionDetalle() {
                       <article key={q.id} className="rounded-xl border border-slate-200 p-4">
                         <p className="font-medium">{q.text}</p>
                         {q.time_limit ? (
-                          <div className="mt-2 inline-flex items-center gap-2 text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200" title="Pregunta con urgencia">
-                            ⏱️ Límite recomendado: {q.time_limit}s
+                          <div className="mt-2">
+                            <div
+                              className={`inline-flex items-center gap-2 text-xs px-2 py-1 rounded border ${
+                                qTimers[q.id]?.expired
+                                  ? "bg-rose-100 text-rose-800 border-rose-200"
+                                  : (qTimers[q.id]?.remaining ?? q.time_limit) <= 10
+                                  ? "bg-amber-100 text-amber-800 border-amber-200"
+                                  : "bg-amber-50 text-amber-700 border-amber-200"
+                              }`}
+                            >
+                              ⏱️ {formatMMSS(qTimers[q.id]?.remaining ?? q.time_limit)}
+                            </div>
+                            <div className="h-1 bg-slate-200 rounded mt-1 overflow-hidden">
+                              <div
+                                className="h-1 bg-amber-500"
+                                style={{ width: `${Math.max(0, Math.min(100, ((qTimers[q.id]?.remaining ?? q.time_limit) / q.time_limit) * 100))}%` }}
+                              />
+                            </div>
+                            {qTimers[q.id]?.expired && !answers[q.id]?.selectedKey && (
+                              <div className="mt-2 text-xs text-rose-700">Tiempo agotado: la pregunta se ha marcado como incorrecta.</div>
+                            )}
                           </div>
                         ) : null}
                         {/* Botón de pista */}
@@ -997,7 +1071,7 @@ export default function SimulacionDetalle() {
                           if (typeof list === "string") { try { list = JSON.parse(list); } catch { list = []; } }
                           const availableHints = Array.isArray(list) ? list : [];
                           const used = hintsUsed[q.id] || 0;
-                          const canAsk = availableHints.length > 0 && used < availableHints.length && answers[q.id]?.selectedKey == null && !(timeUp || (remainingSecs !== null && remainingSecs <= 0));
+                          const canAsk = availableHints.length > 0 && used < availableHints.length && answers[q.id]?.selectedKey == null && !(timeUp || (remainingSecs !== null && remainingSecs <= 0)) && !qTimers[q.id]?.expired;
                           return (
                             <div className="mt-3 flex items-center gap-2">
                               <button
@@ -1038,7 +1112,8 @@ export default function SimulacionDetalle() {
                                   disabled={
                                     timeUp ||
                                     (remainingSecs !== null && remainingSecs <= 0) ||
-                                    (answers[q.id]?.selectedKey != null)
+                                    (answers[q.id]?.selectedKey != null) ||
+                                    qTimers[q.id]?.expired
                                   }
                                   onChange={() => selectAnswer(q, o.key, idx)}
                                 />
