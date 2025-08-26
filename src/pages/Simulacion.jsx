@@ -7,7 +7,7 @@ import Navbar from "../components/Navbar.jsx";
 
 console.debug("[Simulacion] componente cargado");
 
-const ROLES_VALIDOS = ["pediatra", "enfermera", "farmaceutico"];
+const ROLES_VALIDOS = ["medico", "enfermeria", "farmacia"];
 
 const estadoStyles = {
   "Disponible": { label: "Disponible", color: "bg-green-100 text-green-800", clickable: true },
@@ -190,7 +190,7 @@ export default function Simulacion() {
           <h1 className="text-xl font-semibold text-slate-900">Rol no seleccionado</h1>
           <p className="text-slate-700 mt-2">
             Para poder realizar simulaciones, debes indicar tu perfil profesional
-            (<span className="font-medium">Pediatra</span>, <span className="font-medium">Enfermera</span> o <span className="font-medium">Farmacéutico</span>).
+            (<span className="font-medium">Médico</span>, <span className="font-medium">Enfermería</span> o <span className="font-medium">Farmacia</span>).
           </p>
           <p className="text-slate-600 mt-2">
             Te redirigiremos a <span className="font-medium">Mi perfil</span> para completarlo.
