@@ -25,6 +25,12 @@ function formatRole(rol) {
   return k ? k[0].toUpperCase() + k.slice(1) : "";
 }
 
+function isTimedStep(step) {
+  if (!step?.description) return false;
+  const desc = String(step.description).toLowerCase();
+  return desc.includes("intervención urgente");
+}
+
 // Normaliza el rol del usuario a 'medico' | 'enfermeria' | 'farmacia'
 function normalizeRole(rol) {
   const k = String(rol || "").toLowerCase();
@@ -229,6 +235,7 @@ export default function SimulacionDetalle() {
 
   useEffect(() => {
     if (!currentStep) return;
+    if (!isTimedStep(currentStep)) return; // Solo pasos urgentes tienen countdown
     setQTimers((prev) => {
       const next = { ...prev };
       for (const q of currentStep.questions || []) {
@@ -425,7 +432,7 @@ export default function SimulacionDetalle() {
   }, [expiresAt, timeUp]);
 
   useEffect(() => {
-    if (!currentStep || showSummary) return;
+    if (!currentStep || showSummary || !isTimedStep(currentStep)) return;
     const int = setInterval(() => {
       setQTick((t) => t + 1);
       setQTimers((prev) => {
@@ -1041,7 +1048,7 @@ export default function SimulacionDetalle() {
                     return (
                       <article key={q.id} className="rounded-xl border border-slate-200 p-4">
                         <p className="font-medium">{q.text}</p>
-                        {q.time_limit ? (
+                        {isTimedStep(currentStep) && q.time_limit ? (
                           <div className="mt-2">
                             <div
                               className={`inline-flex items-center gap-2 text-xs px-2 py-1 rounded border ${
