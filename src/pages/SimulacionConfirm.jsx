@@ -55,6 +55,8 @@ export default function SimulacionConfirm() {
   const [scenario, setScenario] = useState(null);
   const [attemptsCount, setAttemptsCount] = useState(0);
   const [openAttemptId, setOpenAttemptId] = useState(null);
+  const [forceNew, setForceNew] = useState(false);
+  const [customMinutes, setCustomMinutes] = useState(15); // solo para admins
 
   useEffect(() => {
     let mounted = true;
@@ -192,8 +194,8 @@ export default function SimulacionConfirm() {
       return;
     }
 
-    // Si existe un intento abierto, reanudar en lugar de crear uno nuevo
-    if (openAttemptId) {
+    // Si existe un intento abierto y NO forzamos nuevo, reanudar
+    if (openAttemptId && !forceNew) {
       navigate(`/simulacion/${scenarioId}?attempt=${openAttemptId}`, { replace: true });
       return;
     }
@@ -201,7 +203,8 @@ export default function SimulacionConfirm() {
     setCreating(true);
     try {
       const now = new Date();
-      const expires = new Date(now.getTime() + DEFAULT_LIMIT_SECS * 1000);
+      const limitSecs = esAdmin ? Math.max(1, Number(customMinutes) || 0) * 60 : DEFAULT_LIMIT_SECS;
+      const expires = new Date(now.getTime() + limitSecs * 1000);
 
       const { data, error } = await supabase
         .from("attempts")
@@ -210,7 +213,7 @@ export default function SimulacionConfirm() {
           scenario_id: scenarioId,
           started_at: now.toISOString(),
           expires_at: expires.toISOString(),
-          time_limit: DEFAULT_LIMIT_SECS,
+          time_limit: limitSecs,
           status: "en curso",
         })
         .select("id")
@@ -327,6 +330,33 @@ export default function SimulacionConfirm() {
           {alreadyMaxed && (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
               Has alcanzado el máximo de intentos para este escenario.
+            </div>
+          )}
+
+          {/* Controles de tiempo e intento (visibles para admin) */}
+          {esAdmin && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={forceNew}
+                  onChange={(e) => setForceNew(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span>Forzar nuevo intento (no reanudar el abierto)</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <span>Límite (min):</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={customMinutes}
+                  onChange={(e) => setCustomMinutes(e.target.value)}
+                  className="w-20 rounded border border-slate-300 px-2 py-1"
+                />
+                <span className="text-slate-500">(solo admin)</span>
+              </label>
             </div>
           )}
 
