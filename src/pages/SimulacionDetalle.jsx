@@ -376,7 +376,7 @@ export default function SimulacionDetalle() {
 
         const { data: qs, error: e3 } = await supabase
           .from("questions")
-          .select("id, text:question_text, options, correct_option, explanation, roles, is_critical, hints, time_limit")
+          .select("id, text:question_text, options, correct_option, explanation, roles, is_critical, hints, time_limit, critical_rationale")
           .eq("step_id", s.id)
           .order("id", { ascending: true });
 
@@ -849,9 +849,14 @@ export default function SimulacionDetalle() {
                     </div>
                   </div>
                   {failed.length > 0 && (
-                    <ul className="mt-2 list-disc pl-5 text-sm text-slate-800">
+                    <ul className="mt-2 space-y-3 pl-5 text-sm">
                       {failed.map(q => (
-                        <li key={q.id}>{q.text}</li>
+                        <li key={q.id} className="list-disc">
+                          <div className="text-slate-800 font-medium">{q.text}</div>
+                          {q.critical_rationale && (
+                            <p className="mt-1 text-slate-600">{q.critical_rationale}</p>
+                          )}
+                        </li>
                       ))}
                     </ul>
                   )}
