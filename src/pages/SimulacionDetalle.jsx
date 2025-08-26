@@ -359,7 +359,7 @@ export default function SimulacionDetalle() {
       // Cargar pasos
       const { data: st, error: e2 } = await supabase
         .from("steps")
-        .select("id, description, step_order, role_specific, roles")
+        .select("id, description, step_order, role_specific, roles, narrative")
         .eq("scenario_id", esc.id)
         .order("step_order", { ascending: true });
 
@@ -1037,6 +1037,14 @@ export default function SimulacionDetalle() {
                   </div>
                 )}
 
+                {/* Narrativa del paso */}
+                {currentStep?.narrative && (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Historia · Paso {currentIdx + 1}</div>
+                    <p className="text-sm text-slate-800 whitespace-pre-line">{currentStep.narrative}</p>
+                  </div>
+                )}
+
                 {/* Preguntas */}
                 <div className="mt-4 space-y-6">
                   {(currentStep?.questions || []).map((q) => {
@@ -1046,8 +1054,13 @@ export default function SimulacionDetalle() {
                     const isCorrect = saved?.isCorrect;
 
                     return (
-                      <article key={q.id} className="rounded-xl border border-slate-200 p-4">
+                      <article key={q.id} className={`rounded-xl border p-4 ${q.is_critical ? "border-amber-300 bg-amber-50/30" : "border-slate-200"}`}>
                         <p className="font-medium">{q.text}</p>
+                        {q.is_critical && (
+                          <div className="mt-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                            ⚠️ Pregunta crítica
+                          </div>
+                        )}
                         {isTimedStep(currentStep) && q.time_limit ? (
                           <div className="mt-2">
                             <div
