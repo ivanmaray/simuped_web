@@ -333,33 +333,6 @@ export default function SimulacionConfirm() {
             </div>
           )}
 
-          {/* Controles de tiempo e intento (visibles para admin) */}
-          {esAdmin && (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={forceNew}
-                  onChange={(e) => setForceNew(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                <span>Forzar nuevo intento (no reanudar el abierto)</span>
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <span>Límite (min):</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={120}
-                  value={customMinutes}
-                  onChange={(e) => setCustomMinutes(e.target.value)}
-                  className="w-20 rounded border border-slate-300 px-2 py-1"
-                />
-                <span className="text-slate-500">(solo admin)</span>
-              </label>
-            </div>
-          )}
-
           <div className="mt-6 flex items-center gap-3">
             <button
               onClick={handleStart}
