@@ -393,7 +393,7 @@ export default function Perfil() {
             <span className="block text-sm text-slate-700 mb-2">Rol</span>
             <div className="flex flex-wrap gap-2">
               {[
-                { value: "pediatra", label: "Pediatra" },
+                { value: "medico", label: "Médico" },
                 { value: "enfermera", label: "Enfermera" },
                 { value: "farmaceutico", label: "Farmacéutico" },
               ].map((r) => {
