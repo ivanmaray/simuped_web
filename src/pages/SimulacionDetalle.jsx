@@ -1,9 +1,10 @@
-const HINT_PENALTY_POINTS = 5; // puntos que se restan por cada pista usada (puedes ajustar)
 // src/pages/SimulacionDetalle.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
+
+const HINT_PENALTY_POINTS = 5; // puntos que se restan por cada pista usada (puedes ajustar)
 
 function formatLevel(level) {
   const key = String(level || "").toLowerCase();
@@ -183,6 +184,26 @@ export default function SimulacionDetalle() {
   const [answers, setAnswers] = useState({});
   const [hintsUsed, setHintsUsed] = useState({}); // { [questionId]: number }
   const [revealedHints, setRevealedHints] = useState({}); // { [questionId]: string[] }
+  function requestHint(q) {
+    if (!q?.hints) return;
+    let list = q.hints;
+    if (typeof list === "string") {
+      try { list = JSON.parse(list); } catch { list = []; }
+    }
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    setRevealedHints((prev) => {
+      const already = prev[q.id] || [];
+      if (already.length >= list.length) return prev; // no más pistas
+      const next = [...already, list[already.length]];
+      return { ...prev, [q.id]: next };
+    });
+
+    setHintsUsed((prev) => ({
+      ...prev,
+      [q.id]: Math.min((prev[q.id] || 0) + 1, Array.isArray(list) ? list.length : 1),
+    }));
+  }
   const [showSummary, setShowSummary] = useState(false);
 
   // Intento actual
@@ -388,26 +409,6 @@ export default function SimulacionDetalle() {
   }, [timeUp, showSummary, allAnswered]);
 
   async function selectAnswer(q, optKey, optIndex) {
-  function requestHint(q) {
-    if (!q?.hints) return;
-    let list = q.hints;
-    if (typeof list === "string") {
-      try { list = JSON.parse(list); } catch { list = []; }
-    }
-    if (!Array.isArray(list) || list.length === 0) return;
-
-    setRevealedHints((prev) => {
-      const already = prev[q.id] || [];
-      if (already.length >= list.length) return prev; // no más pistas
-      const next = [...already, list[already.length]];
-      return { ...prev, [q.id]: next };
-    });
-
-    setHintsUsed((prev) => ({
-      ...prev,
-      [q.id]: Math.min((prev[q.id] || 0) + 1, Array.isArray(list) ? list.length : 1),
-    }));
-  }
     // Evitar re-selección: si ya existe una respuesta para esta pregunta, no hacer nada
     if (answers[q.id]?.selectedKey != null) {
       return;
