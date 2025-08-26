@@ -112,11 +112,21 @@ function CaseCard({ title, children }) {
   );
 }
 
+
 function Chip({ children }) {
   return (
     <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600 bg-slate-50">
       {children}
     </span>
+  );
+}
+
+function Row({ label, value, alert }) {
+  return (
+    <div className="flex justify-between py-1">
+      <span className="text-slate-500">{label}</span>
+      <span className={alert ? "font-semibold text-rose-600" : "font-medium text-slate-800"}>{value}</span>
+    </div>
   );
 }
 
