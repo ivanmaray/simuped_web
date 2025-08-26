@@ -1,3 +1,4 @@
+const HINT_PENALTY_POINTS = 5; // puntos que se restan por cada pista usada (puedes ajustar)
 // src/pages/SimulacionDetalle.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
@@ -118,12 +119,43 @@ function Chip({ children }) {
   );
 }
 
-function Row({ label, value, alert }) {
+
+function PrebriefBanner({ objective }) {
   return (
-    <div className="flex justify-between py-1">
-      <span className="text-slate-500">{label}</span>
-      <span className={alert ? "font-semibold text-rose-600" : "font-medium text-slate-800"}>{value}</span>
-    </div>
+    <section className="rounded-2xl border border-slate-300 bg-white p-5 mb-5 shadow-sm">
+      <div className="flex items-start gap-4">
+        <div className="shrink-0 w-10 h-10 rounded-full bg-slate-900 text-white grid place-items-center">ℹ️</div>
+        <div className="flex-1">
+          <h3 className="text-base font-semibold text-slate-900">Pre-brief · Contrato psicológico</h3>
+          <p className="text-sm text-slate-600 mt-1">
+            Este es un entorno seguro de aprendizaje. Puedes equivocarte: lo importante es el proceso y el razonamiento clínico.
+          </p>
+          <div className="mt-3 grid sm:grid-cols-3 gap-4">
+            <div>
+              <div className="text-xs font-semibold text-slate-500">Objetivo docente</div>
+              <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
+                {objective ? <li>{objective}</li> : <li>Conoce los objetivos del caso y cómo se evaluará la simulación.</li>}
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-500">Reglas de la simulación</div>
+              <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
+                <li>Algunos pasos contienen preguntas <span className="font-medium">críticas</span>.</li>
+                <li>Puedes pedir <span className="font-medium">pistas</span> (si están disponibles); restan puntuación.</li>
+                <li>En ciertos pasos verás <span className="font-medium">urgencia</span> y límite de tiempo.</li>
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-500">Criterios de evaluación</div>
+              <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
+                <li>Nota = % aciertos – penalización por pistas.</li>
+                <li>Se señalarán las <span className="font-medium">preguntas críticas falladas</span> en el debrief.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -149,6 +181,8 @@ export default function SimulacionDetalle() {
   // Respuestas marcadas (solo memoria local por ahora)
   // answers: { [questionId]: { selectedKey, isCorrect } }
   const [answers, setAnswers] = useState({});
+  const [hintsUsed, setHintsUsed] = useState({}); // { [questionId]: number }
+  const [revealedHints, setRevealedHints] = useState({}); // { [questionId]: string[] }
   const [showSummary, setShowSummary] = useState(false);
 
   // Intento actual
@@ -288,7 +322,7 @@ export default function SimulacionDetalle() {
 
         const { data: qs, error: e3 } = await supabase
           .from("questions")
-          .select("id, text:question_text, options, correct_option, explanation, roles")
+          .select("id, text:question_text, options, correct_option, explanation, roles, is_critical, hints, time_limit")
           .eq("step_id", s.id)
           .order("id", { ascending: true });
 
@@ -354,6 +388,26 @@ export default function SimulacionDetalle() {
   }, [timeUp, showSummary, allAnswered]);
 
   async function selectAnswer(q, optKey, optIndex) {
+  function requestHint(q) {
+    if (!q?.hints) return;
+    let list = q.hints;
+    if (typeof list === "string") {
+      try { list = JSON.parse(list); } catch { list = []; }
+    }
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    setRevealedHints((prev) => {
+      const already = prev[q.id] || [];
+      if (already.length >= list.length) return prev; // no más pistas
+      const next = [...already, list[already.length]];
+      return { ...prev, [q.id]: next };
+    });
+
+    setHintsUsed((prev) => ({
+      ...prev,
+      [q.id]: Math.min((prev[q.id] || 0) + 1, Array.isArray(list) ? list.length : 1),
+    }));
+  }
     // Evitar re-selección: si ya existe una respuesta para esta pregunta, no hacer nada
     if (answers[q.id]?.selectedKey != null) {
       return;
@@ -405,7 +459,10 @@ export default function SimulacionDetalle() {
     // calcula correctas desde memoria local
     const correctCount = Object.values(answers).filter((a) => a?.isCorrect).length;
     const total = totalQuestions || 0;
-    const score = total ? Math.round((correctCount / total) * 10000) / 100 : 0; // 2 decimales
+    const base = total ? (correctCount / total) * 100 : 0;
+    const hintCount = Object.values(hintsUsed).reduce((a, b) => a + (b || 0), 0);
+    const penalty = hintCount * HINT_PENALTY_POINTS;
+    const score = Math.max(0, Math.round(base - penalty));
 
     try {
       const { error: updErr } = await supabase
@@ -469,6 +526,7 @@ export default function SimulacionDetalle() {
       <div className="min-h-screen bg-slate-50 text-slate-900">
         <Navbar />
         <main className="max-w-6xl mx-auto px-5 py-6 mt-2">
+          <PrebriefBanner objective={brief?.learning_objective || brief?.title || scenario?.title} />
           {/* CABECERA BRIEFING */}
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-slate-900">{brief?.title || scenario?.title}</h1>
@@ -619,6 +677,30 @@ export default function SimulacionDetalle() {
             </div>
           </CaseCard>
 
+          {/* Acciones críticas del caso */}
+          <CaseCard title="Acciones críticas del caso">
+            <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
+              {(brief?.critical_actions || []).map((r, i) => (
+                <li key={i} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">⚠️ {r}</li>
+              ))}
+              {!brief?.critical_actions?.length && (
+                <li className="text-slate-500">—</li>
+              )}
+            </ul>
+          </CaseCard>
+
+          {/* Competencias del escenario */}
+          <CaseCard title="Competencias del escenario">
+            <ul className="grid sm:grid-cols-3 gap-2 text-sm text-slate-700">
+              {(brief?.competencies || []).map((c, i) => (
+                <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{c}</li>
+              ))}
+              {!brief?.competencies?.length && (
+                <li className="text-slate-500">—</li>
+              )}
+            </ul>
+          </CaseCard>
+
           {/* Barra de inicio */}
           <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">
             <div className="text-sm text-slate-600">
@@ -650,7 +732,10 @@ export default function SimulacionDetalle() {
             {(() => {
               const correctCount = Object.values(answers).filter((a) => a?.isCorrect).length;
               const total = totalQuestions || 0;
-              const score = total ? Math.round((correctCount / total) * 100) : 0;
+              const base = total ? (correctCount / total) * 100 : 0;
+              const hintCount = Object.values(hintsUsed).reduce((a, b) => a + (b || 0), 0);
+              const penalty = hintCount * HINT_PENALTY_POINTS;
+              const score = Math.max(0, Math.round(base - penalty));
               return (
                 <div className="mb-4 flex items-center justify-between gap-4">
                   <div>
@@ -665,8 +750,38 @@ export default function SimulacionDetalle() {
                       <div className="mt-1 text-sm text-slate-600">
                         {correctCount}/{total} correctas
                       </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Penalización por pistas: {Object.values(hintsUsed).reduce((a,b)=>a+(b||0),0) * HINT_PENALTY_POINTS} puntos
+                      </div>
                     </div>
                   </div>
+                </div>
+              );
+            })()}
+
+            {/* Resultado de preguntas críticas */}
+            {(() => {
+              const allQs = steps.flatMap((s) => s.questions || []);
+              const crit = allQs.filter(q => q.is_critical);
+              if (!crit.length) return null;
+              const failed = crit.filter(q => !(answers[q.id]?.isCorrect));
+              return (
+                <div className={`rounded-xl border p-4 ${failed.length ? "border-amber-300 bg-amber-50" : "border-emerald-300 bg-emerald-50"}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">
+                      {failed.length ? "Preguntas críticas falladas" : "Todas las preguntas críticas superadas"}
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      {crit.length - failed.length}/{crit.length} superadas
+                    </div>
+                  </div>
+                  {failed.length > 0 && (
+                    <ul className="mt-2 list-disc pl-5 text-sm text-slate-800">
+                      {failed.map(q => (
+                        <li key={q.id}>{q.text}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               );
             })()}
@@ -683,8 +798,13 @@ export default function SimulacionDetalle() {
                 const correcto = !!saved.isCorrect;
 
                 return (
-                  <article key={q.id} className="rounded-xl border border-slate-200 p-4">
+                  <article key={q.id} className={`rounded-xl border p-4 ${q.is_critical ? "border-amber-300 bg-amber-50/30" : "border-slate-200"}`}>
                     <p className="font-medium">{q.text}</p>
+                    {q.is_critical && (
+                      <div className="mt-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                        ⚠️ Pregunta crítica
+                      </div>
+                    )}
 
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div
@@ -855,6 +975,35 @@ export default function SimulacionDetalle() {
                     return (
                       <article key={q.id} className="rounded-xl border border-slate-200 p-4">
                         <p className="font-medium">{q.text}</p>
+                        {q.time_limit ? (
+                          <div className="mt-2 inline-flex items-center gap-2 text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200" title="Pregunta con urgencia">
+                            ⏱️ Límite recomendado: {q.time_limit}s
+                          </div>
+                        ) : null}
+                        {/* Botón de pista */}
+                        {(() => {
+                          let list = q.hints;
+                          if (typeof list === "string") { try { list = JSON.parse(list); } catch { list = []; } }
+                          const availableHints = Array.isArray(list) ? list : [];
+                          const used = hintsUsed[q.id] || 0;
+                          const canAsk = availableHints.length > 0 && used < availableHints.length && answers[q.id]?.selectedKey == null && !(timeUp || (remainingSecs !== null && remainingSecs <= 0));
+                          return (
+                            <div className="mt-3 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => requestHint(q)}
+                                disabled={!canAsk}
+                                className="text-xs px-2 py-1 rounded-lg border border-slate-300 disabled:opacity-40 hover:bg-slate-50"
+                                title={canAsk ? `Pedir pista (−${HINT_PENALTY_POINTS} puntos a la nota)` : "Pista no disponible"}
+                              >
+                                Pedir pista
+                              </button>
+                              { (revealedHints[q.id] || []).length > 0 && (
+                                <span className="text-xs text-slate-600">Pistas usadas: {(revealedHints[q.id] || []).length}/{availableHints.length}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <div className="mt-3 space-y-2">
                           {opts.map((o, idx) => {
                             const checked = selectedKey === o.key;
@@ -887,6 +1036,18 @@ export default function SimulacionDetalle() {
                             );
                           })}
                         </div>
+                        {/* Pistas reveladas */}
+                        { (revealedHints[q.id] || []).length > 0 && (
+                          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 text-sky-900 px-3 py-2 text-sm">
+                            <div className="font-medium mb-1">Pistas</div>
+                            <ul className="list-disc pl-5">
+                              {revealedHints[q.id].map((h, i) => (
+                                <li key={i}>{h}</li>
+                              ))}
+                            </ul>
+                            <div className="mt-2 text-xs text-sky-800">Cada pista resta {HINT_PENALTY_POINTS} puntos de la nota final.</div>
+                          </div>
+                        )}
 
                         {selectedKey != null && (
                           <div
