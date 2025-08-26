@@ -101,6 +101,32 @@ function ScoreDonut({ score = 0, size = 84 }) {
   );
 }
 
+function CaseCard({ title, children }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 mb-5 shadow-sm">
+      {title && <h3 className="text-sm font-semibold text-slate-600 mb-3">{title}</h3>}
+      {children}
+    </section>
+  );
+}
+
+function Chip({ children }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600 bg-slate-50">
+      {children}
+    </span>
+  );
+}
+
+function Row({ label, value, alert }) {
+  return (
+    <div className="flex justify-between py-1">
+      <span className="text-slate-500">{label}</span>
+      <span className={alert ? "font-semibold text-rose-600" : "font-medium text-slate-800"}>{value}</span>
+    </div>
+  );
+}
+
 export default function SimulacionDetalle() {
   const { id } = useParams(); // id de scenarios (int)
   const navigate = useNavigate();
@@ -114,6 +140,8 @@ export default function SimulacionDetalle() {
 
   // Escenario + pasos + preguntas
   const [scenario, setScenario] = useState(null);
+  const [brief, setBrief] = useState(null);
+  const [showBriefing, setShowBriefing] = useState(false);
   const [steps, setSteps] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [rol, setRol] = useState("");
@@ -220,6 +248,25 @@ export default function SimulacionDetalle() {
         return;
       }
       setScenario(esc);
+      // Cargar briefing del caso (Pantalla 0)
+      try {
+        const { data: b, error: bErr } = await supabase
+          .from("case_briefs")
+          .select("*")
+          .eq("scenario_id", esc.id)
+          .maybeSingle();
+        if (!bErr && b) {
+          setBrief(b);
+          setShowBriefing(true);
+        } else {
+          setBrief(null);
+          setShowBriefing(false);
+        }
+      } catch (e) {
+        console.warn("[SimulacionDetalle] error cargando briefing:", e);
+        setBrief(null);
+        setShowBriefing(false);
+      }
 
       // Cargar pasos
       const { data: st, error: e2 } = await supabase
@@ -412,6 +459,183 @@ export default function SimulacionDetalle() {
             Ir al inicio
           </a>
         </div>
+      </div>
+    );
+  }
+
+  // Early render: Briefing Pantalla 0
+  if (!showSummary && showBriefing) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900">
+        <Navbar />
+        <main className="max-w-6xl mx-auto px-5 py-6 mt-2">
+          {/* CABECERA BRIEFING */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold text-slate-900">{brief?.title || scenario?.title}</h1>
+            {brief?.context && <p className="text-slate-600 mt-1">{brief.context}</p>}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {(Array.isArray(brief?.chips) ? brief.chips : []).map((c, i) => (
+                <Chip key={i}>{c}</Chip>
+              ))}
+            </div>
+          </div>
+
+          {/* Datos del paciente */}
+          <CaseCard title="Datos del paciente">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                {brief?.demographics?.age && <Row label="Edad" value={brief.demographics.age} />}
+                {brief?.demographics?.weightKg != null && (
+                  <Row label="Peso" value={`${brief.demographics.weightKg} kg`} />
+                )}
+                {brief?.demographics?.sex && <Row label="Sexo" value={brief.demographics.sex} />}
+                {brief?.chief_complaint && <Row label="Motivo" value={brief.chief_complaint} />}
+              </div>
+              <div>
+                <ul className="list-disc pl-5 text-sm text-slate-700">
+                  {(brief?.history || []).map((h, i) => (
+                    <li key={i}>{h}</li>
+                  ))}
+                  {!brief?.history?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </CaseCard>
+
+          {/* Triángulo pediátrico */}
+          <CaseCard title="Triángulo de evaluación pediátrica">
+            <div className="grid grid-cols-3 gap-3 text-center">
+              {(["appearance", "breathing", "circulation"]).map((k) => {
+                const v = brief?.triangle?.[k];
+                const clr = v === "red"
+                  ? "bg-rose-100 text-rose-700 border-rose-200"
+                  : v === "amber"
+                  ? "bg-amber-100 text-amber-700 border-amber-200"
+                  : "bg-emerald-100 text-emerald-700 border-emerald-200";
+                const label = k === "appearance" ? "Apariencia" : k === "breathing" ? "Respiración" : "Circulación";
+                return (
+                  <div key={k} className={`rounded-xl border p-4 ${v ? clr : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                    <div className="text-sm">{label}</div>
+                    <div className="text-lg font-semibold capitalize">{v || "—"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </CaseCard>
+
+          {/* Constantes y Exploración */}
+          <CaseCard title="Constantes y exploración">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-200 p-4">
+                <Row label="FC" value={brief?.vitals?.fc != null ? `${brief.vitals.fc} lpm` : "—"} alert={brief?.vitals?.fc > 170} />
+                <Row label="FR" value={brief?.vitals?.fr != null ? `${brief.vitals.fr} rpm` : "—"} />
+                <Row label="SatO₂" value={brief?.vitals?.sat != null ? `${brief.vitals.sat} %` : "—"} alert={brief?.vitals?.sat < 92} />
+                <Row label="Tª" value={brief?.vitals?.temp != null ? `${brief.vitals.temp} ºC` : "—"} />
+                {Array.isArray(brief?.vitals?.notes) && brief.vitals.notes.length > 0 && (
+                  <ul className="list-disc pl-5 mt-2 text-sm text-slate-700">
+                    {brief.vitals.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-200 p-4">
+                <ul className="list-disc pl-5 text-sm text-slate-700">
+                  {(brief?.exam || []).map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                  {!brief?.exam?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </CaseCard>
+
+          {/* Pruebas complementarias */}
+          <CaseCard title="Pruebas complementarias">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-600 mb-2">Analítica rápida</h4>
+                <ul className="text-sm text-slate-700">
+                  {(brief?.quick_labs || []).map((q, i) => (
+                    <li key={i} className="flex justify-between border-b py-1">
+                      <span>{q.name}</span>
+                      <span className="font-medium">{q.value}</span>
+                    </li>
+                  ))}
+                  {!brief?.quick_labs?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-600 mb-2">Imagen</h4>
+                <ul className="text-sm text-slate-700">
+                  {(brief?.imaging || []).map((im, i) => (
+                    <li key={i} className="flex justify-between border-b py-1">
+                      <span>{im.name}</span>
+                      <span className="font-medium">{im.status === "ordered" ? "Solicitada" : "Disponible"}</span>
+                    </li>
+                  ))}
+                  {!brief?.imaging?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </CaseCard>
+
+          {/* Timeline */}
+          <CaseCard title="Timeline">
+            <ol className="text-sm text-slate-700">
+              {(brief?.timeline || []).map((t, i) => (
+                <li key={i} className="py-1">{t.tmin}’ · {t.event}</li>
+              ))}
+              {!brief?.timeline?.length && <li className="text-slate-500">—</li>}
+            </ol>
+          </CaseCard>
+
+          {/* Red flags */}
+          <CaseCard title="Banderas rojas">
+            <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
+              {(brief?.red_flags || []).map((r, i) => (
+                <li key={i} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">{r}</li>
+              ))}
+              {!brief?.red_flags?.length && <li className="text-slate-500">—</li>}
+            </ul>
+          </CaseCard>
+
+          {/* Objetivos por rol */}
+          <CaseCard title="Objetivos por rol">
+            <div className="grid sm:grid-cols-3 gap-4">
+              {["MED", "NUR", "PHARM"].map((role) => (
+                <div key={role}>
+                  <div className="text-xs font-semibold text-slate-500 mb-2">
+                    {role === "MED" ? "Médico" : role === "NUR" ? "Enfermería" : "Farmacia"}
+                  </div>
+                  <ul className="list-disc pl-5 text-sm text-slate-700">
+                    {(brief?.objectives?.[role] || []).map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                    {!((brief?.objectives?.[role] || []).length) && <li className="text-slate-500">—</li>}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </CaseCard>
+
+          {/* Barra de inicio */}
+          <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">
+            <div className="text-sm text-slate-600">
+              <span className="font-medium text-slate-900">{scenario?.title}</span>
+              <span className="mx-2">·</span>
+              <span>{brief?.level === "intermediate" ? "Nivel intermedio" : brief?.level === "advanced" ? "Nivel avanzado" : "Nivel básico"}</span>
+              <span className="mx-2">·</span>
+              <span>~{brief?.estimated_minutes ?? scenario?.estimated_minutes ?? 10} min</span>
+            </div>
+            <button
+              onClick={() => setShowBriefing(false)}
+              className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90"
+            >
+              Comenzar simulación
+            </button>
+          </div>
+        </main>
       </div>
     );
   }
