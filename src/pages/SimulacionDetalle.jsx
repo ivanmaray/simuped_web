@@ -148,7 +148,7 @@ function PrebriefBanner({ objective }) {
       <div className="flex items-start gap-4">
         <div className="shrink-0 w-10 h-10 rounded-full bg-slate-900 text-white grid place-items-center">ℹ️</div>
         <div className="flex-1">
-          <h3 className="text-base font-semibold text-slate-900">Pre-brief · Contrato psicológico</h3>
+          <h3 className="text-base font-semibold text-slate-900">Introducción</h3>
           <p className="text-sm text-slate-600 mt-1">
             Este es un entorno seguro de aprendizaje. Puedes equivocarte: lo importante es el proceso y el razonamiento clínico.
           </p>
