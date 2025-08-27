@@ -1,83 +1,222 @@
-// src/components/ProtectedRoute.jsx
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+// src/pages/Pendiente.jsx
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import Navbar from "../components/Navbar.jsx";
 
-export default function ProtectedRoute({ children }) {
+export default function Pendiente() {
   const navigate = useNavigate();
-  const location = useLocation();
 
-  const [ready, setReady] = useState(false);
-  const [hasSession, setHasSession] = useState(false);
-  const [emailConfirmed, setEmailConfirmed] = useState(false);
-  const [approved, setApproved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState("");
+  const [verified, setVerified] = useState(false);
+  const [approved, setApproved] = useState(null); // true/false/null
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const tries = useRef(0);
+  const pollTimer = useRef(null);
+  const didFirstRefresh = useRef(false);
 
   useEffect(() => {
-    let mounted = true;
-
     (async () => {
-      // 1) Sesión
-      const { data: sesRes } = await supabase.auth.getSession();
-      const sess = sesRes?.session || null;
-      if (!mounted) return;
-      setHasSession(!!sess);
-
-      if (!sess) {
-        setReady(true);
-        // No hay sesión → si no ya estamos en inicio, vete a inicio
-        if (location.pathname !== "/") {
-          navigate("/", { replace: true });
+      setLoading(true);
+      // Primer refresh de sesión al aterrizar (por si venimos del enlace de verificación)
+      try {
+        if (!didFirstRefresh.current) {
+          await supabase.auth.refreshSession();
+          didFirstRefresh.current = true;
         }
-        return;
+      } catch (e) {
+        console.warn("[Pendiente] refreshSession inicial falló:", e);
       }
 
-      // 2) Usuario (verificación email)
-      const { data: usrRes } = await supabase.auth.getUser();
-      const user = usrRes?.user || null;
-      if (!mounted) return;
-      const confirmed = !!user?.email_confirmed_at;
-      setEmailConfirmed(confirmed);
+      await refreshStates();
+      setLoading(false);
 
-      // 3) Aprobación en profiles
-      let isApproved = false;
-      if (user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("approved")
-          .eq("id", user.id)
-          .maybeSingle();
-        isApproved = !!prof?.approved;
-      }
-      if (!mounted) return;
-      setApproved(isApproved);
-
-      setReady(true);
-
-      // 4) Redirecciones de acceso
-      const isOnPending = location.pathname.startsWith("/pendiente");
-      if (!confirmed || !isApproved) {
-        // Si no está verificado/aprobado y no estamos ya en /pendiente, redirige
-        if (!isOnPending) navigate("/pendiente", { replace: true });
-        return;
-      }
-
-      // Si está todo ok y está en /pendiente, muévelo al dashboard
-      if (isOnPending) navigate("/dashboard", { replace: true });
+      // Autopoll hasta 60s (15 intentos cada 4s)
+      clearInterval(pollTimer.current);
+      pollTimer.current = setInterval(async () => {
+        tries.current += 1;
+        if (tries.current > 15) {
+          clearInterval(pollTimer.current);
+          return;
+        }
+        await refreshStates();
+      }, 4000);
     })();
 
-    return () => { mounted = false; };
-  }, [location.pathname, navigate]);
+    return () => clearInterval(pollTimer.current);
+  }, []);
 
-  if (!ready) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-slate-600">Cargando…</div>
-      </div>
-    );
+  async function refreshStates() {
+    try {
+      setErrorMsg("");
+      setChecking(true);
+
+      // 1) Usuario actual (email / verificado)
+      const { data: userRes, error: uErr } = await supabase.auth.getUser();
+      if (uErr) {
+        console.warn("[Pendiente] getUser error:", uErr);
+      }
+      const user = userRes?.user || null;
+
+      // Si no hay sesión (p.ej. email no verificado y Auth bloquea login), intenta mostrar email recordado
+      if (!user) {
+        const pendingEmail = localStorage.getItem('pending_email') || '';
+        setEmail(pendingEmail);
+        setUserId("");
+        setVerified(false);
+        setApproved(null);
+        setChecking(false);
+        return;
+      }
+
+      setEmail(user.email || "");
+      setUserId(user.id || "");
+      const isVerified = !!user.email_confirmed_at;
+      setVerified(isVerified);
+
+      // 2) Approved en profiles (preferir id; fallback por email si hubiese desajuste)
+      let prof = null;
+      let pErr = null;
+
+      const byId = await supabase
+        .from("profiles")
+        .select("id, email, approved, updated_at")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      pErr = byId.error; prof = byId.data;
+
+      if (pErr || !prof) {
+        console.warn("[Pendiente] profiles by id no encontrado o error, probando por email", pErr);
+        const byEmail = await supabase
+          .from("profiles")
+          .select("id, email, approved, updated_at")
+          .eq("email", user.email)
+          .maybeSingle();
+        pErr = byEmail.error; prof = byEmail.data;
+      }
+
+      if (pErr) {
+        console.warn("[Pendiente] profiles select error:", pErr);
+        setApproved(null);
+      } else {
+        setApproved(!!prof?.approved);
+      }
+
+      // 3) Redirigir si todo OK
+      if (isVerified && prof?.approved) {
+        navigate("/dashboard", { replace: true });
+      }
+    } catch (e) {
+      console.error("[Pendiente] refreshStates excepción:", e);
+      setErrorMsg(e.message || "No se pudo comprobar el estado actualmente.");
+    } finally {
+      setChecking(false);
+    }
   }
 
-  if (!hasSession) return null; // ya navegamos a inicio
+  async function handleCheckNow() {
+    setChecking(true);
+    try {
+      await supabase.auth.refreshSession();
+      await refreshStates();
+    } catch (e) {
+      console.error("[Pendiente] checkNow error:", e);
+      setErrorMsg("No se pudo actualizar la sesión.");
+    } finally {
+      setChecking(false);
+    }
+  }
 
-  // Si llega aquí, tiene sesión y está verificado + aprobado, o está en pending y ya se redirigió
-  return children;
+  async function handleResend() {
+    try {
+      const target = email || localStorage.getItem('pending_email') || '';
+      if (!target) return;
+      await supabase.auth.resend({ type: 'signup', email: target });
+      alert('Hemos reenviado el correo de verificación. Revisa tu bandeja y spam.');
+    } catch (e) {
+      console.error('[Pendiente] resend error:', e);
+      alert('No se pudo reenviar el correo ahora.');
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <Navbar variant="public" />
+      <main className="max-w-3xl mx-auto px-5 py-10">
+        <h1 className="text-2xl md:text-3xl font-bold mb-2">Cuenta pendiente de aprobación</h1>
+        <p className="text-slate-600 mb-6">
+          Hemos recibido tu solicitud. Un administrador revisará tu cuenta.
+        </p>
+
+        {errorMsg && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-800 px-4 py-2 text-sm">
+            {errorMsg}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-xs text-slate-500">Verificación de email</div>
+                <div className="mt-1 text-slate-800">
+                  {email ? <span className="font-medium">{email}</span> : "—"}
+                  <div className="text-xs text-slate-500">{userId ? `UID: ${userId}` : ''}</div>
+                </div>
+              </div>
+              <div className={`text-lg ${verified ? "text-emerald-600" : "text-rose-600"}`}>
+                {verified ? "✔ Verificado" : "❌ No verificado"}
+              </div>
+            </div>
+            {!verified && (
+              <div className="mt-3 text-sm text-slate-600 space-y-2">
+                <p>Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el enlace, pulsa “Comprobar ahora”.</p>
+                <button onClick={handleResend} className="text-[#1a69b8] underline">Reenviar verificación</button>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500">Aprobación de administrador</div>
+                <div className="mt-1 text-slate-800">{approved === null ? "—" : approved ? "Aprobado" : "Pendiente"}</div>
+              </div>
+              <div className={`text-lg ${approved ? "text-emerald-600" : "text-amber-600"}`}>
+                {approved ? "✔" : "—"}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCheckNow}
+            disabled={checking || loading}
+            className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {checking ? "Comprobando…" : "Comprobar ahora"}
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => { try { await supabase.auth.signOut({ scope: "global" }); } finally { navigate("/", { replace: true }); } }}
+            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:opacity-95"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-500 mt-4">
+          Esta página se actualiza automáticamente durante unos segundos tras confirmar el correo.
+        </p>
+      </main>
+    </div>
+  );
 }
