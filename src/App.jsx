@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import logo from './assets/logo.png'
 import Navbar from "./components/Navbar.jsx"
@@ -31,9 +31,16 @@ export default function App() {
 
       if (error) {
         const msg = (error.message || '').toLowerCase();
+        const notConfirmed =
+          error.code === 'email_not_confirmed' ||
+          msg.includes('email not confirmed') ||
+          msg.includes('confirm your email') ||
+          msg.includes('email no verificado') ||
+          msg.includes('no verificado') ||
+          msg.includes('confirma tu correo');
 
-        // Si el email no está confirmado, redirige a /pendiente
-        if (msg.includes('email not confirmed')) {
+        if (notConfirmed) {
+          try { localStorage.setItem('pending_email', email); } catch {}
           navigate('/pendiente?reason=email', { replace: true });
           return;
         }
@@ -122,6 +129,7 @@ useEffect(() => {
                 type="email"
                 required
                 placeholder="Email"
+                autoComplete="username"
                 className="px-3 py-2 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-[rgb(31,206,209)]"
               />
               <input
@@ -129,6 +137,7 @@ useEffect(() => {
                 type="password"
                 required
                 placeholder="Contraseña"
+                autoComplete="current-password"
                 className="px-3 py-2 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-[rgb(31,206,209)]"
               />
               {errorMsg && (
@@ -143,13 +152,13 @@ useEffect(() => {
                 {loading ? 'Entrando…' : 'Entrar'}
               </button>
               <p className="text-xs text-slate-500">
-                * Los usuarios los crea el administrador.
+                * Los usuarios han de ser aprobados por el administrador.
               </p>
               <p className="text-sm text-slate-700">
                 ¿No tienes cuenta?{" "}
-                <a href="/registro" className="text-[rgb(26,105,184)] hover:underline">
+                <Link to="/registro" className="text-[rgb(26,105,184)] hover:underline">
                   Solicita acceso
-                </a>
+                </Link>
                 .
               </p>
             </form>
@@ -217,6 +226,10 @@ useEffect(() => {
             <strong> uso seguro del medicamento</strong> (prescripción, validación y administración) a lo largo de los escenarios.
           </p>
 
+          <p className="text-base text-slate-700 leading-relaxed max-w-3xl mx-auto text-center mt-4">
+            Este trabajo ha sido reconocido con el <strong>Primer Premio en la 5ª edición del PharmaChallenge</strong>, organizado por Bayer, lo que avala su carácter innovador y su impacto en la práctica clínica.
+          </p>
+
           {/* Dos líneas del proyecto */}
           <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
             <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm">
@@ -247,8 +260,8 @@ useEffect(() => {
             <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.teal + '20', borderColor: colors.teal }}>Uso seguro del medicamento</span>
             <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.coral + '20', borderColor: colors.coral }}>Medicamentos de alto riesgo</span>
             <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.blue + '14', borderColor: colors.blue }}>Prescripción</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.cyan + '14', borderColor: colors.cyan }}>Administración</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.apricot + '33', borderColor: colors.apricot }}>Validación</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.cyan + '14', borderColor: colors.cyan }}>Administración de medicamentos</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.apricot + '33', borderColor: colors.apricot }}>Validación farmacéutica</span>
           </div>
         </div>
       </section>
