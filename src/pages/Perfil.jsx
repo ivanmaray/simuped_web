@@ -228,12 +228,8 @@ export default function Perfil() {
       updated_at: new Date().toISOString(),
     };
 
-    // Log para depuración de tipos enviados
-    console.log("[Perfil] update payload types:", {
-      rol: [payload.rol, typeof payload.rol],
-      unidad: [payload.unidad, typeof payload.unidad],
-      areas_interes: [payload.areas_interes, typeof payload.areas_interes],
-    });
+    // Log para depuración de tipos enviados y payload
+    console.log("[Perfil] payload enviado:", payload);
 
     // UPDATE en vez de UPSERT para no chocar con RLS de INSERT
     const { error } = await supabase
@@ -256,6 +252,7 @@ export default function Perfil() {
         msg.includes("profiles_dni_check") ||
         msg.includes("dni")
       ) {
+        // Solo mostrar error específico de DNI si el código de error menciona profiles_dni_check o dni
         setDniError("El DNI no cumple el formato requerido por el sistema.");
       } else if (
         msg.includes("profiles_rol_check") ||
