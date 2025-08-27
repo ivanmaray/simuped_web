@@ -8,7 +8,6 @@ const COLORS = {
   primary: "#1a69b8",
 };
 
-
 const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
 
 // Helpers seguros para JSON (compatibles si la columna es TEXT o JSONB)
@@ -57,7 +56,6 @@ function validarDNI(v) {
   const expected = letters[parseInt(num, 10) % 23];
   return expected === letter;
 }
-
 
 export default function Perfil() {
   const navigate = useNavigate();
@@ -216,13 +214,13 @@ export default function Perfil() {
       return;
     }
 
+    // Payload SOLO con campos editables (sin id)
     const payload = {
-      id: session.user.id, // PK coincide con auth.users.id
       nombre: nombre.trim(),
       apellidos: apellidos.trim(),
       dni: dniNorm,
-      rol,                 // texto en minúsculas (medico|enfermeria|farmacia)
-      unidad,              // Farmacia|UCI|Urgencias
+      rol,                 // 'medico' | 'enfermeria' | 'farmacia'
+      unidad,              // Farmacia | UCI | Urgencias
       // Guardamos como array si es jsonb, si no como string JSON
       areas_interes: isAreasJsonb
         ? (Array.isArray(areasInteres) ? areasInteres : [])
@@ -231,17 +229,23 @@ export default function Perfil() {
     };
 
     // Log para depuración de tipos enviados
-    console.log("[Perfil] upsert payload types:", {
+    console.log("[Perfil] update payload types:", {
       rol: [payload.rol, typeof payload.rol],
       unidad: [payload.unidad, typeof payload.unidad],
       areas_interes: [payload.areas_interes, typeof payload.areas_interes],
     });
 
-    const { error } = await supabase.from("profiles").upsert(payload);
+    // UPDATE en vez de UPSERT para no chocar con RLS de INSERT
+    const { error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", session.user.id)
+      .select()
+      .single();
 
     setSaving(false);
     if (error) {
-      console.error("[Perfil] upsert error:", error);
+      console.error("[Perfil] update error:", error);
       setOkMsg("");
       // Mensajes más claros según constraint o columna
       const code = error.code || "";
@@ -382,9 +386,9 @@ export default function Perfil() {
                 }}
                 placeholder="12345678A"
               />
-            {dniError && (
-              <p className="text-xs text-red-600 mt-1">{dniError}</p>
-            )}
+              {dniError && (
+                <p className="text-xs text-red-600 mt-1">{dniError}</p>
+              )}
             </label>
           </div>
 
@@ -394,8 +398,8 @@ export default function Perfil() {
             <div className="flex flex-wrap gap-2">
               {[
                 { value: "medico", label: "Médico" },
-                { value: "enfermera", label: "Enfermera" },
-                { value: "farmaceutico", label: "Farmacéutico" },
+                { value: "enfermeria", label: "Enfermería" },
+                { value: "farmacia", label: "Farmacia" },
               ].map((r) => {
                 const active = rol === r.value;
                 return (
