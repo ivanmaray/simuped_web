@@ -13,7 +13,24 @@ function normalizarDNI(v) {
 }
 function validarDNI(v) {
   const dni = normalizarDNI(v);
-  return /^[XYZ]?\d{7,8}[A-Z]$/.test(dni);
+  // Formatos válidos básicos
+  const isDNI = /^\d{8}[A-Z]$/.test(dni);
+  const isNIE = /^[XYZ]\d{7}[A-Z]$/.test(dni);
+  if (!isDNI && !isNIE) return false;
+
+  // Número sin la letra
+  let num = dni.slice(0, -1);
+  const letter = dni.slice(-1);
+
+  // Para NIE, X/Y/Z -> 0/1/2
+  if (/^[XYZ]/.test(num)) {
+    const map = { X: "0", Y: "1", Z: "2" };
+    num = map[num[0]] + num.slice(1);
+  }
+
+  const letters = "TRWAGMYFPDXBNJZSQVHLCKE";
+  const expected = letters[parseInt(num, 10) % 23];
+  return expected === letter;
 }
 function validarEmail(v) {
   const s = (v || "").toString().trim().toLowerCase();

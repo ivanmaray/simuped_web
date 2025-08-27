@@ -1,114 +1,200 @@
 // src/pages/Pendiente.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import { useAuth } from "../auth.jsx";
 import Navbar from "../components/Navbar.jsx";
 
 export default function Pendiente() {
-  const { session } = useAuth();
   const navigate = useNavigate();
-  const [emailVerified, setEmailVerified] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState("");
+  const [verified, setVerified] = useState(false);
   const [approved, setApproved] = useState(null); // true/false/null
-  const [checking, setChecking] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  async function fetchStatus() {
-    try {
-      setChecking(true);
+  const tries = useRef(0);
+  const pollTimer = useRef(null);
+  const didFirstRefresh = useRef(false);
 
-      // 1) Refrescar usuario de Auth (trae email_confirmed_at actualizado si volviste del enlace)
-      const { data: { user }, error: uErr } = await supabase.auth.getUser();
-      if (uErr) console.warn("[Pendiente] getUser error:", uErr);
-      const ev = !!user?.email_confirmed_at;
-      setEmailVerified(ev);
-
-      // 2) Si no hay usuario/uid aún, salir dejando approved en null
-      if (!user?.id) {
-        setApproved(null);
-        return;
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      // Primer refresh de sesión al aterrizar (por si venimos del enlace de verificación)
+      try {
+        if (!didFirstRefresh.current) {
+          await supabase.auth.refreshSession();
+          didFirstRefresh.current = true;
+        }
+      } catch (e) {
+        console.warn("[Pendiente] refreshSession inicial falló:", e);
       }
 
-      // 3) Refrescar approved desde profiles
-      const { data, error } = await supabase
+      await refreshStates();
+      setLoading(false);
+
+      // Autopoll hasta 60s (15 intentos cada 4s)
+      clearInterval(pollTimer.current);
+      pollTimer.current = setInterval(async () => {
+        tries.current += 1;
+        if (tries.current > 15) {
+          clearInterval(pollTimer.current);
+          return;
+        }
+        await refreshStates();
+      }, 4000);
+    })();
+
+    return () => clearInterval(pollTimer.current);
+  }, []);
+
+  async function refreshStates() {
+    try {
+      setErrorMsg("");
+      setChecking(true);
+
+      // 1) Usuario actual (email / verificado)
+      const { data: userRes, error: uErr } = await supabase.auth.getUser();
+      if (uErr) {
+        console.warn("[Pendiente] getUser error:", uErr);
+      }
+      const user = userRes?.user || null;
+      if (!user) {
+        navigate("/", { replace: true });
+        return;
+      }
+      setEmail(user.email || "");
+      setUserId(user.id || "");
+      const isVerified = !!user.email_confirmed_at;
+      setVerified(isVerified);
+
+      // 2) Approved en profiles (preferir id; fallback por email si hubiese desajuste)
+      let prof = null;
+      let pErr = null;
+
+      const byId = await supabase
         .from("profiles")
-        .select("approved")
+        .select("id, email, approved, updated_at")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (error) {
-        console.warn("[Pendiente] profiles select error:", error);
+      pErr = byId.error; prof = byId.data;
+
+      if (pErr || !prof) {
+        console.warn("[Pendiente] profiles by id no encontrado o error, probando por email", pErr);
+        const byEmail = await supabase
+          .from("profiles")
+          .select("id, email, approved, updated_at")
+          .eq("email", user.email)
+          .maybeSingle();
+        pErr = byEmail.error; prof = byEmail.data;
+      }
+
+      if (pErr) {
+        console.warn("[Pendiente] profiles select error:", pErr);
         setApproved(null);
       } else {
-        setApproved(!!data?.approved);
+        setApproved(!!prof?.approved);
       }
+
+      // 3) Redirigir si todo OK
+      if (isVerified && prof?.approved) {
+        navigate("/dashboard", { replace: true });
+      }
+    } catch (e) {
+      console.error("[Pendiente] refreshStates excepción:", e);
+      setErrorMsg(e.message || "No se pudo comprobar el estado actualmente.");
     } finally {
       setChecking(false);
     }
   }
 
-  useEffect(() => {
-    fetchStatus();
-    const t = setInterval(fetchStatus, 15000);
-    return () => clearInterval(t);
-  }, [session?.user?.id]);
-
-  // Si ya está todo OK, mandar a dashboard
-  useEffect(() => {
-    if (emailVerified && approved === true) {
-      navigate("/dashboard", { replace: true });
+  async function handleCheckNow() {
+    setChecking(true);
+    try {
+      await supabase.auth.refreshSession();
+      await refreshStates();
+    } catch (e) {
+      console.error("[Pendiente] checkNow error:", e);
+      setErrorMsg("No se pudo actualizar la sesión.");
+    } finally {
+      setChecking(false);
     }
-  }, [emailVerified, approved, navigate]);
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar variant="public" />
-      <main className="max-w-2xl mx-auto px-5 py-12">
-        <h1 className="text-2xl font-semibold text-slate-900">Cuenta pendiente de aprobación</h1>
-        <p className="mt-2 text-slate-700">
+      <main className="max-w-3xl mx-auto px-5 py-10">
+        <h1 className="text-2xl md:text-3xl font-bold mb-2">Cuenta pendiente de aprobación</h1>
+        <p className="text-slate-600 mb-6">
           Hemos recibido tu solicitud. Un administrador revisará tu cuenta.
         </p>
 
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <dt className="text-sm text-slate-500">Verificación de email</dt>
-              <dd className="mt-1">
-                {emailVerified ? "✅ Verificado" : "❌ No verificado"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-slate-500">Aprobación de administrador</dt>
-              <dd className="mt-1">
-                {approved === true ? "✅ Aprobado" : approved === false ? "⏳ Pendiente" : "—"}
-              </dd>
-            </div>
-          </dl>
-
-          <div className="mt-6 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={fetchStatus}
-              disabled={checking}
-              className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-            >
-              {checking ? "Comprobando…" : "Comprobar ahora"}
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await supabase.auth.signOut({ scope: "global" });
-                } finally {
-                  navigate("/", { replace: true });
-                }
-              }}
-              className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:opacity-90"
-            >
-              Cerrar sesión
-            </button>
+        {errorMsg && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-800 px-4 py-2 text-sm">
+            {errorMsg}
           </div>
+        )}
+
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-xs text-slate-500">Verificación de email</div>
+                <div className="mt-1 text-slate-800">
+                  {email ? <span className="font-medium">{email}</span> : "—"}
+                  <div className="text-xs text-slate-500">UID: {userId || "—"}</div>
+                </div>
+              </div>
+              <div className={`text-lg ${verified ? "text-emerald-600" : "text-rose-600"}`}>
+                {verified ? "✔ Verificado" : "❌ No verificado"}
+              </div>
+            </div>
+            {!verified && (
+              <p className="text-sm text-slate-600 mt-3">
+                Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el enlace, pulsa “Comprobar ahora”.
+              </p>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500">Aprobación de administrador</div>
+                <div className="mt-1 text-slate-800">{approved === null ? "—" : approved ? "Aprobado" : "Pendiente"}</div>
+              </div>
+              <div className={`text-lg ${approved ? "text-emerald-600" : "text-amber-600"}`}>
+                {approved ? "✔" : "—"}
+              </div>
+            </div>
+          </section>
         </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCheckNow}
+            disabled={checking || loading}
+            className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {checking ? "Comprobando…" : "Comprobar ahora"}
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => { try { await supabase.auth.signOut({ scope: "global" }); } finally { navigate("/", { replace: true }); } }}
+            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:opacity-95"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-500 mt-4">
+          Esta página se actualiza automáticamente durante unos segundos tras confirmar el correo.
+        </p>
       </main>
     </div>
   );
