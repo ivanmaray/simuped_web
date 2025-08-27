@@ -6,6 +6,7 @@ import { useAuth } from "./auth.jsx";
 export default function ProtectedRoute() {
   const { ready, session, profile } = useAuth();
   const location = useLocation();
+  const isOnPending = location.pathname.startsWith("/pendiente");
 
   // Evitar decidir antes de que el perfil haya tenido oportunidad de cargarse.
   // Damos un “tick” para que el efecto de carga en Auth se complete.
@@ -59,8 +60,14 @@ export default function ProtectedRoute() {
 
   // eslint-disable-next-line no-console
   console.debug("[ProtectedRoute] emailConfirmed:", emailConfirmed, "approved:", approved);
+  // eslint-disable-next-line no-console
+  console.debug("[ProtectedRoute] path:", location.pathname, "isOnPending:", isOnPending);
 
   if (!emailConfirmed || !approved) {
+    // Si ya estamos en /pendiente, no navegamos otra vez (evita bucle/flash)
+    if (isOnPending) {
+      return <Outlet />;
+    }
     return <Navigate to="/pendiente" replace />;
   }
 
