@@ -112,16 +112,32 @@ export default function Registro() {
     console.debug("[Registro] intentando signUp (sin upsert profiles)");
 
     try {
-      // 1) Alta en auth (sin metadata) para evitar triggers/policies raras
+      // 1) Alta en auth incluyendo metadata normalizada y redirect seguro
       const redirectBase =
         import.meta.env.VITE_SITE_URL?.trim() ||
         (typeof window !== "undefined" ? window.location.origin : "");
 
-      // Construimos options de forma segura para no romper si la URL no está permitida en Supabase
-      const signUpOptions = {};
+      // Normaliza el rol del registro (UI) a los 3 roles válidos de la app
+      const roleMap = {
+        pediatra: "medico",
+        enfermera: "enfermeria",
+        farmaceutico: "farmacia",
+      };
+      const rolApi = roleMap[rol] || null;
+
+      // Incluimos metadata para prefilling en Perfil tras el primer login
+      const signUpOptions = {
+        data: {
+          nombre: nombre.trim(),
+          apellidos: apellidos.trim(),
+          dni: dniNorm,
+          rol: rolApi,             // 'medico' | 'enfermeria' | 'farmacia'
+          unidad,
+          areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
+        },
+      };
+
       if (redirectBase) {
-        // Si la URL no está en la lista de Redirect URLs de Supabase, GoTrue puede fallar.
-        // Al incluirla solo si existe, evitamos pasar valores vacíos o incorrectos.
         signUpOptions.emailRedirectTo = `${redirectBase}/pendiente`;
       }
 

@@ -356,47 +356,52 @@ export default function SimulacionDetalle() {
         setShowBriefing(false);
       }
 
-      // Cargar pasos
-      const { data: st, error: e2 } = await supabase
+      // Cargar pasos + preguntas en UNA sola consulta (evita N+1)
+      performance.mark('sim:data:start');
+      const { data: stepsFull, error: relErr } = await supabase
         .from("steps")
-        .select("id, description, step_order, role_specific, roles, narrative")
+        .select(`
+          id, description, step_order, role_specific, roles, narrative,
+          questions:questions (
+            id, question_text, options, correct_option, explanation, roles, is_critical, hints, time_limit
+          )
+        `)
         .eq("scenario_id", esc.id)
         .order("step_order", { ascending: true });
 
-      if (e2) {
-        setErr(e2.message || "Error cargando pasos");
+      if (relErr) {
+        setErr(relErr.message || "Error cargando pasos/preguntas");
         setLoading(false);
         return;
       }
 
-      // Cargar preguntas por paso, filtrando por rol
-      const stepsWithQs = [];
-      for (const s of st || []) {
-        if (!isVisibleForRole(s.roles, userRole)) continue;
-
-        const { data: qs, error: e3 } = await supabase
-          .from("questions")
-          .select("id, text:question_text, options, correct_option, explanation, roles, is_critical, hints, time_limit")
-          .eq("step_id", s.id)
-          .order("id", { ascending: true });
-
-        if (e3) {
-          setErr(e3.message || "Error cargando preguntas");
-          setLoading(false);
-          return;
-        }
-
-        const qsFiltered = (qs || []).filter((q) => isVisibleForRole(q.roles, userRole));
-
-        stepsWithQs.push({
-          ...s,
-          questions: qsFiltered.map((q, i) => ({
-            ...q,
-            _options: normalizeOptions(q.options),
-          })),
+      const stepsWithQs = (stepsFull || [])
+        .filter((s) => isVisibleForRole(s.roles, userRole))
+        .map((s) => {
+          const qs = (s.questions || [])
+            .filter((q) => isVisibleForRole(q.roles, userRole))
+            .map((q) => ({
+              id: q.id,
+              text: q.question_text, // alias local para mantener el resto del componente
+              options: q.options,
+              correct_option: q.correct_option,
+              explanation: q.explanation,
+              roles: q.roles,
+              is_critical: q.is_critical,
+              hints: q.hints,
+              time_limit: q.time_limit,
+              _options: normalizeOptions(q.options),
+            }));
+          return { ...s, questions: qs };
         });
-      }
+
       setSteps(stepsWithQs);
+      performance.mark('sim:data:end');
+      try {
+        performance.measure('sim:data:steps+questions', 'sim:data:start', 'sim:data:end');
+        const m = performance.getEntriesByName('sim:data:steps+questions')[0];
+        if (m) console.log('[Perf] steps+questions ms =', Math.round(m.duration));
+      } catch {}
       setLoading(false);
     }
 
