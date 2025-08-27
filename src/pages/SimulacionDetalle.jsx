@@ -136,6 +136,11 @@ function Row({ label, value, alert }) {
   );
 }
 
+// Skeleton helper
+function Sk({ w = "100%", h = 12, className = "" }) {
+  return <div className={`animate-pulse bg-slate-200 rounded ${className}`} style={{ width: w, height: h }} />;
+}
+
 
 function PrebriefBanner({ objective }) {
   return (
@@ -186,6 +191,7 @@ export default function SimulacionDetalle() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [showSkeleton, setShowSkeleton] = useState(false);
 
   // Escenario + pasos + preguntas
   const [scenario, setScenario] = useState(null);
@@ -471,6 +477,13 @@ export default function SimulacionDetalle() {
     return () => clearInterval(int);
   }, [currentStep, showSummary]);
 
+  // Skeleton show delay effect
+  useEffect(() => {
+    if (!loading) { setShowSkeleton(false); return; }
+    const t = setTimeout(() => setShowSkeleton(true), 300); // muestra skeleton si tarda >300ms
+    return () => clearTimeout(t);
+  }, [loading]);
+
   // Auto-finalizar cuando se acaba el tiempo (moved to top-level)
   useEffect(() => {
     if (!timeUp || showSummary) return;
@@ -575,9 +588,68 @@ export default function SimulacionDetalle() {
   }
 
   if (loading) {
+    if (!showSkeleton) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="text-slate-600">Cargando…</div>
+        </div>
+      );
+    }
+    // Skeleton page while se cargan pasos + preguntas
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-slate-600">Cargando…</div>
+      <div className="min-h-screen bg-slate-50 text-slate-900">
+        <Navbar />
+        <main className="max-w-6xl mx-auto px-5 py-6 mt-2 grid grid-cols-1 md:grid-cols-4 gap-6">
+          {/* Sidebar skeleton */}
+          <aside className="md:col-span-1">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <Sk w="40%" h={16} className="mb-3" />
+              <div className="space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="px-3 py-2 rounded-lg border border-slate-200">
+                    <Sk w="80%" h={12} />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <Sk w={80} h={32} />
+                <Sk w={80} h={32} />
+              </div>
+            </div>
+          </aside>
+
+          {/* Main skeleton */}
+          <section className="md:col-span-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <Sk w="50%" h={20} />
+                <Sk w={140} h={14} />
+              </div>
+
+              <div className="mt-4 space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="rounded-xl border border-slate-200 p-4">
+                    <Sk w="70%" h={16} className="mb-3" />
+                    <div className="space-y-2">
+                      {[...Array(4)].map((__, j) => (
+                        <div key={j} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100">
+                          <Sk w={16} h={16} className="rounded-full" />
+                          <Sk w="60%" h={12} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 flex items-center gap-2">
+                <Sk w={120} h={40} />
+                <Sk w={160} h={40} />
+                <Sk w={160} h={40} />
+              </div>
+            </div>
+          </section>
+        </main>
       </div>
     );
   }
