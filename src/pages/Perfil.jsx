@@ -77,8 +77,6 @@ export default function Perfil() {
   const [unidad, setUnidad] = useState(""); // Farmacia | UCI | Urgencias
   const [areasInteres, setAreasInteres] = useState([]); // array de strings
   const [categorias, setCategorias] = useState([]); // categories desde Supabase
-  // Nuevo: flag para saber si areas_interes es jsonb
-  const [isAreasJsonb, setIsAreasJsonb] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -140,8 +138,6 @@ export default function Perfil() {
 
       // Normaliza areas_interes (jsonb o TEXT con JSON)
       const rawAI = prof?.areas_interes;
-      const looksJsonb = rawAI && typeof rawAI === "object";
-      setIsAreasJsonb(!!looksJsonb);
       const ai = safeParseJSON(rawAI) || [];
       setAreasInteres(Array.isArray(ai) ? ai : []);
 
@@ -221,10 +217,8 @@ export default function Perfil() {
       dni: dniNorm,
       rol,                 // 'medico' | 'enfermeria' | 'farmacia'
       unidad,              // Farmacia | UCI | Urgencias
-      // Guardamos como array si es jsonb, si no como string JSON
-      areas_interes: isAreasJsonb
-        ? (Array.isArray(areasInteres) ? areasInteres : [])
-        : safeStringifyJSON(Array.isArray(areasInteres) ? areasInteres : []),
+      // Guardamos como jsonb array
+      areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
       updated_at: new Date().toISOString(),
     };
 
@@ -246,28 +240,35 @@ export default function Perfil() {
       // Mensajes más claros según constraint o columna
       const code = error.code || "";
       const msg = (error.message || "").toLowerCase();
-      // PG error 23514: check violation
-      if (
-        code === "23514" ||
-        msg.includes("profiles_dni_check") ||
-        msg.includes("dni")
-      ) {
-        // Solo mostrar error específico de DNI si el código de error menciona profiles_dni_check o dni
-        setDniError("El DNI no cumple el formato requerido por el sistema.");
-      } else if (
-        msg.includes("profiles_rol_check") ||
-        msg.includes("rol")
-      ) {
-        setErrorMsg("Rol inválido. Selecciona un rol permitido.");
-      } else if (
-        msg.includes("profiles_unidad_check") ||
-        msg.includes("unidad")
-      ) {
-        setErrorMsg("Unidad inválida. Selecciona una unidad permitida.");
+
+      // Detectores por constraint/campo
+      const isDniCheck = msg.includes("profiles_dni_check");
+      const isDniUnique = msg.includes("profiles_dni_unique");
+      const isAreasCheck = msg.includes("areas_interes_valid") || msg.includes("areas_interes");
+      const isRolCheck = msg.includes("profiles_rol_check");
+      const isUnidadCheck = msg.includes("profiles_unidad_check");
+
+      // Log crudo para depuración
+      console.error("[Perfil] update failed raw:", error);
+
+      if (code === "23514") {
+        if (isDniCheck) {
+          setDniError("El DNI no cumple el formato requerido por el sistema.");
+        } else if (isAreasCheck) {
+          setErrorMsg("Formato de 'Áreas de interés' no válido. Vuelve a seleccionar las áreas e inténtalo de nuevo.");
+        } else if (isRolCheck) {
+          setErrorMsg("Rol inválido. Selecciona un rol permitido.");
+        } else if (isUnidadCheck) {
+          setErrorMsg("Unidad inválida. Selecciona una unidad permitida.");
+        } else {
+          setErrorMsg("Hay un dato que no cumple las reglas del sistema. Revisa los campos e inténtalo de nuevo.");
+        }
+      } else if (code === "23505" && isDniUnique) {
+        setDniError("Este DNI ya está registrado en otro perfil.");
       } else if (code === "42703" || msg.includes("column")) {
         setErrorMsg("Falta alguna columna en la tabla de perfiles o el tipo no coincide. Revisa el esquema (areas_interes, rol, unidad…).");
       } else {
-        setErrorMsg("Hubo un error al guardar los datos. Inténtalo de nuevo.");
+        setErrorMsg(error.message || "Hubo un error al guardar los datos. Inténtalo de nuevo.");
       }
       return;
     }
