@@ -51,6 +51,8 @@ export default function SimulacionConfirm() {
   const [session, setSession] = useState(null);
   const [perfil, setPerfil] = useState({ nombre: "", rol: "" });
   const [esAdmin, setEsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState(""); // 'medico' | 'enfermeria' | 'farmacia'
+  const [showAllObjectives, setShowAllObjectives] = useState(false);
 
   const [scenario, setScenario] = useState(null);
   const [attemptsCount, setAttemptsCount] = useState(0);
@@ -97,6 +99,12 @@ export default function SimulacionConfirm() {
           rol: prof?.rol ?? (sess.user?.user_metadata?.rol ?? ""),
         });
         setEsAdmin(!!prof?.is_admin); // true si is_admin es true
+        // Normalizar y guardar el rol del usuario para filtrar objetivos
+        let r = (prof?.rol ?? (sess.user?.user_metadata?.rol ?? "")).toString().toLowerCase();
+        if (r.includes("medic")) r = "medico";
+        else if (r.includes("enfer")) r = "enfermeria";
+        else if (r.includes("farm")) r = "farmacia";
+        setUserRole(r);
       }
 
       // 3) Cargar escenario
@@ -315,18 +323,20 @@ export default function SimulacionConfirm() {
         </div>
       </section>
 
-      <main className="max-w-3xl mx-auto px-5 py-10">
+      <main className="max-w-6xl mx-auto px-5 py-10">
 
         {/* PRE-BRIEF GENERAL (reglas, objetivos y evaluación) */}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm mb-6">
           <div className="flex items-start gap-4">
             <div className="shrink-0 w-10 h-10 rounded-full bg-slate-900 text-white grid place-items-center">ℹ️</div>
             <div className="flex-1">
-              <h2 className="text-base font-semibold text-slate-900">Introducción</h2>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Introducción {scenario?.title ? <span className="font-normal text-slate-600">· {scenario.title}</span> : null}
+              </h2>
               <p className="text-sm text-slate-600 mt-1">
                 Este es un entorno seguro de aprendizaje. Puedes equivocarte: lo importante es el proceso y el razonamiento clínico.
               </p>
-              <div className="mt-3 grid sm:grid-cols-3 gap-4">
+              <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 <div>
                   <div className="text-xs font-semibold text-slate-500">Objetivo docente</div>
                   <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
@@ -353,37 +363,79 @@ export default function SimulacionConfirm() {
               </div>
             </div>
           </div>
-          {/* Objetivos por rol */}
+          {/* Objetivos por rol (con filtro por rol del usuario) */}
           <div className="mt-6">
-            <h3 className="text-sm font-semibold text-slate-600 mb-2">Objetivos por rol</h3>
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div>
-                <div className="text-xs font-semibold text-slate-500 mb-1">Médico</div>
-                <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {(brief?.objectives?.MED || []).map((line, i) => <li key={i}>{line}</li>)}
-                  {!((brief?.objectives?.MED || []).length) && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-500 mb-1">Enfermería</div>
-                <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {(brief?.objectives?.NUR || []).map((line, i) => <li key={i}>{line}</li>)}
-                  {!((brief?.objectives?.NUR || []).length) && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-500 mb-1">Farmacia</div>
-                <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {(brief?.objectives?.PHARM || []).map((line, i) => <li key={i}>{line}</li>)}
-                  {!((brief?.objectives?.PHARM || []).length) && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-slate-600">
+                {showAllObjectives
+                  ? "Objetivos por rol"
+                  : userRole
+                    ? `Objetivos de tu rol (${userRole === "medico" ? "Médico" : userRole === "enfermeria" ? "Enfermería" : "Farmacia"})`
+                    : "Objetivos por rol"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAllObjectives(v => !v)}
+                className="text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
+                title={showAllObjectives ? "Ver solo tu rol" : "Ver todos"}
+              >
+                {showAllObjectives ? "Ver solo mi rol" : "Ver todos"}
+              </button>
             </div>
+
+            {(() => {
+              const roleKey =
+                userRole === "medico" ? "MED" :
+                userRole === "enfermeria" ? "NUR" :
+                userRole === "farmacia" ? "PHARM" : null;
+
+              if (!showAllObjectives && roleKey) {
+                const title =
+                  userRole === "medico" ? "Médico" :
+                  userRole === "enfermeria" ? "Enfermería" : "Farmacia";
+                const items = brief?.objectives?.[roleKey] || [];
+                return (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                    <div className="text-xs font-semibold text-slate-500 mb-1">{title}</div>
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {items.length ? items.map((line, i) => <li key={i}>{line}</li>) : <li className="text-slate-500">—</li>}
+                    </ul>
+                  </div>
+                );
+              }
+
+              // Ver todos
+              return (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Médico</div>
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {(brief?.objectives?.MED || []).map((line, i) => <li key={i}>{line}</li>)}
+                      {!((brief?.objectives?.MED || []).length) && <li className="text-slate-500">—</li>}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Enfermería</div>
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {(brief?.objectives?.NUR || []).map((line, i) => <li key={i}>{line}</li>)}
+                      {!((brief?.objectives?.NUR || []).length) && <li className="text-slate-500">—</li>}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Farmacia</div>
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {(brief?.objectives?.PHARM || []).map((line, i) => <li key={i}>{line}</li>)}
+                      {!((brief?.objectives?.PHARM || []).length) && <li className="text-slate-500">—</li>}
+                    </ul>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           {/* Acciones críticas */}
           <div className="mt-6">
             <h3 className="text-sm font-semibold text-slate-600 mb-2">Acciones críticas del caso</h3>
-            <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
+            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-slate-700">
               {(brief?.critical_actions || []).map((r, i) => (
                 <li key={i} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">⚠️ {r}</li>
               ))}
@@ -393,7 +445,7 @@ export default function SimulacionConfirm() {
           {/* Competencias */}
           <div className="mt-6">
             <h3 className="text-sm font-semibold text-slate-600 mb-2">Competencias del escenario</h3>
-            <ul className="grid sm:grid-cols-3 gap-2 text-sm text-slate-700">
+            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-slate-700">
               {(brief?.competencies || []).map((c, i) => (
                 <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{c}</li>
               ))}
