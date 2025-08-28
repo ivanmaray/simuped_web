@@ -96,7 +96,7 @@ export default function AttemptReview() {
 
         {grouped.map((step) => (
           <section key={step.step_id} className="mb-6">
-            <h2 className="text-lg font-semibold mb-2">{step.step_order}. {step.step_title}</h2>
+            <h2 className="text-lg font-semibold mb-2">{step.step_title}</h2>
             <div className="space-y-3">
               {step.items.map((q) => {
                 if (!q?.question_id) return null;
