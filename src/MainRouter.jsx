@@ -11,6 +11,7 @@ import Evaluacion from "./pages/Evaluacion.jsx";
 import Perfil from "./pages/Perfil.jsx";
 import Registro from "./pages/Registro.jsx";
 import Pendiente from "./pages/Pendiente.jsx";
+import AttemptReview from "./pages/AttemptReview.jsx";
 
 function DebugRouteLogger() {
   const location = useLocation();
@@ -35,6 +36,7 @@ export default function MainRouter() {
           <Route path="/simulacion/:id/confirm" element={<SimulacionConfirm />} />
           <Route path="/simulacion/:id" element={<SimulacionDetalle />} />
           <Route path="/evaluacion" element={<Evaluacion />} />
+          <Route path="/evaluacion/attempt/:attemptId" element={<AttemptReview />} />
           <Route path="/perfil" element={<Perfil />} />
         </Route>
 

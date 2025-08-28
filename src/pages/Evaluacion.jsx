@@ -69,12 +69,13 @@ export default function Evaluacion() {
         .maybeSingle();
       setRole(prof?.rol ?? sess.user?.user_metadata?.rol ?? "");
 
-      // Trae intentos del usuario + título del escenario
+      // Trae intentos del usuario + título del escenario + count de preguntas críticas
       const { data: rows, error: e2 } = await supabase
         .from("attempts")
         .select(`
           id, scenario_id, started_at, finished_at, correct_count, total_count, score,
-          scenarios ( title )
+          scenarios ( title ),
+          questions ( id, is_critical )
         `)
         .eq("user_id", sess.user.id)
         .order("started_at", { ascending: false });
@@ -140,6 +141,8 @@ export default function Evaluacion() {
                     <th className="text-left px-4 py-2">Escenario</th>
                     <th className="text-left px-4 py-2">Resultado</th>
                     <th className="text-left px-4 py-2">Estado</th>
+                    <th className="text-left px-4 py-2">Críticas</th>
+                    <th className="text-left px-4 py-2">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -148,12 +151,17 @@ export default function Evaluacion() {
                     const estado = a.finished_at ? "Finalizado" : "En curso";
                     const res = a.finished_at ? `${a.correct_count}/${a.total_count} (${a.score ?? 0}%)` : "—";
                     const title = a.scenarios?.title || `Escenario ${a.scenario_id}`;
+                    const critCount = a.questions?.filter(q => q.is_critical).length || 0;
                     return (
                       <tr key={a.id} className="border-t">
                         <td className="px-4 py-2">{date}</td>
                         <td className="px-4 py-2">{title}</td>
                         <td className="px-4 py-2">{res}</td>
                         <td className="px-4 py-2">{estado}</td>
+                        <td className="px-4 py-2">{critCount}</td>
+                        <td className="px-4 py-2">
+                          <Link to={`/evaluacion/attempt/${a.id}`} className="text-blue-600 underline">Revisar</Link>
+                        </td>
                       </tr>
                     );
                   })}
