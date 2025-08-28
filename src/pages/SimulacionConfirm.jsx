@@ -58,6 +58,9 @@ export default function SimulacionConfirm() {
   const [forceNew, setForceNew] = useState(false);
   const [customMinutes, setCustomMinutes] = useState(15); // solo para admins
 
+  const [brief, setBrief] = useState(null);
+  const [loadingBrief, setLoadingBrief] = useState(true);
+
   useEffect(() => {
     let mounted = true;
 
@@ -119,6 +122,24 @@ export default function SimulacionConfirm() {
         return;
       }
       setScenario(esc);
+
+      // 3b) Cargar case brief (pre-brief general)
+      try {
+        setLoadingBrief(true);
+        const { data: b, error: bErr } = await supabase
+          .from("case_briefs")
+          .select("*")
+          .eq("scenario_id", scenarioId)
+          .maybeSingle();
+        if (bErr) {
+          console.warn("[Confirm] brief error (no bloqueante):", bErr);
+          setBrief(null);
+        } else {
+          setBrief(b || null);
+        }
+      } finally {
+        setLoadingBrief(false);
+      }
 
       // 4) Contar intentos del usuario para este escenario
       const { count, error: cErr } = await supabase
@@ -295,6 +316,92 @@ export default function SimulacionConfirm() {
       </section>
 
       <main className="max-w-3xl mx-auto px-5 py-10">
+
+        {/* PRE-BRIEF GENERAL (reglas, objetivos y evaluación) */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm mb-6">
+          <div className="flex items-start gap-4">
+            <div className="shrink-0 w-10 h-10 rounded-full bg-slate-900 text-white grid place-items-center">ℹ️</div>
+            <div className="flex-1">
+              <h2 className="text-base font-semibold text-slate-900">Introducción</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Este es un entorno seguro de aprendizaje. Puedes equivocarte: lo importante es el proceso y el razonamiento clínico.
+              </p>
+              <div className="mt-3 grid sm:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">Objetivo docente</div>
+                  <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
+                    {brief?.learning_objective
+                      ? <li>{brief.learning_objective}</li>
+                      : <li>{scenario?.title || "Revisión de un caso clínico"}</li>}
+                  </ul>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">Reglas de la simulación</div>
+                  <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
+                    <li>Algunos pasos contienen preguntas <span className="font-medium">críticas</span>.</li>
+                    <li>Puedes pedir <span className="font-medium">pistas</span> (si están disponibles); restan puntuación.</li>
+                    <li>En ciertos pasos verás <span className="font-medium">urgencia</span> y límite de tiempo.</li>
+                  </ul>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">Criterios de evaluación</div>
+                  <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
+                    <li>Nota = % aciertos – penalización por pistas.</li>
+                    <li>Se señalarán las <span className="font-medium">preguntas críticas falladas</span> en el debrief.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Objetivos por rol */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-slate-600 mb-2">Objetivos por rol</h3>
+            <div className="grid sm:grid-cols-3 gap-4">
+              <div>
+                <div className="text-xs font-semibold text-slate-500 mb-1">Médico</div>
+                <ul className="list-disc pl-5 text-sm text-slate-700">
+                  {(brief?.objectives?.MED || []).map((line, i) => <li key={i}>{line}</li>)}
+                  {!((brief?.objectives?.MED || []).length) && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-slate-500 mb-1">Enfermería</div>
+                <ul className="list-disc pl-5 text-sm text-slate-700">
+                  {(brief?.objectives?.NUR || []).map((line, i) => <li key={i}>{line}</li>)}
+                  {!((brief?.objectives?.NUR || []).length) && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-slate-500 mb-1">Farmacia</div>
+                <ul className="list-disc pl-5 text-sm text-slate-700">
+                  {(brief?.objectives?.PHARM || []).map((line, i) => <li key={i}>{line}</li>)}
+                  {!((brief?.objectives?.PHARM || []).length) && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </div>
+          {/* Acciones críticas */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-slate-600 mb-2">Acciones críticas del caso</h3>
+            <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
+              {(brief?.critical_actions || []).map((r, i) => (
+                <li key={i} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">⚠️ {r}</li>
+              ))}
+              {!brief?.critical_actions?.length && <li className="text-slate-500">—</li>}
+            </ul>
+          </div>
+          {/* Competencias */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-slate-600 mb-2">Competencias del escenario</h3>
+            <ul className="grid sm:grid-cols-3 gap-2 text-sm text-slate-700">
+              {(brief?.competencies || []).map((c, i) => (
+                <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{c}</li>
+              ))}
+              {!brief?.competencies?.length && <li className="text-slate-500">—</li>}
+            </ul>
+          </div>
+        </section>
+
         {errorMsg && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
             {errorMsg}

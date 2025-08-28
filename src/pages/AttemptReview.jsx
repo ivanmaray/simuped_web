@@ -19,6 +19,8 @@ export default function AttemptReview() {
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [rows, setRows] = useState([]);
+  const [attemptOrdinal, setAttemptOrdinal] = useState(null); // 1-based position
+  const [attemptTotal, setAttemptTotal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -38,6 +40,32 @@ export default function AttemptReview() {
         .order("step_order", { ascending: true });
       if (error) { setErr(error.message || "Error cargando intento"); setLoading(false); return; }
       setRows(rev || []);
+
+      // Calcular "Intento X de Y" para este escenario y usuario
+      try {
+        const headRow = (rev || [])[0];
+        if (headRow) {
+          const scenarioId = headRow.scenario_id;
+          const userId = data.session.user.id;
+
+          const { data: allAttempts, error: listErr } = await supabase
+            .from("attempts")
+            .select("id, started_at")
+            .eq("user_id", userId)
+            .eq("scenario_id", scenarioId)
+            .order("started_at", { ascending: true });
+
+          if (!listErr && Array.isArray(allAttempts)) {
+            const total = allAttempts.length;
+            const idx = allAttempts.findIndex(a => a.id === attemptId);
+            setAttemptTotal(total);
+            setAttemptOrdinal(idx >= 0 ? idx + 1 : null);
+          }
+        }
+      } catch (e) {
+        console.warn("[AttemptReview] fallo calculando ordinal de intento:", e);
+      }
+
       setLoading(false);
     })();
     return () => { mounted = false; };
@@ -78,7 +106,20 @@ export default function AttemptReview() {
           <div>
             <h1 className="text-2xl font-semibold">Revisión del intento</h1>
             <p className="text-slate-600">
-              {head?.scenario_title} · Intento {String(head?.attempt_id).slice(0,8)}…
+              {head?.scenario_title} ·{" "}
+              {attemptOrdinal && attemptTotal ? (
+                <>Intento {attemptOrdinal} de {attemptTotal}</>
+              ) : (
+                <>Intento</>
+              )}
+              {" "}
+              (<span>{head?.started_at ? new Date(head.started_at).toLocaleString("es-ES", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit"
+              }) : "—"}</span>)
             </p>
           </div>
           <div className="flex items-center gap-3">
