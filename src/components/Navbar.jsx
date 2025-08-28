@@ -5,25 +5,66 @@ import { supabase } from "../supabaseClient";
 import logo from "../assets/logo.png";
 import logoWhite from "../assets/logo-white.png";
 
+// helper for active link styles
+function navLinkClass(isPrivate, active) {
+  const base = isPrivate ? "text-slate-700 hover:text-slate-900" : "text-white hover:text-white/80";
+  const activeCls = isPrivate ? "font-semibold underline underline-offset-4" : "font-semibold";
+  return `${base} ${active ? activeCls : ""}`;
+}
+
 export default function Navbar() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [approved, setApproved] = useState(null);   // null | boolean
+  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
   useEffect(() => {
     let mounted = true;
 
-    // sesión actual
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setSession(data.session ?? null);
-      if (mounted) setLoading(false);
-    });
+    async function loadSessionAndProfile() {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      const sess = data?.session ?? null;
+      setSession(sess);
+      setLoading(false);
 
-    // escuchar cambios (login/logout)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
-      if (mounted) setSession(sess ?? null);
-      if (mounted) setLoading(false);
+      if (sess?.user?.id) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("approved, is_admin")
+          .eq("id", sess.user.id)
+          .maybeSingle();
+        if (!mounted) return;
+        setApproved(prof?.approved ?? null);
+        setIsAdmin(!!prof?.is_admin);
+      } else {
+        setApproved(null);
+        setIsAdmin(false);
+      }
+    }
+
+    loadSessionAndProfile();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
+      if (!mounted) return;
+      setSession(sess ?? null);
+      setLoading(false);
+
+      if (sess?.user?.id) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("approved, is_admin")
+          .eq("id", sess.user.id)
+          .maybeSingle();
+        if (!mounted) return;
+        setApproved(prof?.approved ?? null);
+        setIsAdmin(!!prof?.is_admin);
+      } else {
+        setApproved(null);
+        setIsAdmin(false);
+      }
     });
 
     return () => {
@@ -45,6 +86,7 @@ export default function Navbar() {
 
   const isPrivate = !!session;
   const loginHref = pathname === "/" ? "#login" : "/#login";
+  const isActive = (p) => pathname === p || pathname.startsWith(p + "/");
 
   if (loading) {
     // Puedes devolver null o un placeholder del header para evitar parpadeos
@@ -68,21 +110,15 @@ export default function Navbar() {
         {!isPrivate ? (
           // Navbar público (landing)
           <div className="flex items-center gap-4">
-            <a href="#que-es" className="text-white hover:text-white/80">¿Qué es?</a>
-            <a href="#equipo" className="text-white hover:text-white/80">Equipo</a>
-            <a href="#proyecto" className="text-white hover:text-white/80">Proyecto</a>
-            <a href="#como-participar" className="text-white hover:text-white/80">Participar</a>
+            <a href="#que-es" className={navLinkClass(false, false)}>¿Qué es?</a>
+            <a href="#proyecto" className={navLinkClass(false, false)}>Proyecto</a>
+            <a href="#equipo" className={navLinkClass(false, false)}>Equipo</a>
+            <a href="#como-participar" className={navLinkClass(false, false)}>Participar</a>
             <Link
               to="/registro"
               className="px-3 py-1.5 rounded-lg font-medium bg-white/10 text-white hover:bg-white/20 transition"
             >
               Solicitar acceso
-            </Link>
-            <Link
-              to="/pendiente"
-              className="px-3 py-1.5 rounded-lg font-medium bg-white/10 text-white hover:bg-white/20 transition"
-            >
-              Ya tengo invitación
             </Link>
             <a
               href={loginHref}
@@ -95,14 +131,30 @@ export default function Navbar() {
         ) : (
           // Navbar privado (logueado)
           <div className="flex items-center gap-4">
+            {/* Email + estado */}
             <span
-              className="hidden sm:inline px-2.5 py-1 rounded-full text-sm bg-slate-100 text-slate-700"
+              className="hidden md:inline px-2.5 py-1 rounded-full text-sm bg-slate-100 text-slate-700"
               title={session?.user?.email || ""}
             >
               {session?.user?.email}
             </span>
-            <Link to="/dashboard" className="text-slate-700 hover:text-slate-900">Página Principal</Link>
-            <Link to="/perfil" className="text-slate-700 hover:text-slate-900">Perfil</Link>
+            {approved === false && (
+              <Link
+                to="/pendiente"
+                className="px-2.5 py-1 rounded-full text-xs bg-amber-100 text-amber-800 border border-amber-200"
+                title="Cuenta pendiente de verificación/aprobación"
+              >
+                Pendiente
+              </Link>
+            )}
+            {/* Navegación privada */}
+            <Link to="/dashboard" className={navLinkClass(true, isActive("/dashboard"))}>Inicio</Link>
+            <Link to="/simulacion" className={navLinkClass(true, isActive("/simulacion"))}>Simulaciones</Link>
+            <Link to="/evaluacion" className={navLinkClass(true, isActive("/evaluacion"))}>Evaluación</Link>
+            <Link to="/perfil" className={navLinkClass(true, isActive("/perfil"))}>Perfil</Link>
+            {isAdmin && (
+              <Link to="/admin" className={navLinkClass(true, isActive("/admin"))}>Admin</Link>
+            )}
             <button
               onClick={handleLogout}
               className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"

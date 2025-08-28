@@ -51,6 +51,7 @@ export default function Evaluacion() {
   const [err, setErr] = useState("");
   const [attempts, setAttempts] = useState([]);
   const [role, setRole] = useState("");
+  const [critMap, setCritMap] = useState({});
 
   useEffect(() => {
     let mounted = true;
@@ -69,19 +70,40 @@ export default function Evaluacion() {
         .maybeSingle();
       setRole(prof?.rol ?? sess.user?.user_metadata?.rol ?? "");
 
-      // Trae intentos del usuario + título del escenario + count de preguntas críticas
+      // Trae intentos del usuario + título del escenario
       const { data: rows, error: e2 } = await supabase
         .from("attempts")
         .select(`
-          id, scenario_id, started_at, finished_at, correct_count, total_count, score,
-          scenarios ( title ),
-          questions ( id, is_critical )
+          id, user_id, scenario_id, started_at, finished_at, correct_count, total_count, score,
+          scenarios ( title )
         `)
         .eq("user_id", sess.user.id)
         .order("started_at", { ascending: false });
-
-      if (e2) { setErr(e2.message || "Error cargando intentos"); setAttempts([]); }
-      else { setAttempts(rows || []); }
+      if (e2) {
+        console.error("[Evaluacion] attempts select error:", e2);
+        setErr(e2.message || "Error cargando intentos");
+        setAttempts([]);
+      } else {
+        setAttempts(rows || []);
+        // Cargar resumen de críticas para esos attempts (si hay)
+        const ids = (rows || []).map(r => r.id);
+        if (ids.length > 0) {
+          const { data: crits, error: e3 } = await supabase
+            .from("v_attempt_criticals")
+            .select("attempt_id, total_criticals, criticals_ok, criticals_failed")
+            .in("attempt_id", ids);
+          if (e3) {
+            console.warn("[Evaluacion] v_attempt_criticals error:", e3);
+            setCritMap({});
+          } else {
+            const map = {};
+            for (const c of (crits || [])) map[c.attempt_id] = c;
+            setCritMap(map);
+          }
+        } else {
+          setCritMap({});
+        }
+      }
       setLoading(false);
     })();
 
@@ -130,6 +152,7 @@ export default function Evaluacion() {
             <h3 className="text-lg font-semibold">Intentos</h3>
             <Link to="/dashboard" className="text-sm underline text-slate-700">Volver al panel</Link>
           </div>
+          {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
           {attempts.length === 0 ? (
             <p className="text-slate-600 mt-2">Aún no has realizado ningún intento.</p>
           ) : (
@@ -151,14 +174,15 @@ export default function Evaluacion() {
                     const estado = a.finished_at ? "Finalizado" : "En curso";
                     const res = a.finished_at ? `${a.correct_count}/${a.total_count} (${a.score ?? 0}%)` : "—";
                     const title = a.scenarios?.title || `Escenario ${a.scenario_id}`;
-                    const critCount = a.questions?.filter(q => q.is_critical).length || 0;
+                    const crit = critMap[a.id];
+                    const critText = crit ? `${crit.criticals_ok}/${crit.total_criticals}` : "—";
                     return (
                       <tr key={a.id} className="border-t">
                         <td className="px-4 py-2">{date}</td>
                         <td className="px-4 py-2">{title}</td>
                         <td className="px-4 py-2">{res}</td>
                         <td className="px-4 py-2">{estado}</td>
-                        <td className="px-4 py-2">{critCount}</td>
+                        <td className="px-4 py-2">{critText}</td>
                         <td className="px-4 py-2">
                           <Link to={`/evaluacion/attempt/${a.id}`} className="text-blue-600 underline">Revisar</Link>
                         </td>
