@@ -142,44 +142,6 @@ function Sk({ w = "100%", h = 12, className = "" }) {
 }
 
 
-function PrebriefBanner({ objective }) {
-  return (
-    <section className="rounded-2xl border border-slate-300 bg-white p-5 mb-5 shadow-sm">
-      <div className="flex items-start gap-4">
-        <div className="shrink-0 w-10 h-10 rounded-full bg-slate-900 text-white grid place-items-center">ℹ️</div>
-        <div className="flex-1">
-          <h3 className="text-base font-semibold text-slate-900">Introducción</h3>
-          <p className="text-sm text-slate-600 mt-1">
-            Este es un entorno seguro de aprendizaje. Puedes equivocarte: lo importante es el proceso y el razonamiento clínico.
-          </p>
-          <div className="mt-3 grid sm:grid-cols-3 gap-4">
-            <div>
-              <div className="text-xs font-semibold text-slate-500">Objetivo docente</div>
-              <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
-                {objective ? <li>{objective}</li> : <li>Conoce los objetivos del caso y cómo se evaluará la simulación.</li>}
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-500">Reglas de la simulación</div>
-              <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
-                <li>Algunos pasos contienen preguntas <span className="font-medium">críticas</span>.</li>
-                <li>Puedes pedir <span className="font-medium">pistas</span> (si están disponibles); restan puntuación.</li>
-                <li>En ciertos pasos verás <span className="font-medium">urgencia</span> y límite de tiempo.</li>
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-500">Criterios de evaluación</div>
-              <ul className="mt-1 text-sm text-slate-700 list-disc pl-5">
-                <li>Nota = % aciertos – penalización por pistas.</li>
-                <li>Se señalarán las <span className="font-medium">preguntas críticas falladas</span> en el debrief.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 export default function SimulacionDetalle() {
   const { id } = useParams(); // id de scenarios (int)
@@ -676,8 +638,6 @@ export default function SimulacionDetalle() {
       <div className="min-h-screen bg-slate-50 text-slate-900">
         <Navbar />
         <main className="max-w-6xl mx-auto px-5 py-6 mt-2">
-          <PrebriefBanner objective={brief?.learning_objective || brief?.title || scenario?.title} />
-          {/* CABECERA BRIEFING */}
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-slate-900">{brief?.title || scenario?.title}</h1>
             {brief?.context && <p className="text-slate-600 mt-1">{brief.context}</p>}
