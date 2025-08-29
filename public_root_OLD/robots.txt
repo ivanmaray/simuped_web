@@ -1,0 +1,22 @@
+User-agent: *
+# Permitimos la home y secciones públicas
+Allow: /
+Allow: /#inicio
+Allow: /#que-es
+Allow: /#que-ofrece
+Allow: /#proyecto
+Allow: /#equipo
+Allow: /#apoyos
+Allow: /#como-participar
+
+# Bloqueamos áreas privadas / solo usuarios
+Disallow: /login
+Disallow: /registro
+Disallow: /perfil
+Disallow: /dashboard
+Disallow: /simulacion
+Disallow: /evaluacion
+Disallow: /pendiente
+
+# Sitemap
+Sitemap: https://www.simuped.com/sitemap.xml
