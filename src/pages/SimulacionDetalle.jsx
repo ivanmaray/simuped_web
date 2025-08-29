@@ -297,8 +297,10 @@ export default function SimulacionDetalle() {
 
   // Intento actual
   const [attemptId, setAttemptId] = useState(null);
-  const [expiresAt, setExpiresAt] = useState(null);      // ISO string from attempts.expires_at
-  const [remainingSecs, setRemainingSecs] = useState(null); // number in seconds
+  const [attemptTimeLimit, setAttemptTimeLimit] = useState(null); // segundos (global del intento)
+  const [initialExpiresAt, setInitialExpiresAt] = useState(null); // lo que venga de DB (si ya estaba arrancado)
+  const [expiresAt, setExpiresAt] = useState(null);               // ISO string (empieza al salir del briefing)
+  const [remainingSecs, setRemainingSecs] = useState(null);       // number in seconds
   const [timeUp, setTimeUp] = useState(false);
 
   const currentStep = steps[currentIdx] || null;
@@ -364,17 +366,76 @@ export default function SimulacionDetalle() {
         return;
       }
       setAttemptId(att.id);
+      // Guardamos info pero NO arrancamos el contador hasta que el usuario pulse "Comenzar simulación"
+      setAttemptTimeLimit(typeof att.time_limit === "number" ? att.time_limit : null);
       if (att.expires_at) {
         const exp = new Date(att.expires_at);
-        setExpiresAt(exp.toISOString());
-        const diff = Math.max(0, Math.floor((exp.getTime() - Date.now()) / 1000));
-        setRemainingSecs(diff);
-        if (diff === 0) setTimeUp(true);
+        setInitialExpiresAt(exp.toISOString());
       } else {
-        // If DB column not set yet, leave as null (no timer)
+        setInitialExpiresAt(null);
+      }
+      // Aún no seteamos expiresAt/remainingSecs aquí; se hará al salir del briefing
+  // Auto-iniciar el contador si no hay briefing
+  useEffect(() => {
+    // Si no hay briefing, arrancamos el contador en cuanto tengamos datos del intento
+    if (!loading && !showBriefing && attemptId && !expiresAt) {
+      // Si ya venía expires_at de DB o hay time_limit, arrancamos
+      if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
+        startAttemptCountdown();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, showBriefing, attemptId]);
+
+  // Arranca el contador del intento (y fija expires_at si no estaba)
+  async function startAttemptCountdown() {
+    if (!attemptId) {
+      setShowBriefing(false);
+      return;
+    }
+
+    try {
+      let expISO = initialExpiresAt;
+
+      // Si el intento aún no tenía expires_at en DB, lo fijamos ahora usando time_limit
+      if (!expISO && attemptTimeLimit && Number(attemptTimeLimit) > 0) {
+        const now = new Date();
+        const exp = new Date(now.getTime() + Number(attemptTimeLimit) * 1000);
+        expISO = exp.toISOString();
+
+        // Persistimos inicio/expiración/status
+        const { error: upErr } = await supabase
+          .from("attempts")
+          .update({
+            started_at: now.toISOString(),
+            expires_at: expISO,
+            status: "en_curso",
+          })
+          .eq("id", attemptId);
+
+        if (upErr) {
+          console.warn("[SimulacionDetalle] No se pudo fijar expires_at al iniciar:", upErr);
+        }
+      }
+
+      // Si ya existía expires_at (p.ej. porque el usuario ya había comenzado antes), usamos ese valor
+      if (expISO) {
+        setExpiresAt(expISO);
+        const diff = Math.max(0, Math.floor((new Date(expISO).getTime() - Date.now()) / 1000));
+        setRemainingSecs(diff);
+        setTimeUp(diff === 0);
+      } else {
+        // Intento sin límite global -> sin contador
         setExpiresAt(null);
         setRemainingSecs(null);
+        setTimeUp(false);
       }
+    } catch (e) {
+      console.error("[SimulacionDetalle] startAttemptCountdown error:", e);
+    } finally {
+      setShowBriefing(false);
+    }
+  }
 
       // Rol del usuario
       let userRole = "";
@@ -873,7 +934,7 @@ export default function SimulacionDetalle() {
               <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
             <button
-              onClick={() => setShowBriefing(false)}
+              onClick={startAttemptCountdown}
               className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90"
             >
               Comenzar simulación

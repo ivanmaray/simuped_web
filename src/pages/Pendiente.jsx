@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
+// Utilidad: URL de retorno tras verificar
+const REDIRECT_TO = typeof window !== "undefined" ? `${window.location.origin}/pendiente` : undefined;
+
 export default function Pendiente() {
   const navigate = useNavigate();
 
@@ -36,19 +39,29 @@ export default function Pendiente() {
       await refreshStates();
       setLoading(false);
 
-      // Autopoll hasta 60s (15 intentos cada 4s)
+      // Autopoll hasta 60s (20 intentos cada 3s)
       clearInterval(pollTimer.current);
       pollTimer.current = setInterval(async () => {
         tries.current += 1;
-        if (tries.current > 15) {
+        if (tries.current > 20) {
           clearInterval(pollTimer.current);
           return;
         }
         await refreshStates();
-      }, 4000);
+      }, 3000);
     })();
 
-    return () => clearInterval(pollTimer.current);
+    const { data: sub } = supabase.auth.onAuthStateChange((evt) => {
+      // Cuando el token se refresca o cambia el usuario, revalidamos estados
+      if (evt === 'TOKEN_REFRESHED' || evt === 'USER_UPDATED' || evt === 'SIGNED_IN') {
+        refreshStates().catch(() => {});
+      }
+    });
+
+    return () => {
+      clearInterval(pollTimer.current);
+      try { sub?.subscription?.unsubscribe?.(); } catch {}
+    };
   }, []);
 
   async function refreshStates() {
@@ -76,6 +89,7 @@ export default function Pendiente() {
       }
 
       setEmail(user.email || "");
+      try { localStorage.setItem('pending_email', user.email || ""); } catch {}
       setUserId(user.id || "");
       const isVerified = !!user.email_confirmed_at;
       setVerified(isVerified);
@@ -113,7 +127,9 @@ export default function Pendiente() {
 
       // 3) Redirigir si todo OK
       if (isVerified && prof?.approved) {
+        clearInterval(pollTimer.current);
         navigate("/dashboard", { replace: true });
+        return;
       }
     } catch (e) {
       console.error("[Pendiente] refreshStates excepción:", e);
@@ -137,14 +153,25 @@ export default function Pendiente() {
   }
 
   async function handleResend() {
+    setChecking(true);
     try {
-      const target = email || localStorage.getItem('pending_email') || '';
-      if (!target) return;
-      await supabase.auth.resend({ type: 'signup', email: target });
-      alert('Hemos reenviado el correo de verificación. Revisa tu bandeja y spam.');
+      const target = (email || localStorage.getItem('pending_email') || '').trim();
+      if (!target) {
+        alert('No tenemos un email para reenviar. Vuelve a iniciar sesión.');
+        return;
+      }
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: target,
+        options: REDIRECT_TO ? { emailRedirectTo: REDIRECT_TO } : undefined,
+      });
+      if (error) throw error;
+      alert('Te hemos enviado de nuevo el correo de verificación. Revisa tu bandeja y spam.');
     } catch (e) {
       console.error('[Pendiente] resend error:', e);
-      alert('No se pudo reenviar el correo ahora.');
+      setErrorMsg(e.message || 'No se pudo reenviar el correo ahora.');
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -180,7 +207,9 @@ export default function Pendiente() {
             {!verified && (
               <div className="mt-3 text-sm text-slate-600 space-y-2">
                 <p>Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el enlace, pulsa “Comprobar ahora”.</p>
-                <button onClick={handleResend} className="text-[#1a69b8] underline">Reenviar verificación</button>
+                <button onClick={handleResend} disabled={checking} className="text-[#1a69b8] underline disabled:opacity-60">
+                  {checking ? 'Enviando…' : 'Reenviar verificación'}
+                </button>
               </div>
             )}
           </section>
@@ -208,7 +237,7 @@ export default function Pendiente() {
           </section>
         </div>
 
-        <div className="mt-6 flex items-center gap-3">
+        <div className="mt-6 flex items-center gap-3 flex-wrap">
           <button
             type="button"
             onClick={handleCheckNow}
@@ -216,6 +245,14 @@ export default function Pendiente() {
             className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
           >
             {checking ? "Comprobando…" : "Comprobar ahora"}
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => { try { await supabase.auth.refreshSession(); await refreshStates(); } catch {} }}
+            className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
+          >
+            Forzar refresco
           </button>
 
           <button
