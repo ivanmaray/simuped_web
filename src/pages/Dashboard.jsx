@@ -214,8 +214,7 @@ export default function Dashboard() {
               title="Evaluación del desempeño"
               description="Consulta tus resultados y evolución por escenarios."
               to="/evaluacion"
-              badge="En construcción 🚧"
-              badgeColor="bg-red-100 text-red-700"
+              stateObj={{ forceSelf: true }}
               icon={ChartBarIcon}
             />
           </section>
@@ -243,7 +242,7 @@ export default function Dashboard() {
   );
 }
 
-function Card({ title, description, to, badge, badgeColor, icon: Icon, titleAttr }) {
+function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon, titleAttr }) {
   const content = (
     <div className="flex items-start gap-4">
       <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#1a69b8]/10 via-[#1d99bf]/10 to-[#1fced1]/10 ring-1 ring-[#1a69b8]/15">
@@ -276,6 +275,7 @@ function Card({ title, description, to, badge, badgeColor, icon: Icon, titleAttr
   return (
     <Link
       to={to}
+      state={stateObj}
       title={titleAttr || title}
       className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
     >

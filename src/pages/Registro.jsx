@@ -126,7 +126,7 @@ export default function Registro() {
     }
 
     setLoading(true);
-    console.debug("[Registro] intentando signUp (sin upsert profiles)");
+    console.debug("[Registro] intentando signUp (con upsert en profiles)");
 
     try {
       // 1) Alta en auth incluyendo metadata normalizada y redirect seguro
@@ -193,6 +193,33 @@ export default function Registro() {
         return;
       }
 
+      // 2) Upsert en 'profiles' con los datos del formulario (no bloqueante si falla)
+      try {
+        const uid = signData?.user?.id;
+        if (uid) {
+          const nowIso = new Date().toISOString();
+          const { error: upErr } = await supabase.from("profiles").upsert({
+            id: uid,                        // PK = auth.users.id
+            email: emailNorm,
+            nombre: nombre.trim(),
+            apellidos: apellidos.trim(),
+            dni: dniNorm,
+            rol: rolApi,                    // 'medico' | 'enfermeria' | 'farmacia'
+            unidad,
+            areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
+            approved: false,
+            is_admin: false,
+            updated_at: nowIso,
+          });
+          if (upErr) {
+            console.warn("[Registro] upsert profiles falló (no bloqueante):", upErr);
+          }
+        }
+        try { localStorage.setItem("pending_email", emailNorm); } catch {}
+      } catch (e) {
+        console.warn("[Registro] excepción upsert profiles (no bloqueante):", e);
+      }
+
       // 2) Notificar al admin por email (no bloqueante)
       try {
         await fetch("/api/new-user-email", {
@@ -211,7 +238,7 @@ export default function Registro() {
         console.error("[Registro] error notificando admin:", err);
       }
 
-      // 3) No escribimos en 'profiles' aquí: se hará tras el primer login con sesión.
+      // 3) Ya se ha intentado guardar/actualizar el perfil. Continuamos con notificación y redirección.
       setOkMsg("Te hemos enviado un email para confirmar tu cuenta. Tras confirmarlo, revisaremos tu acceso.");
       setLoading(false);
       setTimeout(() => navigate("/pendiente", { replace: true }), 800);

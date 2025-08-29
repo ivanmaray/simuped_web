@@ -30,6 +30,11 @@ function Card({ title, count, children }) {
 }
 
 export default function Admin() {
+  function verIntentos(u) {
+    if (!u?.id) return;
+    // Redirige a Evaluación con el user query param para ver sus intentos
+    navigate(`/evaluacion?user=${encodeURIComponent(u.id)}`);
+  }
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [yo, setYo] = useState(null);
@@ -42,6 +47,7 @@ export default function Admin() {
   const [processingIds, setProcessingIds] = useState({}); // { [userId]: true }
   const [mailStatus, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
   const [authMap, setAuthMap] = useState({}); // { [userId]: { email_confirmed: bool } }
+  const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified }
 
   useEffect(() => {
     let mounted = true;
@@ -86,7 +92,7 @@ export default function Admin() {
       // 3) Usuarios (se asume RLS que permite al admin leer todos)
       const { data: all, error: uErr } = await supabase
         .from("profiles")
-        .select("id, email, nombre, apellidos, unidad, dni, rol, approved, created_at")
+        .select("id, email, nombre, apellidos, unidad, dni, rol, approved, created_at, updated_at, approved_at, notified_at")
         .order("created_at", { ascending: false });
 
       if (uErr) {
@@ -138,8 +144,11 @@ export default function Admin() {
         if (!query) return true;
         const em = norm(r?.email);
         const nm = norm(r?.nombre);
+        const ap = norm(r?.apellidos);
         const rl = norm(r?.rol);
-        return em.includes(query) || nm.includes(query) || rl.includes(query);
+        const un = norm(r?.unidad);
+        const dn = norm(r?.dni);
+        return em.includes(query) || nm.includes(query) || ap.includes(query) || rl.includes(query) || un.includes(query) || dn.includes(query);
       });
 
     const pend = filt(rows.filter((r) => !r?.approved));
@@ -157,9 +166,10 @@ export default function Admin() {
 
     try {
       // 1) Marca aprobado
+      const nowIso = new Date().toISOString();
       const { error: e1 } = await supabase
         .from("profiles")
-        .update({ approved: true, updated_at: new Date().toISOString() })
+        .update({ approved: true, approved_at: nowIso, updated_at: nowIso })
         .eq("id", u.id);
 
       if (e1) throw e1;
@@ -188,11 +198,30 @@ export default function Admin() {
         console.error("[Admin] notify_user_approved fetch error:", e);
       }
 
+      // 2b) Si se notificó por email correctamente, persistimos notified_at
+      if (mailOk) {
+        try {
+          await supabase
+            .from("profiles")
+            .update({ notified_at: nowIso, updated_at: nowIso })
+            .eq("id", u.id);
+        } catch (_) {
+          // si falla, lo reflejaremos al menos en el estado local más abajo
+        }
+      }
+
       // 3) Actualiza UI
       setRows((prev) =>
-        prev.map((r) => (r.id === u.id ? { ...r, approved: true } : r))
+        prev.map((r) =>
+          r.id === u.id
+            ? { ...r, approved: true, approved_at: nowIso, updated_at: nowIso, notified_at: mailOk ? nowIso : r.notified_at }
+            : r
+        )
       );
       setMailStatus((prev) => ({ ...prev, [u.id]: mailOk ? "ok" : "fail" }));
+      if (mailOk) {
+        setMailTime((prev) => ({ ...prev, [u.id]: nowIso }));
+      }
       setOk(mailOk ? "Usuario aprobado y notificado ✔" : "Usuario aprobado ✔ (no se pudo enviar el email)");
     } catch (e) {
       console.error("[Admin] aprobar error:", e);
@@ -207,10 +236,6 @@ export default function Admin() {
   }
 
   async function reenviarVerificacion(u) {
-  function verIntentos(u) {
-    if (!u?.id) return;
-    navigate(`/evaluacion?user_id=${encodeURIComponent(u.id)}`);
-  }
     if (!u?.email) return;
     setErr("");
     setOk("");
@@ -291,7 +316,7 @@ export default function Admin() {
                     <th className="text-left px-3 py-2">Unidad</th>
                     <th className="text-left px-3 py-2">DNI</th>
                     <th className="text-left px-3 py-2">Verificación</th>
-                    <th className="text-left px-3 py-2">Alta (fecha)</th>
+                    <th className="text-left px-3 py-2">Alta</th>
                     <th className="text-left px-3 py-2">Notificación</th>
                     <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
@@ -326,13 +351,6 @@ export default function Admin() {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
-                            <button
-                              onClick={() => verIntentos(u)}
-                              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-                              title="Ver intentos del usuario"
-                            >
-                              Ver intentos
-                            </button>
                             <button
                               onClick={() => aprobar(u)}
                               disabled={!!processingIds[u.id]}
@@ -375,6 +393,8 @@ export default function Admin() {
                     <th className="text-left px-3 py-2">Unidad</th>
                     <th className="text-left px-3 py-2">DNI</th>
                     <th className="text-left px-3 py-2">Verificación</th>
+                    <th className="text-left px-3 py-2">Aprobado en</th>
+                    <th className="text-left px-3 py-2">Notificado en</th>
                     <th className="text-left px-3 py-2">Aprobado</th>
                     <th className="text-left px-3 py-2">Notificación</th>
                     <th className="text-left px-3 py-2">Acciones</th>
@@ -397,6 +417,20 @@ export default function Admin() {
                           ) : (
                             <Badge ok={!!verif} />
                           )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {u.approved_at
+                            ? new Date(u.approved_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+                            : (u.updated_at
+                                ? new Date(u.updated_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+                                : "—")}
+                        </td>
+                        <td className="px-3 py-2">
+                          {u.notified_at
+                            ? new Date(u.notified_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+                            : (mailTime[u.id]
+                                ? new Date(mailTime[u.id]).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+                                : "—")}
                         </td>
                         <td className="px-3 py-2">
                           <Badge ok={true} labelTrue="Aprobado" labelFalse="Pendiente" />

@@ -56,6 +56,7 @@ export default function Evaluacion() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [viewUserId, setViewUserId] = useState(null);      // usuario sobre el que se muestra la evaluación
   const [viewUserEmail, setViewUserEmail] = useState("");  // email del usuario visto (si admin está filtrando)
+  const [critFeatureAvailable, setCritFeatureAvailable] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -63,6 +64,8 @@ export default function Evaluacion() {
       // Lee ?user_id=... del querystring (modo admin para revisar a otra persona)
       const params = new URLSearchParams(location.search);
       const requestedUserId = params.get("user_id");
+      const storedUserId = sessionStorage.getItem("eval_last_user_id");
+      const forceSelf = !!(location.state && location.state.forceSelf);
 
       const { data, error } = await supabase.auth.getSession();
       if (!mounted) return;
@@ -81,9 +84,28 @@ export default function Evaluacion() {
       const amIAdmin = !!(myProf?.is_admin);
       setIsAdmin(amIAdmin);
 
+      // Si soy admin y no viene user_id pero hay uno guardado, navegar a ese,
+      // excepto si venimos desde Dashboard forzando "mis propios datos".
+      if (amIAdmin && !forceSelf && !requestedUserId && storedUserId) {
+        navigate(`/evaluacion?user_id=${storedUserId}`, { replace: true });
+      }
+
       // Determina qué usuario vamos a visualizar
-      const targetUserId = (amIAdmin && requestedUserId) ? requestedUserId : sess.user.id;
+      const targetUserId = (amIAdmin && !forceSelf && (requestedUserId || storedUserId))
+        ? (requestedUserId || storedUserId)
+        : sess.user.id;
       setViewUserId(targetUserId);
+      // Guarda última vista si miras a otro usuario (modo admin)
+      try {
+        if (amIAdmin && !forceSelf && targetUserId !== sess.user.id) {
+          sessionStorage.setItem("eval_last_user_id", targetUserId);
+        }
+      } catch {}
+
+      // Si venimos forzados desde Dashboard a ver "mis" resultados, limpia el último filtro guardado
+      if (forceSelf) {
+        try { sessionStorage.removeItem("eval_last_user_id"); } catch {}
+      }
 
       // Si estoy viendo a otro (admin), carga su rol/email para cabecera.
       if (targetUserId !== sess.user.id) {
@@ -132,10 +154,12 @@ export default function Evaluacion() {
           if (e3) {
             console.warn("[Evaluacion] v_attempt_criticals error:", e3);
             setCritMap({});
+            setCritFeatureAvailable(false);
           } else {
             const map = {};
             for (const c of (crits || [])) map[c.attempt_id] = c;
             setCritMap(map);
+            setCritFeatureAvailable(true);
           }
         } else {
           setCritMap({});
@@ -149,6 +173,15 @@ export default function Evaluacion() {
     });
     return () => { mounted = false; try { sub?.subscription?.unsubscribe?.(); } catch {} };
   }, [navigate, location.search]);
+
+  function fmtDate(d) {
+    try {
+      return new Date(d).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
+    } catch {
+      return new Date(d).toLocaleString();
+    }
+  }
+  const hasCritData = critFeatureAvailable && Object.keys(critMap || {}).length > 0;
 
   const summaryByScenario = useMemo(() => {
     const acc = new Map();
@@ -178,7 +211,7 @@ export default function Evaluacion() {
           <h1 className="text-2xl md:text-3xl font-semibold">
             {viewUserId && session?.user?.id && viewUserId !== session.user.id
               ? `Resultados de ${viewUserEmail || viewUserId}`
-              : "Tus resultados"}
+              : "Tus resultados"}{attempts?.length ? ` · ${attempts.length} intento${attempts.length !== 1 ? "s" : ""}` : ""}
           </h1>
           <p className="opacity-95">
             Resumen de intentos y medias por escenario.
@@ -189,6 +222,7 @@ export default function Evaluacion() {
                 Filtrando por usuario: {viewUserEmail || viewUserId}
                 <button
                   className="underline decoration-white/70 hover:decoration-white"
+                  aria-label="Quitar filtro de usuario"
                   onClick={() => navigate("/evaluacion", { replace: true })}
                 >
                   Quitar filtro
@@ -226,15 +260,15 @@ export default function Evaluacion() {
                     <th className="text-left px-4 py-2">Escenario</th>
                     <th className="text-left px-4 py-2">Resultado</th>
                     <th className="text-left px-4 py-2">Estado</th>
-                    <th className="text-left px-4 py-2">Críticas</th>
+                    {hasCritData ? <th className="text-left px-4 py-2">Críticas</th> : null}
                     <th className="text-left px-4 py-2">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {attempts.map((a) => {
-                    const date = new Date(a.started_at).toLocaleString();
+                    const date = fmtDate(a.started_at);
                     const estado = a.finished_at ? "Finalizado" : "En curso";
-                    const res = a.finished_at ? `${a.correct_count}/${a.total_count} (${a.score ?? 0}%)` : "—";
+                    const res = a.finished_at ? (typeof a.score === "number" ? `${a.correct_count}/${a.total_count} (${a.score}%)` : `${a.correct_count}/${a.total_count} (—)`) : "—";
                     const title = a.scenarios?.title || `Escenario ${a.scenario_id}`;
                     const crit = critMap[a.id];
                     const critText = crit ? `${crit.criticals_ok}/${crit.total_criticals}` : "—";
@@ -244,7 +278,7 @@ export default function Evaluacion() {
                         <td className="px-4 py-2">{title}</td>
                         <td className="px-4 py-2">{res}</td>
                         <td className="px-4 py-2">{estado}</td>
-                        <td className="px-4 py-2">{critText}</td>
+                        {hasCritData ? <td className="px-4 py-2">{critText}</td> : null}
                         <td className="px-4 py-2">
                           <Link to={`/evaluacion/attempt/${a.id}`} className="text-blue-600 underline">Revisar</Link>
                         </td>
