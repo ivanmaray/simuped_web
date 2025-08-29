@@ -141,9 +141,8 @@ function Sk({ w = "100%", h = 12, className = "" }) {
   return <div className={`animate-pulse bg-slate-200 rounded ${className}`} style={{ width: w, height: h }} />;
 }
 
-// Triángulo de Evaluación Pediátrica (TEP) como SVG
+// Triángulo de Evaluación Pediátrica (TEP) como SVG (compacto y sin recortes)
 function TEPTriangle({ appearance, breathing, circulation }) {
-  // normaliza a 'green' | 'amber' | 'red' | null
   function norm(v) {
     const k = String(v || '').toLowerCase();
     if (['verde', 'green', 'normal'].includes(k)) return 'green';
@@ -156,33 +155,33 @@ function TEPTriangle({ appearance, breathing, circulation }) {
   const C = norm(circulation);
 
   const colorMapFill = {
-    green: '#d1fae5',  // emerald-100
-    amber: '#fde68a',  // amber-200
-    red:   '#fecaca',  // rose-200
-    null:  '#e5e7eb',  // slate-200
+    green: '#d1fae5',
+    amber: '#fde68a',
+    red:   '#fecaca',
+    null:  '#e5e7eb',
   };
   const colorMapStroke = {
-    green: '#059669',  // emerald-600
-    amber: '#b45309',  // amber-700
-    red:   '#b91c1c',  // red-700
-    null:  '#9ca3af',  // slate-400
+    green: '#059669',
+    amber: '#b45309',
+    red:   '#b91c1c',
+    null:  '#9ca3af',
   };
 
-  // Coordenadas de un triángulo equilátero
-  const width = 280;
-  const height = 230;
-  const padding = 24;
-  const top = { x: width / 2, y: padding };
-  const left = { x: padding, y: height - padding };
-  const right = { x: width - padding, y: height - padding };
+  // Dimensiones más compactas y con margen interno generoso para etiquetas
+  const width = 320;
+  const height = 240; // alto suficiente para que no se corten las etiquetas inferiores
+  const padding = 28;
+  const top = { x: width / 2, y: padding + 8 };
+  const left = { x: padding, y: height - padding - 16 };
+  const right = { x: width - padding, y: height - padding - 16 };
 
   function dot({ x, y }, status) {
     const fill = colorMapFill[status ?? 'null'];
     const stroke = colorMapStroke[status ?? 'null'];
     return (
       <>
-        <circle cx={x} cy={y} r="18" fill={fill} stroke={stroke} strokeWidth="2" />
-        <circle cx={x} cy={y} r="4" fill={stroke} />
+        <circle cx={x} cy={y} r="14" fill={fill} stroke={stroke} strokeWidth="2" />
+        <circle cx={x} cy={y} r="3" fill={stroke} />
       </>
     );
   }
@@ -192,9 +191,10 @@ function TEPTriangle({ appearance, breathing, circulation }) {
       <svg
         viewBox={`0 0 ${width} ${height}`}
         width="100%"
-        style={{ maxWidth: 380 }}
+        style={{ maxWidth: 360 }}
         role="img"
         aria-label="Triángulo de Evaluación Pediátrica"
+        preserveAspectRatio="xMidYMid meet"
       >
         {/* triángulo base */}
         <polygon
@@ -208,19 +208,19 @@ function TEPTriangle({ appearance, breathing, circulation }) {
         {dot(left, B)}
         {dot(right, C)}
 
-        {/* etiquetas */}
-        <text x={top.x} y={top.y - 8} textAnchor="middle" fontSize="12" fill="#334155">
+        {/* etiquetas (todas dentro del área del SVG para evitar recortes) */}
+        <text x={top.x} y={top.y + 24} textAnchor="middle" fontSize="12" fill="#334155">
           Apariencia
         </text>
-        <text x={left.x - 4} y={left.y + 26} textAnchor="end" fontSize="12" fill="#334155">
+        <text x={left.x} y={left.y - 10} textAnchor="middle" fontSize="12" fill="#334155">
           Resp./Trabajo
         </text>
-        <text x={right.x + 4} y={right.y + 26} textAnchor="start" fontSize="12" fill="#334155">
+        <text x={right.x} y={right.y - 10} textAnchor="middle" fontSize="12" fill="#334155">
           Circulación a piel
         </text>
       </svg>
 
-      {/* leyenda */}
+      {/* leyenda compacta */}
       <div className="mt-2 flex items-center gap-3 text-xs text-slate-600">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.green, border: `2px solid ${colorMapStroke.green}` }}></span>
@@ -855,17 +855,6 @@ export default function SimulacionDetalle() {
           </CaseCard>
 
 
-          {/* Competencias del escenario */}
-          <CaseCard title="Competencias del escenario">
-            <ul className="grid sm:grid-cols-3 gap-2 text-sm text-slate-700">
-              {(brief?.competencies || []).map((c, i) => (
-                <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{c}</li>
-              ))}
-              {!brief?.competencies?.length && (
-                <li className="text-slate-500">—</li>
-              )}
-            </ul>
-          </CaseCard>
 
           {/* Barra de inicio */}
           <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">

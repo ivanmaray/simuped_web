@@ -12,7 +12,7 @@ function fmtDateShort(v) {
 
 function StatusPills({ verified, approved, notifiedAt }) {
   return (
-    <div className="flex flex-col gap-1 min-w-[120px]">
+    <div className="flex flex-col gap-1 min-w-[100px]">
       <Badge ok={!!verified} labelTrue="Verif." labelFalse="Sin verif." />
       <Badge ok={!!approved} labelTrue="Aprob." labelFalse="Pend." />
       <span className="text-[11px] text-slate-500">{notifiedAt ? `Notif. ${fmtDateShort(notifiedAt)}` : "Notif. —"}</span>
@@ -324,13 +324,13 @@ export default function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[28%]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[6%]" />
+                  <col style={{ width: "17rem" }} />  {/* Email */}
+                  <col style={{ width: "10rem" }} />  {/* Nombre */}
+                  <col style={{ width: "11rem" }} />  {/* Rol / Unidad */}
+                  <col style={{ width: "8rem" }} />   {/* DNI */}
+                  <col style={{ width: "9rem" }} />   {/* Alta */}
+                  <col style={{ width: "9rem" }} />   {/* Estado */}
+                  <col style={{ width: "12rem" }} />  {/* Acciones */}
                 </colgroup>
                 <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
@@ -370,17 +370,17 @@ export default function Admin() {
                             <button
                               onClick={() => aprobar(u)}
                               disabled={!!processingIds[u.id]}
-                              className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 text-xs"
                             >
-                              {processingIds[u.id] ? "Procesando…" : "Aprobar y notificar"}
+                              {processingIds[u.id] ? "…" : "Aprobar"}
                             </button>
                             <button
                               onClick={() => reenviarVerificacion(u)}
                               disabled={!!processingIds[u.id]}
-                              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-60"
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-60 text-xs"
                               title="Reenviar correo de verificación"
                             >
-                              Reenviar verificación
+                              Reenviar verif.
                             </button>
                           </div>
                         </td>
@@ -401,13 +401,13 @@ export default function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[22%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[8%]" />
+                  <col style={{ width: "18rem" }} />  {/* Email */}
+                  <col style={{ width: "10rem" }} />  {/* Nombre */}
+                  <col style={{ width: "12rem" }} />  {/* Rol / Unidad */}
+                  <col style={{ width: "9rem" }} />   {/* DNI */}
+                  <col style={{ width: "13rem" }} />  {/* Fechas */}
+                  <col style={{ width: "11rem" }} />  {/* Estado */}
+                  <col style={{ width: "8rem" }} />   {/* Resultados */}
                 </colgroup>
                 <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
@@ -417,7 +417,7 @@ export default function Admin() {
                     <th className="text-left px-3 py-2">DNI</th>
                     <th className="text-left px-3 py-2">Fechas</th>
                     <th className="text-left px-3 py-2">Estado</th>
-                    <th className="text-left px-3 py-2">Resultados.</th>
+                    <th className="text-left px-3 py-2">Resultados</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -446,7 +446,7 @@ export default function Admin() {
                         <td className="px-3 py-2">
                           <button
                             onClick={() => verIntentos(u)}
-                            className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs"
                             title="Ver intentos del usuario"
                           >
                             Ver
