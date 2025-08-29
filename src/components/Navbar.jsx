@@ -1,7 +1,7 @@
 // src/components/Navbar.jsx
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { useAuth } from "../auth.jsx";
 import logo from "../assets/logo.png";
 import logoWhite from "../assets/logo-white.png";
 
@@ -13,74 +13,19 @@ function navLinkClass(isPrivate, active) {
 }
 
 export default function Navbar() {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [approved, setApproved] = useState(null);   // null | boolean
-  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
   const { pathname } = useLocation();
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadSessionAndProfile() {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      const sess = data?.session ?? null;
-      setSession(sess);
-      setLoading(false);
-
-      if (sess?.user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("approved, is_admin")
-          .eq("id", sess.user.id)
-          .maybeSingle();
-        if (!mounted) return;
-        setApproved(prof?.approved ?? null);
-        setIsAdmin(!!prof?.is_admin);
-      } else {
-        setApproved(null);
-        setIsAdmin(false);
-      }
-    }
-
-    loadSessionAndProfile();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, sess) => {
-      if (!mounted) return;
-      setSession(sess ?? null);
-      setLoading(false);
-
-      if (sess?.user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("approved, is_admin")
-          .eq("id", sess.user.id)
-          .maybeSingle();
-        if (!mounted) return;
-        setApproved(prof?.approved ?? null);
-        setIsAdmin(!!prof?.is_admin);
-      } else {
-        setApproved(null);
-        setIsAdmin(false);
-      }
-    });
-
-    return () => {
-      mounted = false;
-      sub?.subscription?.unsubscribe?.();
-    };
-  }, []);
+  const { ready, session, profile, signOut } = useAuth();
+  const approved = profile?.approved ?? null;
+  const isAdmin = !!profile?.is_admin;
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOut?.();
     } finally {
-      // Asegura limpieza total del estado de auth en el cliente
       try { localStorage.clear(); } catch {}
       try { sessionStorage.clear(); } catch {}
-      window.location.href = "/"; // fuerza navegación limpia a la landing
+      window.location.href = "/";
     }
   };
 
@@ -88,7 +33,7 @@ export default function Navbar() {
   const loginHref = pathname === "/" ? "#login" : "/#login";
   const isActive = (p) => pathname === p || pathname.startsWith(p + "/");
 
-  if (loading) {
+  if (!ready) {
     // Puedes devolver null o un placeholder del header para evitar parpadeos
     return <header className="h-16" />;
   }

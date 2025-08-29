@@ -1,5 +1,5 @@
 // src/pages/Admin.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
@@ -35,6 +35,8 @@ export default function Admin() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [q, setQ] = useState("");
+  const [dq, setDq] = useState(""); // debounced query
+  const qTimerRef = useRef(null);
   const [processingIds, setProcessingIds] = useState({}); // { [userId]: true }
   const [authMap, setAuthMap] = useState({}); // { [userId]: { email_confirmed: bool } }
 
@@ -73,7 +75,7 @@ export default function Admin() {
       setYo(me);
 
       if (!me?.is_admin) {
-        setErr("No tienes permisos para acceder a esta sección.");
+        setErr("Acceso restringido: esta sección es solo para administradores.");
         setLoading(false);
         return;
       }
@@ -115,23 +117,32 @@ export default function Admin() {
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    if (qTimerRef.current) clearTimeout(qTimerRef.current);
+    qTimerRef.current = setTimeout(() => {
+      setDq(q.trim());
+    }, 250);
+    return () => {
+      if (qTimerRef.current) clearTimeout(qTimerRef.current);
+    };
+  }, [q]);
+
   const { pendientes, aprobados } = useMemo(() => {
-    const norm = (s) => (s || "").toString().toLowerCase();
-    const query = norm(q);
+    const norm = (s) => (s ?? "").toString().toLowerCase();
+    const query = norm(dq);
     const filt = (arr) =>
       arr.filter((r) => {
         if (!query) return true;
-        return (
-          norm(r.email).includes(query) ||
-          norm(r.nombre).includes(query) ||
-          norm(r.rol).includes(query)
-        );
+        const em = norm(r?.email);
+        const nm = norm(r?.nombre);
+        const rl = norm(r?.rol);
+        return em.includes(query) || nm.includes(query) || rl.includes(query);
       });
 
-    const pend = filt(rows.filter((r) => !r.approved));
-    const apr = filt(rows.filter((r) => r.approved));
+    const pend = filt(rows.filter((r) => !r?.approved));
+    const apr = filt(rows.filter((r) => !!r?.approved));
     return { pendientes: pend, aprobados: apr };
-  }, [rows, q]);
+  }, [rows, dq]);
 
   async function aprobar(u) {
     if (!u?.id) return;
@@ -241,6 +252,7 @@ export default function Admin() {
             placeholder="p. ej. ana@, ivan, farmacia…"
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
           />
+          <p className="mt-1 text-xs text-slate-500">La búsqueda se aplica automáticamente.</p>
         </div>
 
         {/* Pendientes */}
@@ -256,7 +268,7 @@ export default function Admin() {
                     <th className="text-left px-3 py-2">Nombre</th>
                     <th className="text-left px-3 py-2">Rol</th>
                     <th className="text-left px-3 py-2">Verificación</th>
-                    <th className="text-left px-3 py-2">Alta</th>
+                    <th className="text-left px-3 py-2">Alta (fecha)</th>
                     <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
                 </thead>
@@ -275,7 +287,7 @@ export default function Admin() {
                             <Badge ok={!!verif} />
                           )}
                         </td>
-                        <td className="px-3 py-2">{u.created_at ? new Date(u.created_at).toLocaleString() : "—"}</td>
+                        <td className="px-3 py-2">{u.created_at ? new Date(u.created_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
                             <button
@@ -287,7 +299,8 @@ export default function Admin() {
                             </button>
                             <button
                               onClick={() => reenviarVerificacion(u)}
-                              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+                              disabled={!!processingIds[u.id]}
+                              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-60"
                               title="Reenviar correo de verificación"
                             >
                               Reenviar verificación
