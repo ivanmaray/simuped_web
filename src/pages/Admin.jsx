@@ -2,7 +2,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+
 import Navbar from "../components/Navbar.jsx";
+
+function fmtDateShort(v) {
+  if (!v) return "—";
+  try { return new Date(v).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }); } catch { return "—"; }
+}
+
+function StatusPills({ verified, approved, notifiedAt }) {
+  return (
+    <div className="flex flex-col gap-1 min-w-[120px]">
+      <Badge ok={!!verified} labelTrue="Verif." labelFalse="Sin verif." />
+      <Badge ok={!!approved} labelTrue="Aprob." labelFalse="Pend." />
+      <span className="text-[11px] text-slate-500">{notifiedAt ? `Notif. ${fmtDateShort(notifiedAt)}` : "Notif. —"}</span>
+    </div>
+  );
+}
 
 function Badge({ ok, labelTrue = "Verificado", labelFalse = "No verificado" }) {
   const okCls = ok
@@ -17,7 +33,7 @@ function Badge({ ok, labelTrue = "Verificado", labelFalse = "No verificado" }) {
 
 function Card({ title, count, children }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{title}</h2>
         {typeof count === "number" && (
@@ -274,7 +290,7 @@ export default function Admin() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-5 py-8 space-y-6">
+      <main className="max-w-[110rem] mx-auto px-5 py-8 space-y-6">
         {(err || ok) && (
           <div
             className={`rounded-lg border px-4 py-2 text-sm ${
@@ -306,48 +322,48 @@ export default function Admin() {
             <div className="text-slate-500 text-sm">No hay solicitudes pendientes ahora mismo.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] text-sm">
-                <thead className="bg-slate-50">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[28%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[6%]" />
+                </colgroup>
+                <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
                     <th className="text-left px-3 py-2">Nombre</th>
-                    <th className="text-left px-3 py-2">Apellidos</th>
-                    <th className="text-left px-3 py-2">Rol</th>
-                    <th className="text-left px-3 py-2">Unidad</th>
+                    <th className="text-left px-3 py-2">Rol / Unidad</th>
                     <th className="text-left px-3 py-2">DNI</th>
-                    <th className="text-left px-3 py-2">Verificación</th>
                     <th className="text-left px-3 py-2">Alta</th>
-                    <th className="text-left px-3 py-2">Notificación</th>
+                    <th className="text-left px-3 py-2">Estado</th>
                     <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pendientes.map((u) => {
-                    const verif = authMap[u.id]?.email_confirmed ?? null; // null -> desconocido
+                    const verif = authMap[u.id]?.email_confirmed ?? null;
+                    const fullName = [u.nombre, u.apellidos].filter(Boolean).join(" ") || "—";
                     return (
-                      <tr key={u.id} className="border-t">
-                        <td className="px-3 py-2">{u.email || "—"}</td>
-                        <td className="px-3 py-2">{u.nombre || "—"}</td>
-                        <td className="px-3 py-2">{u.apellidos || "—"}</td>
-                        <td className="px-3 py-2">{u.rol || "—"}</td>
-                        <td className="px-3 py-2">{u.unidad || "—"}</td>
-                        <td className="px-3 py-2">{u.dni || "—"}</td>
+                      <tr key={u.id} className="border-t align-top">
                         <td className="px-3 py-2">
-                          {verif === null ? (
-                            <span className="text-xs text-slate-500">—</span>
-                          ) : (
-                            <Badge ok={!!verif} />
-                          )}
+                          <div className="truncate" title={u.email || "—"}>{u.email || "—"}</div>
                         </td>
-                        <td className="px-3 py-2">{u.created_at ? new Date(u.created_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
                         <td className="px-3 py-2">
-                          {mailStatus[u.id] === "ok" ? (
-                            <span className="text-xs text-emerald-700">✔ Enviada</span>
-                          ) : mailStatus[u.id] === "fail" ? (
-                            <span className="text-xs text-amber-700">⚠️ Falló</span>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
+                          <div className="truncate" title={fullName}>{fullName}</div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="truncate" title={`${u.rol || "—"} / ${u.unidad || "—"}`}>
+                            {(u.rol || "—")} / {(u.unidad || "—")}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">{u.dni || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{fmtDateShort(u.created_at)}</td>
+                        <td className="px-3 py-2">
+                          <StatusPills verified={verif ?? false} approved={false} notifiedAt={null} />
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
@@ -383,77 +399,58 @@ export default function Admin() {
             <div className="text-slate-500 text-sm">Aún no hay usuarios aprobados.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] text-sm">
-                <thead className="bg-slate-50">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[28%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[4%]" />
+                </colgroup>
+                <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
                     <th className="text-left px-3 py-2">Nombre</th>
-                    <th className="text-left px-3 py-2">Apellidos</th>
-                    <th className="text-left px-3 py-2">Rol</th>
-                    <th className="text-left px-3 py-2">Unidad</th>
+                    <th className="text-left px-3 py-2">Rol / Unidad</th>
                     <th className="text-left px-3 py-2">DNI</th>
-                    <th className="text-left px-3 py-2">Verificación</th>
-                    <th className="text-left px-3 py-2">Aprobado en</th>
-                    <th className="text-left px-3 py-2">Notificado en</th>
-                    <th className="text-left px-3 py-2">Aprobado</th>
-                    <th className="text-left px-3 py-2">Notificación</th>
-                    <th className="text-left px-3 py-2">Acciones</th>
+                    <th className="text-left px-3 py-2">Fechas</th>
+                    <th className="text-left px-3 py-2">Estado</th>
+                    <th className="text-left px-3 py-2">Acc.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {aprobados.map((u) => {
                     const verif = authMap[u.id]?.email_confirmed ?? null;
+                    const fullName = [u.nombre, u.apellidos].filter(Boolean).join(" ") || "—";
                     return (
-                      <tr key={u.id} className="border-t">
-                        <td className="px-3 py-2">{u.email || "—"}</td>
-                        <td className="px-3 py-2">{u.nombre || "—"}</td>
-                        <td className="px-3 py-2">{u.apellidos || "—"}</td>
-                        <td className="px-3 py-2">{u.rol || "—"}</td>
-                        <td className="px-3 py-2">{u.unidad || "—"}</td>
-                        <td className="px-3 py-2">{u.dni || "—"}</td>
+                      <tr key={u.id} className="border-t align-top">
+                        <td className="px-3 py-2"><div className="truncate" title={u.email || "—"}>{u.email || "—"}</div></td>
+                        <td className="px-3 py-2"><div className="truncate" title={fullName}>{fullName}</div></td>
                         <td className="px-3 py-2">
-                          {verif === null ? (
-                            <span className="text-xs text-slate-500">—</span>
-                          ) : (
-                            <Badge ok={!!verif} />
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {u.approved_at
-                            ? new Date(u.approved_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
-                            : (u.updated_at
-                                ? new Date(u.updated_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
-                                : "—")}
-                        </td>
-                        <td className="px-3 py-2">
-                          {u.notified_at
-                            ? new Date(u.notified_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
-                            : (mailTime[u.id]
-                                ? new Date(mailTime[u.id]).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
-                                : "—")}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Badge ok={true} labelTrue="Aprobado" labelFalse="Pendiente" />
-                        </td>
-                        <td className="px-3 py-2">
-                          {mailStatus[u.id] === "ok" ? (
-                            <span className="text-xs text-emerald-700">✔ Enviada</span>
-                          ) : mailStatus[u.id] === "fail" ? (
-                            <span className="text-xs text-amber-700">⚠️ Falló</span>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              onClick={() => verIntentos(u)}
-                              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-                              title="Ver intentos del usuario"
-                            >
-                              Ver intentos
-                            </button>
+                          <div className="truncate" title={`${u.rol || "—"} / ${u.unidad || "—"}`}>
+                            {(u.rol || "—")} / {(u.unidad || "—")}
                           </div>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">{u.dni || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="text-[11px] leading-tight">
+                            <div>Aprob.: {fmtDateShort(u.approved_at || u.updated_at)}</div>
+                            <div>Alta: {fmtDateShort(u.created_at)}</div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusPills verified={verif ?? false} approved={true} notifiedAt={u.notified_at || mailTime[u.id]} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={() => verIntentos(u)}
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+                            title="Ver intentos del usuario"
+                          >
+                            Ver
+                          </button>
                         </td>
                       </tr>
                     );
