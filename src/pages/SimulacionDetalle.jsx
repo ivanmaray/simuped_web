@@ -167,13 +167,13 @@ function TEPTriangle({ appearance, breathing, circulation }) {
     null:  '#9ca3af',
   };
 
-  // Dimensiones más compactas y con margen interno generoso para etiquetas
-  const width = 320;
-  const height = 240; // alto suficiente para que no se corten las etiquetas inferiores
-  const padding = 28;
-  const top = { x: width / 2, y: padding + 8 };
-  const left = { x: padding, y: height - padding - 16 };
-  const right = { x: width - padding, y: height - padding - 16 };
+  // Dimensiones con mayor margen interno para evitar que se corten las etiquetas
+  const width = 700;      // sólo afecta al viewBox (no hace el SVG más grande en pantalla)
+  const height = 420;     // da espacio extra en la base para los rótulos
+  const padding = 80;     // margen interno generoso para que no se recorten textos
+  const top = { x: width / 2, y: padding };
+  const left = { x: padding, y: height - padding };
+  const right = { x: width - padding, y: height - padding };
 
   function dot({ x, y }, status) {
     const fill = colorMapFill[status ?? 'null'];
@@ -191,7 +191,7 @@ function TEPTriangle({ appearance, breathing, circulation }) {
       <svg
         viewBox={`0 0 ${width} ${height}`}
         width="100%"
-        style={{ maxWidth: 360 }}
+        style={{ maxWidth: 480 }}
         role="img"
         aria-label="Triángulo de Evaluación Pediátrica"
         preserveAspectRatio="xMidYMid meet"
@@ -209,13 +209,13 @@ function TEPTriangle({ appearance, breathing, circulation }) {
         {dot(right, C)}
 
         {/* etiquetas (todas dentro del área del SVG para evitar recortes) */}
-        <text x={top.x} y={top.y + 24} textAnchor="middle" fontSize="12" fill="#334155">
+        <text x={top.x} y={top.y + 28} textAnchor="middle" fontSize="13" fill="#334155">
           Apariencia
         </text>
-        <text x={left.x} y={left.y - 10} textAnchor="middle" fontSize="12" fill="#334155">
-          Resp./Trabajo
+        <text x={left.x} y={left.y - 14} textAnchor="middle" fontSize="13" fill="#334155">
+          Resp / Trabajo
         </text>
-        <text x={right.x} y={right.y - 10} textAnchor="middle" fontSize="12" fill="#334155">
+        <text x={right.x} y={right.y - 14} textAnchor="middle" fontSize="13" fill="#334155">
           Circulación a piel
         </text>
       </svg>
@@ -387,7 +387,7 @@ export default function SimulacionDetalle() {
       // Cargar escenario
       const { data: esc, error: e1 } = await supabase
         .from("scenarios")
-        .select("id, title, summary, level, mode, created_at")
+        .select("id, title, summary, level, mode, estimated_minutes, created_at")
         .eq("id", Number(id))
         .maybeSingle();
 
@@ -844,8 +844,11 @@ export default function SimulacionDetalle() {
             </ol>
           </CaseCard>
 
-          {/* Red flags */}
-          <CaseCard title="Banderas rojas">
+          {/* Signos de alarma */}
+          <CaseCard title="Signos de alarma">
+            <p className="text-xs text-slate-500 mb-2">
+              Indicadores clínicos que sugieren gravedad y requieren atención inmediata.
+            </p>
             <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
               {(brief?.red_flags || []).map((r, i) => (
                 <li key={i} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">{r}</li>
@@ -861,9 +864,9 @@ export default function SimulacionDetalle() {
             <div className="text-sm text-slate-600">
               <span className="font-medium text-slate-900">{scenario?.title}</span>
               <span className="mx-2">·</span>
-              <span>{brief?.level === "intermediate" ? "Nivel intermedio" : brief?.level === "advanced" ? "Nivel avanzado" : "Nivel básico"}</span>
+              <span>{formatLevel(scenario?.level || brief?.level)}</span>
               <span className="mx-2">·</span>
-              <span>~{brief?.estimated_minutes ?? scenario?.estimated_minutes ?? 10} min</span>
+              <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
             <button
               onClick={() => setShowBriefing(false)}
@@ -1033,17 +1036,22 @@ export default function SimulacionDetalle() {
               <div className="max-w-6xl mx-auto px-5 py-3 flex items-center gap-3 text-white">
                 {/* Chips */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                    {formatMode(scenario?.mode)}
-                  </span>
-                  <span className="text-xs px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                    {formatLevel(scenario?.level)}
-                  </span>
-                  {rol ? (
-                    <span className="text-xs px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                      {formatRole(rol)}
-                    </span>
-                  ) : null}
+          <span className="text-xs px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+            {formatMode(scenario?.mode)}
+          </span>
+          <span className="text-xs px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+            {formatLevel(scenario?.level)}
+          </span>
+          {scenario?.estimated_minutes && (
+            <span className="text-xs px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+              ~{scenario.estimated_minutes} min
+            </span>
+          )}
+          {rol ? (
+            <span className="text-xs px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+              {formatRole(rol)}
+            </span>
+          ) : null}
                 </div>
 
                 {/* Título (truncado) */}
@@ -1122,7 +1130,7 @@ export default function SimulacionDetalle() {
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold">
-                    {currentStep?.description || `Paso ${currentIdx + 1}`}
+                    {currentStep?.description || "Paso"}
                   </h2>
                   <span className="text-sm text-slate-600">
                     Respondidas en este paso: {answeredInStep}/{currentStep?.questions?.length ?? 0}
@@ -1139,7 +1147,7 @@ export default function SimulacionDetalle() {
                 {/* Narrativa del paso */}
                 {currentStep?.narrative && (
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="text-xs font-semibold text-slate-500 mb-1">Historia · Paso {currentIdx + 1}</div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">Historia del caso</div>
                     <p className="text-sm text-slate-800 whitespace-pre-line">{currentStep.narrative}</p>
                   </div>
                 )}

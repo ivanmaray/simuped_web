@@ -110,7 +110,7 @@ export default function SimulacionConfirm() {
       // 3) Cargar escenario
       const { data: esc, error: eErr } = await supabase
         .from("scenarios")
-        .select("id, title, summary, level, mode, status")
+        .select("id, title, summary, level, mode, status, estimated_minutes")
         .eq("id", scenarioId)
         .maybeSingle();
 
@@ -207,6 +207,15 @@ export default function SimulacionConfirm() {
   const status = scenario?.status || "";
   const badge = statusBadge(status);
 
+  // Tiempo estimado del escenario (prioridad: scenario.estimated_minutes > brief.estimated_minutes > 15)
+  const estimatedMinutes = (() => {
+    const a = Number(scenario?.estimated_minutes);
+    if (Number.isFinite(a) && a > 0) return a;
+    const b = Number(brief?.estimated_minutes);
+    if (Number.isFinite(b) && b > 0) return b;
+    return 15;
+  })();
+
   const isBlockedByStatus =
     status.toLowerCase().startsWith("en construcción") &&
     status.toLowerCase().includes("sin iniciar");
@@ -232,7 +241,8 @@ export default function SimulacionConfirm() {
     setCreating(true);
     try {
       const now = new Date();
-      const limitSecs = esAdmin ? Math.max(1, Number(customMinutes) || 0) * 60 : DEFAULT_LIMIT_SECS;
+      const baseMinutes = (esAdmin && Number(customMinutes)) ? Math.max(1, Number(customMinutes)) : estimatedMinutes;
+      const limitSecs = Math.max(60, Math.floor(baseMinutes * 60));
       const expires = new Date(now.getTime() + limitSecs * 1000);
 
       const { data, error } = await supabase
@@ -305,7 +315,7 @@ export default function SimulacionConfirm() {
       {/* Hero */}
       <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] text-white">
         <div className="max-w-6xl mx-auto px-5 py-10">
-          <p className="opacity-95">{formatMode(scenario.mode)} • {formatLevel(scenario.level)}</p>
+          <p className="opacity-95">{formatMode(scenario.mode)} • {formatLevel(scenario.level)} • ~{estimatedMinutes} min</p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl md:text-4xl font-semibold">{scenario.title}</h1>
             {perfil.rol ? (
@@ -462,6 +472,9 @@ export default function SimulacionConfirm() {
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
             <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
               Intentos usados: {attemptsCount}/{MAX_ATTEMPTS}{openAttemptId ? " · tienes un intento en curso" : ""}
+            </span>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+              Tiempo estimado: ~{estimatedMinutes} min
             </span>
             {badge.text && (
               <span className={`inline-flex items-center px-2.5 py-1 rounded-full ring-1 text-sm ${badge.className}`}>
