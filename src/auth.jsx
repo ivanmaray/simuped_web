@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
 
 // Mantiene la misma forma del contexto para no romper consumidores
-const AuthCtx = createContext({ ready: false, session: null, profile: null });
+const AuthCtx = createContext({ ready: false, session: null, profile: null, emailConfirmed: false });
 
 export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
@@ -19,6 +19,7 @@ export function AuthProvider({ children }) {
           get ready() { return ready; },
           get session() { return session; },
           get profile() { return profile; },
+          get emailConfirmed() { return !!session?.user?.email_confirmed_at; },
         },
       });
     } catch {}
@@ -35,7 +36,7 @@ export function AuthProvider({ children }) {
           .eq("id", uid)
           .maybeSingle();
         if (pErr) console.warn("[Auth] profile select error:", pErr);
-        if (mounted) setProfile(prof ?? null);
+        if (mounted) setProfile(prof ? { ...prof, approved: !!prof.approved, is_admin: !!prof.is_admin } : null);
       } catch (e) {
         console.warn("[Auth] profile select throw:", e);
         if (mounted) setProfile(null);
@@ -123,7 +124,9 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const value = useMemo(() => ({ ready, session, profile }), [ready, session, profile]);
+  const emailConfirmed = !!session?.user?.email_confirmed_at;
+
+  const value = useMemo(() => ({ ready, session, profile, emailConfirmed }), [ready, session, profile, emailConfirmed]);
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
