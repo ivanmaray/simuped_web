@@ -115,23 +115,53 @@ export default function Dashboard() {
 
     async function cargarEscenarios() {
       setLoadingEsc(true);
+      setErrorMsg("");
       console.debug("[Dashboard] cargarEscenarios: fetching...");
-      const { data, error } = await supabase
-        .from("scenarios")
-        .select(`
-          id, title, summary, level, mode, created_at
-        `)
-        .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("[Dashboard] cargarEscenarios error:", error);
-        setErrorMsg(error.message || "Error cargando escenarios");
+      try {
+        const [scRes, sumRes] = await Promise.all([
+          supabase
+            .from("scenarios")
+            .select("id, title, summary, level, mode, created_at, estimated_minutes")
+            .order("created_at", { ascending: false }),
+          // Vista opcional; si no existe no rompemos la pantalla
+          supabase
+            .from("v_user_attempts_summary")
+            .select("scenario_id, attempts_count, last_started_at")
+        ]);
+
+        if (scRes.error) {
+          console.error("[Dashboard] scenarios error:", scRes.error);
+          throw new Error(scRes.error.message || "No se pudieron cargar los escenarios");
+        }
+
+        if (sumRes.error) {
+          // No bloquear: continuar sin resumen
+          console.warn("[Dashboard] summary warning:", sumRes.error);
+        }
+
+        const scenarios = scRes.data || [];
+        const summary = sumRes.data || [];
+        const mapSummary = new Map(summary.map(r => [r.scenario_id, r]));
+
+        const enriched = scenarios.map(sc => {
+          const s = mapSummary.get(sc.id);
+          return {
+            ...sc,
+            attempts_count: s?.attempts_count ?? 0,
+            last_started_at: s?.last_started_at ?? null,
+          };
+        });
+
+        setEscenarios(enriched);
+        console.debug("[Dashboard] cargarEscenarios: loaded", enriched.length);
+      } catch (e) {
+        console.error("[Dashboard] cargarEscenarios catch:", e);
         setEscenarios([]);
-      } else {
-        setEscenarios(data || []);
-        console.debug("[Dashboard] cargarEscenarios: loaded", (data || []).length);
+        setErrorMsg(e?.message || "Error cargando el panel");
+      } finally {
+        setLoadingEsc(false);
       }
-      setLoadingEsc(false);
     }
 
     init();
