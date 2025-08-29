@@ -401,13 +401,13 @@ export default function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col className="w-[28%]" />
                   <col className="w-[22%]" />
                   <col className="w-[18%]" />
+                  <col className="w-[16%]" />
                   <col className="w-[10%]" />
+                  <col className="w-[14%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[6%]" />
-                  <col className="w-[4%]" />
+                  <col className="w-[8%]" />
                 </colgroup>
                 <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
