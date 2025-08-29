@@ -1,6 +1,6 @@
 // src/pages/Evaluacion.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
@@ -46,16 +46,24 @@ function BarChart({ data, title = "Media por escenario" }) {
 
 export default function Evaluacion() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [attempts, setAttempts] = useState([]);
   const [role, setRole] = useState("");
   const [critMap, setCritMap] = useState({});
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [viewUserId, setViewUserId] = useState(null);      // usuario sobre el que se muestra la evaluación
+  const [viewUserEmail, setViewUserEmail] = useState("");  // email del usuario visto (si admin está filtrando)
 
   useEffect(() => {
     let mounted = true;
     (async () => {
+      // Lee ?user_id=... del querystring (modo admin para revisar a otra persona)
+      const params = new URLSearchParams(location.search);
+      const requestedUserId = params.get("user_id");
+
       const { data, error } = await supabase.auth.getSession();
       if (!mounted) return;
       if (error) setErr(error.message || "Error sesión");
@@ -63,26 +71,55 @@ export default function Evaluacion() {
       setSession(sess);
       if (!sess) { setLoading(false); navigate("/", { replace: true }); return; }
 
-      const { data: prof } = await supabase
+      // Perfil del usuario actual (para saber si es admin)
+      const { data: myProf, error: myErr } = await supabase
         .from("profiles")
-        .select("rol")
+        .select("rol, is_admin")
         .eq("id", sess.user.id)
         .maybeSingle();
-      setRole(prof?.rol ?? sess.user?.user_metadata?.rol ?? "");
 
-      // Trae intentos del usuario + título del escenario
+      const amIAdmin = !!(myProf?.is_admin);
+      setIsAdmin(amIAdmin);
+
+      // Determina qué usuario vamos a visualizar
+      const targetUserId = (amIAdmin && requestedUserId) ? requestedUserId : sess.user.id;
+      setViewUserId(targetUserId);
+
+      // Si estoy viendo a otro (admin), carga su rol/email para cabecera.
+      if (targetUserId !== sess.user.id) {
+        const { data: other, error: oErr } = await supabase
+          .from("profiles")
+          .select("email, rol")
+          .eq("id", targetUserId)
+          .maybeSingle();
+        if (!oErr && other) {
+          setViewUserEmail(other.email || "");
+          setRole(other.rol || "");
+        } else {
+          setViewUserEmail("");
+          setRole("");
+        }
+      } else {
+        // Viéndome a mí mismo
+        setViewUserEmail(sess.user.email || "");
+        setRole(myProf?.rol ?? sess.user?.user_metadata?.rol ?? "");
+      }
+
+      // Trae intentos del usuario objetivo + título del escenario
       const { data: rows, error: e2 } = await supabase
         .from("attempts")
         .select(`
           id, user_id, scenario_id, started_at, finished_at, correct_count, total_count, score,
           scenarios ( title )
         `)
-        .eq("user_id", sess.user.id)
+        .eq("user_id", targetUserId)
         .order("started_at", { ascending: false });
+
       if (e2) {
         console.error("[Evaluacion] attempts select error:", e2);
         setErr(e2.message || "Error cargando intentos");
         setAttempts([]);
+        setCritMap({});
       } else {
         setAttempts(rows || []);
         // Cargar resumen de críticas para esos attempts (si hay)
@@ -111,7 +148,7 @@ export default function Evaluacion() {
       if (!sess) navigate("/", { replace: true });
     });
     return () => { mounted = false; try { sub?.subscription?.unsubscribe?.(); } catch {} };
-  }, [navigate]);
+  }, [navigate, location.search]);
 
   const summaryByScenario = useMemo(() => {
     const acc = new Map();
@@ -135,9 +172,30 @@ export default function Evaluacion() {
       <Navbar />
       <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] text-white">
         <div className="max-w-6xl mx-auto px-5 py-8">
-          <p className="text-white/80 text-sm">Evaluación del desempeño • {formatRole(role)}</p>
-          <h1 className="text-2xl md:text-3xl font-semibold">Tus resultados</h1>
-          <p className="opacity-95">Resumen de intentos y medias por escenario.</p>
+          <p className="text-white/80 text-sm">
+            Evaluación del desempeño • {formatRole(role)}
+          </p>
+          <h1 className="text-2xl md:text-3xl font-semibold">
+            {viewUserId && session?.user?.id && viewUserId !== session.user.id
+              ? `Resultados de ${viewUserEmail || viewUserId}`
+              : "Tus resultados"}
+          </h1>
+          <p className="opacity-95">
+            Resumen de intentos y medias por escenario.
+          </p>
+          {isAdmin && viewUserId && session?.user?.id && viewUserId !== session.user.id && (
+            <div className="mt-2">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-sm">
+                Filtrando por usuario: {viewUserEmail || viewUserId}
+                <button
+                  className="underline decoration-white/70 hover:decoration-white"
+                  onClick={() => navigate("/evaluacion", { replace: true })}
+                >
+                  Quitar filtro
+                </button>
+              </span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -149,7 +207,11 @@ export default function Evaluacion() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Intentos</h3>
+            <h3 className="text-lg font-semibold">
+              {viewUserId && session?.user?.id && viewUserId !== session.user.id
+                ? "Intentos del usuario"
+                : "Intentos"}
+            </h3>
             <Link to="/dashboard" className="text-sm underline text-slate-700">Volver al panel</Link>
           </div>
           {err && <div className="mt-2 text-sm text-red-600">{err}</div>}

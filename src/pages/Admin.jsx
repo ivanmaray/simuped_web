@@ -1,5 +1,6 @@
 // src/pages/Admin.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
@@ -29,6 +30,7 @@ function Card({ title, count, children }) {
 }
 
 export default function Admin() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [yo, setYo] = useState(null);
   const [rows, setRows] = useState([]);
@@ -38,6 +40,7 @@ export default function Admin() {
   const [dq, setDq] = useState(""); // debounced query
   const qTimerRef = useRef(null);
   const [processingIds, setProcessingIds] = useState({}); // { [userId]: true }
+  const [mailStatus, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
   const [authMap, setAuthMap] = useState({}); // { [userId]: { email_confirmed: bool } }
 
   useEffect(() => {
@@ -83,7 +86,7 @@ export default function Admin() {
       // 3) Usuarios (se asume RLS que permite al admin leer todos)
       const { data: all, error: uErr } = await supabase
         .from("profiles")
-        .select("id, email, nombre, rol, approved, created_at")
+        .select("id, email, nombre, apellidos, unidad, dni, rol, approved, created_at")
         .order("created_at", { ascending: false });
 
       if (uErr) {
@@ -161,23 +164,35 @@ export default function Admin() {
 
       if (e1) throw e1;
 
-      // 2) Notifica por email (tu endpoint local de Vercel/Node)
-      let mailOk = true;
+      // 2) Notifica por email (endpoint Vercel). Enviamos nombre y email.
+      let mailOk = false;
       try {
         const res = await fetch("/api/notify_user_approved", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: u.email, nombre: u.nombre }),
+          body: JSON.stringify({
+            email: u.email,
+            nombre: u.nombre || "",
+          }),
         });
-        if (!res.ok) mailOk = false;
-      } catch {
-        mailOk = false;
+        if (res.ok) {
+          mailOk = true;
+        } else {
+          // intenta leer error para mostrarlo
+          try {
+            const j = await res.json();
+            console.warn("[Admin] notify_user_approved response:", j);
+          } catch (_) {}
+        }
+      } catch (e) {
+        console.error("[Admin] notify_user_approved fetch error:", e);
       }
 
       // 3) Actualiza UI
       setRows((prev) =>
         prev.map((r) => (r.id === u.id ? { ...r, approved: true } : r))
       );
+      setMailStatus((prev) => ({ ...prev, [u.id]: mailOk ? "ok" : "fail" }));
       setOk(mailOk ? "Usuario aprobado y notificado ✔" : "Usuario aprobado ✔ (no se pudo enviar el email)");
     } catch (e) {
       console.error("[Admin] aprobar error:", e);
@@ -192,6 +207,10 @@ export default function Admin() {
   }
 
   async function reenviarVerificacion(u) {
+  function verIntentos(u) {
+    if (!u?.id) return;
+    navigate(`/evaluacion?user_id=${encodeURIComponent(u.id)}`);
+  }
     if (!u?.email) return;
     setErr("");
     setOk("");
@@ -203,6 +222,7 @@ export default function Admin() {
       });
       if (!res.ok) throw new Error("No se pudo reenviar la verificación");
       setOk("Correo de verificación reenviado ✔");
+      setMailStatus((prev) => ({ ...prev, [u.id]: "ok" }));
     } catch (e) {
       console.error("[Admin] resend verify error:", e);
       setErr(e?.message || "No se pudo reenviar la verificación");
@@ -266,9 +286,13 @@ export default function Admin() {
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
                     <th className="text-left px-3 py-2">Nombre</th>
+                    <th className="text-left px-3 py-2">Apellidos</th>
                     <th className="text-left px-3 py-2">Rol</th>
+                    <th className="text-left px-3 py-2">Unidad</th>
+                    <th className="text-left px-3 py-2">DNI</th>
                     <th className="text-left px-3 py-2">Verificación</th>
                     <th className="text-left px-3 py-2">Alta (fecha)</th>
+                    <th className="text-left px-3 py-2">Notificación</th>
                     <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
                 </thead>
@@ -279,7 +303,10 @@ export default function Admin() {
                       <tr key={u.id} className="border-t">
                         <td className="px-3 py-2">{u.email || "—"}</td>
                         <td className="px-3 py-2">{u.nombre || "—"}</td>
+                        <td className="px-3 py-2">{u.apellidos || "—"}</td>
                         <td className="px-3 py-2">{u.rol || "—"}</td>
+                        <td className="px-3 py-2">{u.unidad || "—"}</td>
+                        <td className="px-3 py-2">{u.dni || "—"}</td>
                         <td className="px-3 py-2">
                           {verif === null ? (
                             <span className="text-xs text-slate-500">—</span>
@@ -289,7 +316,23 @@ export default function Admin() {
                         </td>
                         <td className="px-3 py-2">{u.created_at ? new Date(u.created_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
                         <td className="px-3 py-2">
+                          {mailStatus[u.id] === "ok" ? (
+                            <span className="text-xs text-emerald-700">✔ Enviada</span>
+                          ) : mailStatus[u.id] === "fail" ? (
+                            <span className="text-xs text-amber-700">⚠️ Falló</span>
+                          ) : (
+                            <span className="text-xs text-slate-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => verIntentos(u)}
+                              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+                              title="Ver intentos del usuario"
+                            >
+                              Ver intentos
+                            </button>
                             <button
                               onClick={() => aprobar(u)}
                               disabled={!!processingIds[u.id]}
@@ -327,9 +370,14 @@ export default function Admin() {
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
                     <th className="text-left px-3 py-2">Nombre</th>
+                    <th className="text-left px-3 py-2">Apellidos</th>
                     <th className="text-left px-3 py-2">Rol</th>
+                    <th className="text-left px-3 py-2">Unidad</th>
+                    <th className="text-left px-3 py-2">DNI</th>
                     <th className="text-left px-3 py-2">Verificación</th>
                     <th className="text-left px-3 py-2">Aprobado</th>
+                    <th className="text-left px-3 py-2">Notificación</th>
+                    <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -339,7 +387,10 @@ export default function Admin() {
                       <tr key={u.id} className="border-t">
                         <td className="px-3 py-2">{u.email || "—"}</td>
                         <td className="px-3 py-2">{u.nombre || "—"}</td>
+                        <td className="px-3 py-2">{u.apellidos || "—"}</td>
                         <td className="px-3 py-2">{u.rol || "—"}</td>
+                        <td className="px-3 py-2">{u.unidad || "—"}</td>
+                        <td className="px-3 py-2">{u.dni || "—"}</td>
                         <td className="px-3 py-2">
                           {verif === null ? (
                             <span className="text-xs text-slate-500">—</span>
@@ -349,6 +400,26 @@ export default function Admin() {
                         </td>
                         <td className="px-3 py-2">
                           <Badge ok={true} labelTrue="Aprobado" labelFalse="Pendiente" />
+                        </td>
+                        <td className="px-3 py-2">
+                          {mailStatus[u.id] === "ok" ? (
+                            <span className="text-xs text-emerald-700">✔ Enviada</span>
+                          ) : mailStatus[u.id] === "fail" ? (
+                            <span className="text-xs text-amber-700">⚠️ Falló</span>
+                          ) : (
+                            <span className="text-xs text-slate-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => verIntentos(u)}
+                              className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+                              title="Ver intentos del usuario"
+                            >
+                              Ver intentos
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
