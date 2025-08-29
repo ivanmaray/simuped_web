@@ -141,6 +141,104 @@ function Sk({ w = "100%", h = 12, className = "" }) {
   return <div className={`animate-pulse bg-slate-200 rounded ${className}`} style={{ width: w, height: h }} />;
 }
 
+// Triángulo de Evaluación Pediátrica (TEP) como SVG
+function TEPTriangle({ appearance, breathing, circulation }) {
+  // normaliza a 'green' | 'amber' | 'red' | null
+  function norm(v) {
+    const k = String(v || '').toLowerCase();
+    if (['verde', 'green', 'normal'].includes(k)) return 'green';
+    if (['amarillo', 'ámbar', 'ambar', 'amber', 'sospechoso'].includes(k)) return 'amber';
+    if (['rojo', 'red', 'anormal', 'alterado'].includes(k)) return 'red';
+    return null;
+  }
+  const A = norm(appearance);
+  const B = norm(breathing);
+  const C = norm(circulation);
+
+  const colorMapFill = {
+    green: '#d1fae5',  // emerald-100
+    amber: '#fde68a',  // amber-200
+    red:   '#fecaca',  // rose-200
+    null:  '#e5e7eb',  // slate-200
+  };
+  const colorMapStroke = {
+    green: '#059669',  // emerald-600
+    amber: '#b45309',  // amber-700
+    red:   '#b91c1c',  // red-700
+    null:  '#9ca3af',  // slate-400
+  };
+
+  // Coordenadas de un triángulo equilátero
+  const width = 280;
+  const height = 230;
+  const padding = 24;
+  const top = { x: width / 2, y: padding };
+  const left = { x: padding, y: height - padding };
+  const right = { x: width - padding, y: height - padding };
+
+  function dot({ x, y }, status) {
+    const fill = colorMapFill[status ?? 'null'];
+    const stroke = colorMapStroke[status ?? 'null'];
+    return (
+      <>
+        <circle cx={x} cy={y} r="18" fill={fill} stroke={stroke} strokeWidth="2" />
+        <circle cx={x} cy={y} r="4" fill={stroke} />
+      </>
+    );
+  }
+
+  return (
+    <div className="w-full grid place-items-center">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        style={{ maxWidth: 380 }}
+        role="img"
+        aria-label="Triángulo de Evaluación Pediátrica"
+      >
+        {/* triángulo base */}
+        <polygon
+          points={`${top.x},${top.y} ${left.x},${left.y} ${right.x},${right.y}`}
+          fill="#ffffff"
+          stroke="#cbd5e1"
+          strokeWidth="2"
+        />
+        {/* vértices coloreados */}
+        {dot(top, A)}
+        {dot(left, B)}
+        {dot(right, C)}
+
+        {/* etiquetas */}
+        <text x={top.x} y={top.y - 8} textAnchor="middle" fontSize="12" fill="#334155">
+          Apariencia
+        </text>
+        <text x={left.x - 4} y={left.y + 26} textAnchor="end" fontSize="12" fill="#334155">
+          Resp./Trabajo
+        </text>
+        <text x={right.x + 4} y={right.y + 26} textAnchor="start" fontSize="12" fill="#334155">
+          Circulación a piel
+        </text>
+      </svg>
+
+      {/* leyenda */}
+      <div className="mt-2 flex items-center gap-3 text-xs text-slate-600">
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.green, border: `2px solid ${colorMapStroke.green}` }}></span>
+          Normal
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.amber, border: `2px solid ${colorMapStroke.amber}` }}></span>
+          Sospechoso
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.red, border: `2px solid ${colorMapStroke.red}` }}></span>
+          Anormal
+        </span>
+      </div>
+    </div>
+  );
+}
+
 
 
 export default function SimulacionDetalle() {
@@ -671,24 +769,12 @@ export default function SimulacionDetalle() {
           </CaseCard>
 
           {/* Triángulo pediátrico */}
-          <CaseCard title="Triángulo de evaluación pediátrica">
-            <div className="grid grid-cols-3 gap-3 text-center">
-              {(["appearance", "breathing", "circulation"]).map((k) => {
-                const v = brief?.triangle?.[k];
-                const clr = v === "red"
-                  ? "bg-rose-100 text-rose-700 border-rose-200"
-                  : v === "amber"
-                  ? "bg-amber-100 text-amber-700 border-amber-200"
-                  : "bg-emerald-100 text-emerald-700 border-emerald-200";
-                const label = k === "appearance" ? "Apariencia" : k === "breathing" ? "Respiración" : "Circulación";
-                return (
-                  <div key={k} className={`rounded-xl border p-4 ${v ? clr : "bg-slate-50 text-slate-500 border-slate-200"}`}>
-                    <div className="text-sm">{label}</div>
-                    <div className="text-lg font-semibold capitalize">{v || "—"}</div>
-                  </div>
-                );
-              })}
-            </div>
+          <CaseCard title="Triángulo de evaluación pediátrica (TEP)">
+            <TEPTriangle
+              appearance={brief?.triangle?.appearance}
+              breathing={brief?.triangle?.breathing}
+              circulation={brief?.triangle?.circulation}
+            />
           </CaseCard>
 
           {/* Constantes y Exploración */}
@@ -768,36 +854,6 @@ export default function SimulacionDetalle() {
             </ul>
           </CaseCard>
 
-          {/* Objetivos por rol */}
-          <CaseCard title="Objetivos por rol">
-            <div className="grid sm:grid-cols-3 gap-4">
-              {["MED", "NUR", "PHARM"].map((role) => (
-                <div key={role}>
-                  <div className="text-xs font-semibold text-slate-500 mb-2">
-                    {role === "MED" ? "Médico" : role === "NUR" ? "Enfermería" : "Farmacia"}
-                  </div>
-                  <ul className="list-disc pl-5 text-sm text-slate-700">
-                    {(brief?.objectives?.[role] || []).map((line, i) => (
-                      <li key={i}>{line}</li>
-                    ))}
-                    {!((brief?.objectives?.[role] || []).length) && <li className="text-slate-500">—</li>}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </CaseCard>
-
-          {/* Acciones críticas del caso */}
-          <CaseCard title="Acciones críticas del caso">
-            <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
-              {(brief?.critical_actions || []).map((r, i) => (
-                <li key={i} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">⚠️ {r}</li>
-              ))}
-              {!brief?.critical_actions?.length && (
-                <li className="text-slate-500">—</li>
-              )}
-            </ul>
-          </CaseCard>
 
           {/* Competencias del escenario */}
           <CaseCard title="Competencias del escenario">
