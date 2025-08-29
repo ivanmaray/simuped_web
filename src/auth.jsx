@@ -18,16 +18,26 @@ export function AuthProvider({ children }) {
   if (typeof window !== "undefined") {
     try {
       window.__auth = {
-        get ready() { return ready; },
-        get session() { return session; },
-        get profile() { return profile; },
-        get emailConfirmed() { return !!session?.user?.email_confirmed_at; },
+        get ready() {
+          return ready;
+        },
+        get session() {
+          return session;
+        },
+        get profile() {
+          return profile;
+        },
+        get emailConfirmed() {
+          const u = session?.user || {};
+          return !!(u.email_confirmed_at || u.confirmed_at || u?.user_metadata?.email_confirmed);
+        },
       };
     } catch {}
   }
 
   useEffect(() => {
     let mounted = true;
+    let unsubscribeAuth = null; // <- guardamos aquí para limpiar correctamente
 
     const log = (...a) => console.log("[Auth]", ...a);
     const warn = (...a) => console.warn("[Auth]", ...a);
@@ -37,14 +47,22 @@ export function AuthProvider({ children }) {
       try {
         const { data: prof, error: pErr } = await supabase
           .from("profiles")
-          .select("id, nombre, apellidos, rol, unidad, approved, is_admin, updated_at")
+          .select("id, email, nombre, apellidos, rol, unidad, approved, is_admin, updated_at")
           .eq("id", uid)
           .maybeSingle();
 
         if (pErr) warn("profile select error:", pErr);
         if (!mounted) return;
 
-        setProfile(prof ? { ...prof, approved: !!prof.approved, is_admin: !!prof.is_admin } : null);
+        setProfile(
+          prof
+            ? {
+                ...prof,
+                approved: !!prof.approved,
+                is_admin: !!prof.is_admin,
+              }
+            : null
+        );
       } catch (e) {
         warn("profile select throw:", e);
         if (mounted) setProfile(null);
@@ -80,7 +98,7 @@ export function AuthProvider({ children }) {
           } catch {}
         }
 
-        return hasCode || hasHashAccessToken;
+        return !!(hasCode || hasHashAccessToken);
       } catch (e) {
         warn("hydrateFromUrl throw:", e);
         return false;
@@ -105,7 +123,7 @@ export function AuthProvider({ children }) {
         } else if (hadTokensInUrl) {
           // Espera breve y reintenta una vez (algunos navegadores aplican la sesión unos ms después)
           log("retry getSession tras tokens en URL...");
-          await new Promise(r => setTimeout(r, 150));
+          await new Promise((r) => setTimeout(r, 150));
           const { data: d2 } = await supabase.auth.getSession();
           const s2 = d2?.session ?? null;
           setSession(s2);
@@ -127,7 +145,7 @@ export function AuthProvider({ children }) {
         }
       }
 
-      // 2) Suscribirse a cambios de autenticación
+      // 2) Suscribirse a cambios de autenticación (y guardar unsubscribe real)
       const { data: sub } = supabase.auth.onAuthStateChange(async (evt, newSess) => {
         if (!mounted) return;
         log("onAuthStateChange:", evt, !!newSess);
@@ -135,21 +153,27 @@ export function AuthProvider({ children }) {
         if (newSess?.user?.id) await loadProfile(newSess.user.id);
         else setProfile(null);
       });
-
-      return () => {
-        try { sub?.subscription?.unsubscribe?.(); } catch {}
+      unsubscribeAuth = () => {
+        try {
+          sub?.subscription?.unsubscribe?.();
+        } catch {}
       };
     }
 
-    const cleanup = init();
+    init();
 
     return () => {
       mounted = false;
-      if (typeof cleanup === "function") cleanup();
+      // limpiar suscripción correctamente
+      if (typeof unsubscribeAuth === "function") unsubscribeAuth();
     };
   }, []);
 
-  const emailConfirmed = !!session?.user?.email_confirmed_at;
+  // Detección robusta de email confirmado
+  const emailConfirmed = (() => {
+    const u = session?.user || {};
+    return !!(u.email_confirmed_at || u.confirmed_at || u?.user_metadata?.email_confirmed);
+  })();
 
   const value = useMemo(
     () => ({ ready, session, profile, emailConfirmed }),

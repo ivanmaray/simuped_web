@@ -12,6 +12,7 @@ import Perfil from "./pages/Perfil.jsx";
 import Registro from "./pages/Registro.jsx";
 import Pendiente from "./pages/Pendiente.jsx";
 import AttemptReview from "./pages/AttemptReview.jsx";
+import Admin from "./pages/Admin.jsx";
 
 function DebugRouteLogger() {
   const location = useLocation();
@@ -38,6 +39,7 @@ export default function MainRouter() {
           <Route path="/evaluacion" element={<Evaluacion />} />
           <Route path="/evaluacion/attempt/:attemptId" element={<AttemptReview />} />
           <Route path="/perfil" element={<Perfil />} />
+          <Route path="/admin" element={<Admin />} />
         </Route>
 
         {/* Fallback */}
