@@ -42,6 +42,8 @@ export default function Simulacion() {
   const [categoria, setCategoria] = useState(""); // nombre de categoría
   const [loadingEsc, setLoadingEsc] = useState(false);
 
+  const [attemptStats, setAttemptStats] = useState({}); // { [scenario_id]: { count, scored, avg } }
+
   // Cuenta atrás para redirigir al perfil si falta el rol
   const [redirectCountdown, setRedirectCountdown] = useState(5);
 
@@ -69,6 +71,44 @@ export default function Simulacion() {
 
   useEffect(() => {
     let mounted = true;
+
+    async function cargarIntentos(userId) {
+      try {
+        const { data, error } = await supabase
+          .from("attempts")
+          .select("id, scenario_id, score")
+          .eq("user_id", userId);
+        if (error) {
+          console.error("[Simulacion] cargarIntentos error:", error);
+          setAttemptStats({});
+          return;
+        }
+        const by = {};
+        for (const row of data || []) {
+          const sid = row.scenario_id;
+          if (!by[sid]) by[sid] = { count: 0, scored: 0, sum: 0 };
+          by[sid].count += 1;
+          const s = Number(row.score);
+          if (!Number.isNaN(s)) {
+            by[sid].scored += 1;
+            by[sid].sum += s;
+          }
+        }
+        const stats = {};
+        for (const [sid, v] of Object.entries(by)) {
+          stats[sid] = {
+            count: v.count,
+            scored: v.scored,
+            avg: v.scored > 0 ? v.sum / v.scored : null,
+          };
+        }
+        setAttemptStats(stats);
+      } catch (e) {
+        console.error("[Simulacion] excepción cargarIntentos:", e);
+        setAttemptStats({});
+      }
+    }
+
     async function init() {
       const { data, error } = await supabase.auth.getSession();
       if (!mounted) return;
@@ -106,6 +146,7 @@ export default function Simulacion() {
       }
 
       await cargarEscenarios();
+      await cargarIntentos(sess.user.id);
       setLoading(false);
     }
 
@@ -321,6 +362,16 @@ export default function Simulacion() {
                     {estadoStyle.label}
                   </span>
                 </div>
+                {attemptStats[esc.id] && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Intentos: {attemptStats[esc.id].count}
+                    {attemptStats[esc.id].scored > 0 && (
+                      <>
+                        {" · "}nota media: {attemptStats[esc.id].avg.toFixed(1)}
+                      </>
+                    )}
+                  </p>
+                )}
               </article>
             );
           })}

@@ -191,7 +191,7 @@ function TEPTriangle({ appearance, breathing, circulation }) {
       <svg
         viewBox={`0 0 ${width} ${height}`}
         width="100%"
-        style={{ maxWidth: 480 }}
+        style={{ maxWidth: 520 }}
         role="img"
         aria-label="Triángulo de Evaluación Pediátrica"
         preserveAspectRatio="xMidYMid meet"
@@ -209,13 +209,13 @@ function TEPTriangle({ appearance, breathing, circulation }) {
         {dot(right, C)}
 
         {/* etiquetas (todas dentro del área del SVG para evitar recortes) */}
-        <text x={top.x} y={top.y + 28} textAnchor="middle" fontSize="13" fill="#334155">
+        <text x={top.x} y={top.y + 34} textAnchor="middle" fontSize="16" fontWeight="600" fill="#334155">
           Apariencia
         </text>
-        <text x={left.x} y={left.y - 14} textAnchor="middle" fontSize="13" fill="#334155">
+        <text x={left.x} y={left.y - 10} textAnchor="middle" fontSize="16" fontWeight="600" fill="#334155">
           Resp / Trabajo
         </text>
-        <text x={right.x} y={right.y - 14} textAnchor="middle" fontSize="13" fill="#334155">
+        <text x={right.x} y={right.y - 10} textAnchor="middle" fontSize="16" fontWeight="600" fill="#334155">
           Circulación a piel
         </text>
       </svg>
