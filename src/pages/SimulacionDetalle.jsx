@@ -141,7 +141,7 @@ function Sk({ w = "100%", h = 12, className = "" }) {
   return <div className={`animate-pulse bg-slate-200 rounded ${className}`} style={{ width: w, height: h }} />;
 }
 
-// Triángulo de Evaluación Pediátrica (TEP) como SVG (compacto y sin recortes)
+// Triángulo de Evaluación Pediátrica (TEP) como SVG (más visible, nunca recortado)
 function TEPTriangle({ appearance, breathing, circulation }) {
   function norm(v) {
     const k = String(v || '').toLowerCase();
@@ -167,21 +167,25 @@ function TEPTriangle({ appearance, breathing, circulation }) {
     null:  '#9ca3af',
   };
 
-  // Dimensiones con mayor margen interno para evitar que se corten las etiquetas
-  const width = 700;      // sólo afecta al viewBox (no hace el SVG más grande en pantalla)
-  const height = 420;     // da espacio extra en la base para los rótulos
-  const padding = 80;     // margen interno generoso para que no se recorten textos
+  // Más área útil para que no se recorten textos
+  const width = 820;      // sólo afecta al viewBox (responsive)
+  const height = 500;     // espacio extra bajo para los rótulos de la base
+  const padding = 100;    // margen interno generoso
   const top = { x: width / 2, y: padding };
   const left = { x: padding, y: height - padding };
   const right = { x: width - padding, y: height - padding };
+
+  const NODE_R = 22;      // tamaño del nodo
+  const NODE_DOT = 5;     // punto interior
+  const FONT = 18;        // tamaño de letra de las etiquetas
 
   function dot({ x, y }, status) {
     const fill = colorMapFill[status ?? 'null'];
     const stroke = colorMapStroke[status ?? 'null'];
     return (
       <>
-        <circle cx={x} cy={y} r="14" fill={fill} stroke={stroke} strokeWidth="2" />
-        <circle cx={x} cy={y} r="3" fill={stroke} />
+        <circle cx={x} cy={y} r={NODE_R} fill={fill} stroke={stroke} strokeWidth="3" />
+        <circle cx={x} cy={y} r={NODE_DOT} fill={stroke} />
       </>
     );
   }
@@ -191,7 +195,7 @@ function TEPTriangle({ appearance, breathing, circulation }) {
       <svg
         viewBox={`0 0 ${width} ${height}`}
         width="100%"
-        style={{ maxWidth: 520 }}
+        style={{ maxWidth: 640 }}
         role="img"
         aria-label="Triángulo de Evaluación Pediátrica"
         preserveAspectRatio="xMidYMid meet"
@@ -208,30 +212,30 @@ function TEPTriangle({ appearance, breathing, circulation }) {
         {dot(left, B)}
         {dot(right, C)}
 
-        {/* etiquetas (todas dentro del área del SVG para evitar recortes) */}
-        <text x={top.x} y={top.y + 34} textAnchor="middle" fontSize="16" fontWeight="600" fill="#334155">
+        {/* etiquetas (posicionadas dentro del área para evitar recortes) */}
+        <text x={top.x} y={top.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
           Apariencia
         </text>
-        <text x={left.x} y={left.y - 10} textAnchor="middle" fontSize="16" fontWeight="600" fill="#334155">
+        <text x={left.x} y={left.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
           Resp / Trabajo
         </text>
-        <text x={right.x} y={right.y - 10} textAnchor="middle" fontSize="16" fontWeight="600" fill="#334155">
+        <text x={right.x} y={right.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
           Circulación a piel
         </text>
       </svg>
 
-      {/* leyenda compacta */}
-      <div className="mt-2 flex items-center gap-3 text-xs text-slate-600">
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.green, border: `2px solid ${colorMapStroke.green}` }}></span>
+      {/* leyenda un poco más grande */}
+      <div className="mt-2 flex items-center gap-4 text-sm text-slate-700">
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: colorMapFill.green, border: `2px solid ${colorMapStroke.green}` }}></span>
           Normal
         </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.amber, border: `2px solid ${colorMapStroke.amber}` }}></span>
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: colorMapFill.amber, border: `2px solid ${colorMapStroke.amber}` }}></span>
           Sospechoso
         </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.red, border: `2px solid ${colorMapStroke.red}` }}></span>
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: colorMapFill.red, border: `2px solid ${colorMapStroke.red}` }}></span>
           Anormal
         </span>
       </div>

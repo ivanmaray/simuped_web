@@ -105,35 +105,33 @@ export default function Admin() {
         return;
       }
 
-      // 3) Usuarios (se asume RLS que permite al admin leer todos)
-      const { data: all, error: uErr } = await supabase
-        .from("profiles")
-        .select("id, email, nombre, apellidos, unidad, dni, rol, approved, created_at, updated_at, approved_at, notified_at")
-        .order("created_at", { ascending: false });
-
-      if (uErr) {
-        setErr(uErr.message || "Error cargando usuarios.");
+      // 3) Usuarios (usar RPC admin_list_users para evitar RLS sobre profiles)
+      let cleaned = [];
+      let authRows = [];
+      try {
+        const { data: rpcRows, error: rpcErr } = await supabase.rpc("admin_list_users");
+        if (rpcErr) {
+          throw rpcErr;
+        }
+        // rpcRows ya trae: id, email, nombre, apellidos, dni, rol, unidad,
+        // areas_interes, created_at, updated_at, approved, approved_at, is_admin,
+        // email_confirmed, email_confirmed_at, last_sign_in_at
+        authRows = rpcRows || [];
+        cleaned = authRows.filter((r) => r?.id);
+      } catch (e) {
+        setErr(e?.message || "Error cargando usuarios (admin_list_users).");
         setLoading(false);
         return;
       }
 
-      // filtra registros raros sin id
-      const cleaned = (all || []).filter((r) => r?.id);
       setRows(cleaned);
 
-      // 4) Cargar estado de verificación (RPC segura en el backend). Si no existe, se ignora.
-      try {
-        const { data: authRows, error: aErr } = await supabase.rpc("admin_list_users");
-        if (!aErr && Array.isArray(authRows)) {
-          const map = {};
-          for (const r of authRows) {
-            if (r && r.id) map[r.id] = { email_confirmed: !!r.email_confirmed };
-          }
-          setAuthMap(map);
-        }
-      } catch (_) {
-        // No pasa nada si no existe la RPC todavía.
+      // 4) Mapa de verificación (desde la propia RPC)
+      const map = {};
+      for (const r of authRows) {
+        if (r && r.id) map[r.id] = { email_confirmed: !!r.email_confirmed };
       }
+      setAuthMap(map);
 
       setLoading(false);
     }
