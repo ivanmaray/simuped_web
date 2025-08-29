@@ -417,7 +417,7 @@ export default function Admin() {
                     <th className="text-left px-3 py-2">DNI</th>
                     <th className="text-left px-3 py-2">Fechas</th>
                     <th className="text-left px-3 py-2">Estado</th>
-                    <th className="text-left px-3 py-2">Acc.</th>
+                    <th className="text-left px-3 py-2">Resultados.</th>
                   </tr>
                 </thead>
                 <tbody>
