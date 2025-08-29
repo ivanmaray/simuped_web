@@ -112,6 +112,7 @@ export function AuthProvider({ children }) {
       // 1) Obtener sesión
       try {
         const { data, error } = await supabase.auth.getSession();
+        log("getSession returned", !!data?.session);
         if (!mounted) return;
         if (error) warn("getSession error:", error);
         const sess = data?.session ?? null;
@@ -119,17 +120,22 @@ export function AuthProvider({ children }) {
         log("getSession ->", !!sess, sess?.user?.id);
 
         if (sess?.user?.id) {
+          log("getSession found user:", sess.user.id);
           await loadProfile(sess.user.id);
         } else if (hadTokensInUrl) {
+          log("no user yet, hadTokensInUrl -> retrying getSession in 150ms");
           // Espera breve y reintenta una vez (algunos navegadores aplican la sesión unos ms después)
-          log("retry getSession tras tokens en URL...");
           await new Promise((r) => setTimeout(r, 150));
           const { data: d2 } = await supabase.auth.getSession();
           const s2 = d2?.session ?? null;
           setSession(s2);
-          log("retry getSession ->", !!s2, s2?.user?.id);
-          if (s2?.user?.id) await loadProfile(s2.user.id);
+          log("retry getSession resolved:", !!s2, s2?.user?.id);
+          if (s2?.user?.id) {
+            log("retry loadProfile for:", s2.user.id);
+            await loadProfile(s2.user.id);
+          }
         } else {
+          log("getSession: no user and no tokens in URL -> profile=null");
           setProfile(null);
         }
       } catch (e) {
@@ -138,19 +144,26 @@ export function AuthProvider({ children }) {
           setSession(null);
           setProfile(null);
         }
-      } finally {
+      } 
+      finally {
         if (mounted) {
+          // Marcamos ready solo después de haber resuelto sesión y perfil
+          const hasUser = !!(session?.user?.id);
+          const hasProfile = !!profile;
+          log("ready=true", { hasUser, hasProfile });
           setReady(true);
-          log("ready=true");
         }
       }
 
       // 2) Suscribirse a cambios de autenticación (y guardar unsubscribe real)
       const { data: sub } = supabase.auth.onAuthStateChange(async (evt, newSess) => {
         if (!mounted) return;
-        log("onAuthStateChange:", evt, !!newSess);
+        log("onAuthStateChange:", evt, { hasSession: !!newSess, user: newSess?.user?.id });
         setSession(newSess ?? null);
-        if (newSess?.user?.id) await loadProfile(newSess.user.id);
+        if (newSess?.user?.id) {
+          log("auth change -> loadProfile:", newSess.user.id);
+          await loadProfile(newSess.user.id);
+        }
         else setProfile(null);
       });
       unsubscribeAuth = () => {
