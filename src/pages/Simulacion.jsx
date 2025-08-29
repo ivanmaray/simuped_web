@@ -364,10 +364,10 @@ export default function Simulacion() {
                 </div>
                 {attemptStats[esc.id] && (
                   <p className="mt-2 text-xs text-slate-500">
-                    Intentos: {attemptStats[esc.id].count}
+                    Intentos con nota: {attemptStats[esc.id].scored}/{attemptStats[esc.id].count}
                     {attemptStats[esc.id].scored > 0 && (
                       <>
-                        {" · "}nota media: {attemptStats[esc.id].avg.toFixed(1)}
+                        {" · "}Nota media: {attemptStats[esc.id].avg.toFixed(1)}/100
                       </>
                     )}
                   </p>
