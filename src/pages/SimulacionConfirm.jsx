@@ -432,16 +432,6 @@ export default function SimulacionConfirm() {
               );
             })()}
           </div>
-          {/* Acciones críticas */}
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-slate-600 mb-2">Acciones críticas del caso</h3>
-            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-slate-700">
-              {(brief?.critical_actions || []).map((r, i) => (
-                <li key={i} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">⚠️ {r}</li>
-              ))}
-              {!brief?.critical_actions?.length && <li className="text-slate-500">—</li>}
-            </ul>
-          </div>
           {/* Competencias */}
           <div className="mt-6">
             <h3 className="text-sm font-semibold text-slate-600 mb-2">Competencias del escenario</h3>

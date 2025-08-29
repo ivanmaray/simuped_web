@@ -869,6 +869,23 @@ export default function SimulacionDetalle() {
               );
             })()}
 
+            {/* Acciones críticas del caso (debrief) */}
+            {brief?.critical_actions?.length > 0 && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 mb-4">
+                <div className="font-semibold mb-2">Acciones críticas del caso</div>
+                <ul className="grid sm:grid-cols-2 gap-2 text-sm text-amber-900">
+                  {brief.critical_actions.map((txt, i) => (
+                    <li
+                      key={i}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
+                    >
+                      ⚠️ {txt}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Resultado de preguntas críticas */}
             {(() => {
               const allQs = steps.flatMap((s) => s.questions || []);
