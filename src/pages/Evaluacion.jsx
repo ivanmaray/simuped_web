@@ -1,6 +1,6 @@
 // src/pages/Evaluacion.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
@@ -47,6 +47,7 @@ function BarChart({ data, title = "Media por escenario" }) {
 export default function Evaluacion() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -62,8 +63,7 @@ export default function Evaluacion() {
     let mounted = true;
     (async () => {
       // Lee ?user_id=... del querystring (modo admin para revisar a otra persona)
-      const params = new URLSearchParams(location.search);
-      const requestedUserId = params.get("user_id");
+      const requestedUserId = searchParams.get("user_id");
       const storedUserId = sessionStorage.getItem("eval_last_user_id");
       const forceSelf = !!(location.state && location.state.forceSelf);
 
@@ -172,7 +172,7 @@ export default function Evaluacion() {
       if (!sess) navigate("/", { replace: true });
     });
     return () => { mounted = false; try { sub?.subscription?.unsubscribe?.(); } catch {} };
-  }, [navigate, location.search]);
+  }, [navigate, location.search, searchParams]);
 
   function fmtDate(d) {
     try {
@@ -206,7 +206,7 @@ export default function Evaluacion() {
       <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] text-white">
         <div className="max-w-6xl mx-auto px-5 py-8">
           <p className="text-white/80 text-sm">
-            Evaluación del desempeño • {formatRole(role)}
+            Evaluación del desempeño{formatRole(role) ? " • " + formatRole(role) : ""}
           </p>
           <h1 className="text-2xl md:text-3xl font-semibold">
             {viewUserId && session?.user?.id && viewUserId !== session.user.id
@@ -223,7 +223,10 @@ export default function Evaluacion() {
                 <button
                   className="underline decoration-white/70 hover:decoration-white"
                   aria-label="Quitar filtro de usuario"
-                  onClick={() => navigate("/evaluacion", { replace: true })}
+                  onClick={() => {
+                    try { sessionStorage.removeItem("eval_last_user_id"); } catch {}
+                    navigate("/evaluacion", { replace: true });
+                  }}
                 >
                   Quitar filtro
                 </button>
@@ -250,7 +253,11 @@ export default function Evaluacion() {
           </div>
           {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
           {attempts.length === 0 ? (
-            <p className="text-slate-600 mt-2">Aún no has realizado ningún intento.</p>
+            <p className="text-slate-600 mt-2">
+              {viewUserId && session?.user?.id && viewUserId !== session.user.id
+                ? "Este usuario no tiene intentos registrados."
+                : "Aún no has realizado ningún intento."}
+            </p>
           ) : (
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">

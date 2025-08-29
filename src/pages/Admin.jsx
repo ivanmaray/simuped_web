@@ -32,8 +32,8 @@ function Card({ title, count, children }) {
 export default function Admin() {
   function verIntentos(u) {
     if (!u?.id) return;
-    // Redirige a Evaluación con el user query param para ver sus intentos
-    navigate(`/evaluacion?user=${encodeURIComponent(u.id)}`);
+    // Redirige a Evaluación con el user_id query param para ver sus intentos
+    navigate(`/evaluacion?user_id=${encodeURIComponent(u.id)}`);
   }
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -267,14 +267,14 @@ export default function Admin() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar isPrivate />
       <header className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] text-white">
-        <div className="max-w-6xl mx-auto px-5 py-6">
+        <div className="max-w-7xl mx-auto px-5 py-6">
           <div className="text-xs opacity-90">Admin</div>
           <h1 className="text-2xl font-bold">Panel de administración</h1>
           <p className="opacity-90 mt-1">Aprobación de usuarios y notificaciones.</p>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-5 py-8 space-y-6">
+      <main className="max-w-7xl mx-auto px-5 py-8 space-y-6">
         {(err || ok) && (
           <div
             className={`rounded-lg border px-4 py-2 text-sm ${
@@ -306,7 +306,7 @@ export default function Admin() {
             <div className="text-slate-500 text-sm">No hay solicitudes pendientes ahora mismo.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[1100px] text-sm">
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
@@ -383,7 +383,7 @@ export default function Admin() {
             <div className="text-slate-500 text-sm">Aún no hay usuarios aprobados.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[1100px] text-sm">
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
