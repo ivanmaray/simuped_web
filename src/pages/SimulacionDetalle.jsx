@@ -375,17 +375,6 @@ export default function SimulacionDetalle() {
         setInitialExpiresAt(null);
       }
       // Aún no seteamos expiresAt/remainingSecs aquí; se hará al salir del briefing
-  // Auto-iniciar el contador si no hay briefing
-  useEffect(() => {
-    // Si no hay briefing, arrancamos el contador en cuanto tengamos datos del intento
-    if (!loading && !showBriefing && attemptId && !expiresAt) {
-      // Si ya venía expires_at de DB o hay time_limit, arrancamos
-      if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
-        startAttemptCountdown();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, showBriefing, attemptId]);
 
   // Arranca el contador del intento (y fija expires_at si no estaba)
   async function startAttemptCountdown() {
@@ -436,6 +425,17 @@ export default function SimulacionDetalle() {
       setShowBriefing(false);
     }
   }
+
+  // Auto-iniciar el contador si no hay briefing (una vez que tenemos el intento)
+  useEffect(() => {
+    if (loading) return;
+    if (showBriefing) return;           // mientras se muestra briefing, no arrancar
+    if (!attemptId) return;
+    if (expiresAt) return;              // ya arrancado
+    if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
+      startAttemptCountdown();
+    }
+  }, [loading, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt]);
 
       // Rol del usuario
       let userRole = "";
