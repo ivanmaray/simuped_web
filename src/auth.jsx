@@ -2,109 +2,135 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
 
-// Mantiene la misma forma del contexto para no romper consumidores
-const AuthCtx = createContext({ ready: false, session: null, profile: null, emailConfirmed: false });
+const AuthCtx = createContext({
+  ready: false,
+  session: null,
+  profile: null,
+  emailConfirmed: false,
+});
 
 export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
 
-  // Exponer estado para depuración rápida en consola (sin romper nada)
+  // Exponer en ventana para depuración rápida
   if (typeof window !== "undefined") {
     try {
-      Object.defineProperty(window, "__auth", {
-        configurable: true,
-        value: {
-          get ready() { return ready; },
-          get session() { return session; },
-          get profile() { return profile; },
-          get emailConfirmed() { return !!session?.user?.email_confirmed_at; },
-        },
-      });
+      window.__auth = {
+        get ready() { return ready; },
+        get session() { return session; },
+        get profile() { return profile; },
+        get emailConfirmed() { return !!session?.user?.email_confirmed_at; },
+      };
     } catch {}
   }
 
   useEffect(() => {
     let mounted = true;
 
+    const log = (...a) => console.log("[Auth]", ...a);
+    const warn = (...a) => console.warn("[Auth]", ...a);
+
     async function loadProfile(uid) {
+      log("loadProfile uid=", uid);
       try {
         const { data: prof, error: pErr } = await supabase
           .from("profiles")
           .select("id, nombre, apellidos, rol, unidad, approved, is_admin, updated_at")
           .eq("id", uid)
           .maybeSingle();
-        if (pErr) console.warn("[Auth] profile select error:", pErr);
-        if (mounted) setProfile(prof ? { ...prof, approved: !!prof.approved, is_admin: !!prof.is_admin } : null);
+
+        if (pErr) warn("profile select error:", pErr);
+        if (!mounted) return;
+
+        setProfile(prof ? { ...prof, approved: !!prof.approved, is_admin: !!prof.is_admin } : null);
       } catch (e) {
-        console.warn("[Auth] profile select throw:", e);
+        warn("profile select throw:", e);
         if (mounted) setProfile(null);
       }
     }
 
-    async function hydrateSessionFromUrl() {
-      if (typeof window === "undefined") return;
+    async function hydrateFromUrl() {
+      if (typeof window === "undefined") return false;
       try {
         const url = new URL(window.location.href);
-        const hasCode = url.searchParams.get("code"); // PKCE / email OTP con ?code=
+        const hasCode = url.searchParams.get("code"); // ?code= de verificación/PKCE
         const hasError = url.searchParams.get("error");
-        const hasHashAccessToken = window.location.hash.includes("access_token="); // email magic-link con #access_token
+        const hasHashAccessToken = window.location.hash.includes("access_token="); // #access_token de magic-link
 
-        if (hasError) {
-          console.warn("[Auth] auth error in URL:", url.searchParams.get("error_description") || hasError);
-        }
+        if (hasError) warn("auth error in URL:", url.searchParams.get("error_description") || hasError);
 
-        // 1) Flujos con ?code= requieren el intercambio explícito
         if (hasCode) {
+          log("exchangeCodeForSession (code en URL)...");
           try {
             await supabase.auth.exchangeCodeForSession(window.location.href);
+            log("exchangeCodeForSession OK");
           } catch (ex) {
-            console.warn("[Auth] exchangeCodeForSession failed:", ex);
+            warn("exchangeCodeForSession failed:", ex);
           }
         }
 
-        // 2) Para los magic-link con #access_token, el cliente del browser ya lo procesa
-        // al llamar a getSession() por primera vez, pero lo dejamos claro en el orden.
-
-        // 3) Limpiar la URL (sin query ni hash) para evitar re-intentos/errores visuales
+        // Limpia URL si venía con credenciales
         if (hasCode || hasHashAccessToken || hasError) {
           try {
-            const clean = url.origin + url.pathname; // conserva ruta base
+            const clean = url.origin + url.pathname;
             window.history.replaceState({}, "", clean);
+            log("URL limpiada tras hidratación");
           } catch {}
         }
+
+        return hasCode || hasHashAccessToken;
       } catch (e) {
-        console.warn("[Auth] hydrateSessionFromUrl throw:", e);
+        warn("hydrateFromUrl throw:", e);
+        return false;
       }
     }
 
     async function init() {
-      await hydrateSessionFromUrl();
+      log("init start");
+      const hadTokensInUrl = await hydrateFromUrl();
 
-      // 1) Hidratar sesión inicial
+      // 1) Obtener sesión
       try {
         const { data, error } = await supabase.auth.getSession();
         if (!mounted) return;
-        if (error) console.warn("[Auth] getSession error:", error);
+        if (error) warn("getSession error:", error);
         const sess = data?.session ?? null;
         setSession(sess);
-        if (sess?.user?.id) await loadProfile(sess.user.id);
-        else setProfile(null);
+        log("getSession ->", !!sess, sess?.user?.id);
+
+        if (sess?.user?.id) {
+          await loadProfile(sess.user.id);
+        } else if (hadTokensInUrl) {
+          // Espera breve y reintenta una vez (algunos navegadores aplican la sesión unos ms después)
+          log("retry getSession tras tokens en URL...");
+          await new Promise(r => setTimeout(r, 150));
+          const { data: d2 } = await supabase.auth.getSession();
+          const s2 = d2?.session ?? null;
+          setSession(s2);
+          log("retry getSession ->", !!s2, s2?.user?.id);
+          if (s2?.user?.id) await loadProfile(s2.user.id);
+        } else {
+          setProfile(null);
+        }
       } catch (e) {
+        warn("getSession throw:", e);
         if (mounted) {
-          console.warn("[Auth] getSession throw:", e);
           setSession(null);
           setProfile(null);
         }
       } finally {
-        // ✅ `ready` se marca al terminar la hidratación inicial (evita parpadeos de UI)
-        if (mounted) setReady(true);
+        if (mounted) {
+          setReady(true);
+          log("ready=true");
+        }
       }
 
       // 2) Suscribirse a cambios de autenticación
-      const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, newSess) => {
+      const { data: sub } = supabase.auth.onAuthStateChange(async (evt, newSess) => {
         if (!mounted) return;
+        log("onAuthStateChange:", evt, !!newSess);
         setSession(newSess ?? null);
         if (newSess?.user?.id) await loadProfile(newSess.user.id);
         else setProfile(null);
@@ -119,14 +145,17 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false;
-      // ejecutar el cleanup del onAuthStateChange si llega a ser una promesa que devuelve función
       if (typeof cleanup === "function") cleanup();
     };
   }, []);
 
   const emailConfirmed = !!session?.user?.email_confirmed_at;
 
-  const value = useMemo(() => ({ ready, session, profile, emailConfirmed }), [ready, session, profile, emailConfirmed]);
+  const value = useMemo(
+    () => ({ ready, session, profile, emailConfirmed }),
+    [ready, session, profile, emailConfirmed]
+  );
+
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
