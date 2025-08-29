@@ -230,7 +230,7 @@ export default function Registro() {
             apellidos: apellidos.trim(),
             email: emailNorm,
             dni: dniNorm,
-            rol,
+            rol: rolApi,
             unidad
           })
         });
@@ -458,7 +458,8 @@ export default function Registro() {
                 !(password || '').trim() ||
                 !rol ||
                 !unidad ||
-                !dni
+                !dni ||
+                !validarDNI(normalizarDNI(dni))
               }
               className="px-5 py-2.5 rounded-lg text-white disabled:opacity-70"
               style={{ backgroundColor: COLORS.primary }}

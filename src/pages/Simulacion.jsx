@@ -8,6 +8,7 @@ import Navbar from "../components/Navbar.jsx";
 console.debug("[Simulacion] componente cargado");
 
 const ROLES_VALIDOS = ["medico", "enfermeria", "farmacia"];
+const MAX_ATTEMPTS = 3; // denominador para "Intentos usados"
 
 const estadoStyles = {
   "Disponible": { label: "Disponible", color: "bg-green-100 text-green-800", clickable: true },
@@ -364,7 +365,7 @@ export default function Simulacion() {
                 </div>
                 {attemptStats[esc.id] && (
                   <p className="mt-2 text-xs text-slate-500">
-                    Intentos con nota: {attemptStats[esc.id].scored}/{attemptStats[esc.id].count}
+                    Intentos usados: {attemptStats[esc.id].count}/{MAX_ATTEMPTS}
                     {attemptStats[esc.id].scored > 0 && (
                       <>
                         {" · "}Nota media: {attemptStats[esc.id].avg.toFixed(1)}/100

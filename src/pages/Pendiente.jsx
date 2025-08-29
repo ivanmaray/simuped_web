@@ -13,6 +13,7 @@ export default function Pendiente() {
   const [userId, setUserId] = useState("");
   const [verified, setVerified] = useState(false);
   const [approved, setApproved] = useState(null); // true/false/null
+  const [approvedAt, setApprovedAt] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
 
   const tries = useRef(0);
@@ -69,6 +70,7 @@ export default function Pendiente() {
         setUserId("");
         setVerified(false);
         setApproved(null);
+        setApprovedAt(null);
         setChecking(false);
         return;
       }
@@ -84,7 +86,7 @@ export default function Pendiente() {
 
       const byId = await supabase
         .from("profiles")
-        .select("id, email, approved, updated_at")
+        .select("id, email, approved, approved_at, updated_at")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -94,7 +96,7 @@ export default function Pendiente() {
         console.warn("[Pendiente] profiles by id no encontrado o error, probando por email", pErr);
         const byEmail = await supabase
           .from("profiles")
-          .select("id, email, approved, updated_at")
+          .select("id, email, approved, approved_at, updated_at")
           .eq("email", user.email)
           .maybeSingle();
         pErr = byEmail.error; prof = byEmail.data;
@@ -103,8 +105,10 @@ export default function Pendiente() {
       if (pErr) {
         console.warn("[Pendiente] profiles select error:", pErr);
         setApproved(null);
+        setApprovedAt(null);
       } else {
         setApproved(!!prof?.approved);
+        setApprovedAt(prof?.approved_at || null);
       }
 
       // 3) Redirigir si todo OK
@@ -170,7 +174,7 @@ export default function Pendiente() {
                 </div>
               </div>
               <div className={`text-lg ${verified ? "text-emerald-600" : "text-rose-600"}`}>
-                {verified ? "✔ Verificado" : "❌ No verificado"}
+                {verified ? "✔ Email verificado" : "❌ Email no verificado"}
               </div>
             </div>
             {!verified && (
@@ -185,12 +189,22 @@ export default function Pendiente() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs text-slate-500">Aprobación de administrador</div>
-                <div className="mt-1 text-slate-800">{approved === null ? "—" : approved ? "Aprobado" : "Pendiente"}</div>
+                <div className="mt-1 text-slate-800 flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-sm font-medium ${approved ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                    {approved ? '✔ Aprobado' : 'Pendiente'}
+                  </span>
+                  {approvedAt && (
+                    <span className="text-xs text-slate-500">· desde {new Date(approvedAt).toLocaleString()}</span>
+                  )}
+                </div>
               </div>
-              <div className={`text-lg ${approved ? "text-emerald-600" : "text-amber-600"}`}>
-                {approved ? "✔" : "—"}
-              </div>
+              <div className={`text-lg ${approved ? 'text-emerald-600' : 'text-amber-600'}`}>{approved ? '✔' : '—'}</div>
             </div>
+            {!approved && (
+              <p className="mt-2 text-xs text-slate-500">
+                Si tu cuenta ya aparece aprobada pero sigues sin poder entrar, verifica tu email y pulsa <em>Comprobar ahora</em>.
+              </p>
+            )}
           </section>
         </div>
 

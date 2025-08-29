@@ -141,6 +141,55 @@ export default function Perfil() {
       const ai = safeParseJSON(rawAI) || [];
       setAreasInteres(Array.isArray(ai) ? ai : []);
 
+      // ⤵️ Backfill: si faltan campos clave en profiles, persistir desde user_metadata
+      try {
+        if (prof && sess?.user?.id) {
+          const patch = {};
+
+          // DNI desde metadata si falta en profiles
+          if (!prof.dni && meta.dni) {
+            patch.dni = normalizarDNI(meta.dni);
+          }
+
+          // Rol: normalizar variaciones de UI a valores del modelo
+          if (!prof.rol && meta.rol) {
+            const raw = String(meta.rol || "").toLowerCase();
+            const roleMap = {
+              pediatra: "medico",
+              medico: "medico",
+              enfermera: "enfermeria",
+              enfermeria: "enfermeria",
+              farmaceutico: "farmacia",
+              farmacia: "farmacia",
+            };
+            const mapped = roleMap[raw] || null;
+            if (mapped) patch.rol = mapped;
+          }
+
+          // Unidad
+          if (!prof.unidad && meta.unidad) {
+            patch.unidad = String(meta.unidad);
+          }
+
+          // Áreas de interés (si en profiles está vacío y en meta hay valores)
+          if (
+            (prof.areas_interes == null ||
+              (Array.isArray(prof.areas_interes) && prof.areas_interes.length === 0)) &&
+            Array.isArray(meta.areas_interes) &&
+            meta.areas_interes.length
+          ) {
+            patch.areas_interes = meta.areas_interes;
+          }
+
+          if (Object.keys(patch).length > 0) {
+            patch.updated_at = new Date().toISOString();
+            await supabase.from("profiles").update(patch).eq("id", sess.user.id);
+          }
+        }
+      } catch (e) {
+        console.warn("[Perfil] backfill metadata→profiles omitido:", e);
+      }
+
       // Cargar categorías dinámicamente desde public.categories
       const { data: cats, error: cErr } = await supabase
         .from("categories")
