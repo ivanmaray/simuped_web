@@ -5,7 +5,9 @@ import { useAuth } from "./auth.jsx";
 export default function ProtectedRoute() {
   const { ready, session, profile } = useAuth();
   const location = useLocation();
+
   const isOnPending = location.pathname.startsWith("/pendiente");
+  const isAdminPath = location.pathname.startsWith("/admin");
 
   // 1) Mientras el contexto no esté listo, no decidir
   if (!ready) {
@@ -21,7 +23,7 @@ export default function ProtectedRoute() {
     return <Navigate to="/" replace state={{ from: location }} />;
   }
 
-  // 3) Necesitamos el perfil para saber `approved`
+  // 3) Necesitamos el perfil para saber `approved` / `is_admin`
   if (!profile) {
     return (
       <div className="min-h-screen grid place-items-center text-slate-600">
@@ -31,18 +33,28 @@ export default function ProtectedRoute() {
   }
 
   // 4) Reglas de acceso
-  const emailConfirmed = !!session.user?.email_confirmed_at; // Supabase
-  const approved = profile.approved === true; // boolean estricto
+  // Supabase expone `email_confirmed_at` (y en algunos proyectos `confirmed_at`).
+  const emailConfirmed = !!(
+    session.user?.email_confirmed_at || session.user?.confirmed_at
+  );
+  const approved = profile?.approved === true;
+  const isAdmin = !!profile?.is_admin;
 
-  // Debug útil en desarrollo
-  // console.debug("[ProtectedRoute] ready=", ready, "emailConfirmed=", emailConfirmed, "approved=", approved, "path=", location.pathname);
+  // Permite acceder a /admin si es admin aunque el perfil no esté aprobado
+  // (pero SIEMPRE exige email confirmado por seguridad)
+  const canAccess = emailConfirmed && (approved || (isAdminPath && isAdmin));
 
-  if (!emailConfirmed || !approved) {
+  if (!canAccess) {
     // Evita bucles si ya estás en /pendiente
     if (isOnPending) return <Outlet />;
     return <Navigate to="/pendiente" replace />;
   }
 
-  // 5) OK → renderizar ruta protegida
+  // 5) Si intenta entrar en /admin sin ser admin → dashboard
+  if (isAdminPath && !isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // 6) OK → renderizar ruta protegida
   return <Outlet />;
 }
