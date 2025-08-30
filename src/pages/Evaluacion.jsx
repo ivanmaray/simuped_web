@@ -160,15 +160,22 @@ export default function Evaluacion() {
             }
           }
 
-          const scenarioIds = Array.from(new Set((rows || []).map(r => r.scenario_id).filter(Boolean)));
-          if (scenarioIds.length > 0) {
+          // Reunir IDs de escenarios de los intentos.
+          // ⚠️ Algunos entornos pueden tener case_resources.scenario_id como TEXT.
+          // Conviértelos a string para que el .in(...) no falle por tipos.
+          const scenarioIdsRaw = Array.from(new Set((rows || [])
+            .map(r => r.scenario_id)
+            .filter((v) => v !== null && v !== undefined)));
+          const scenarioIdsStr = scenarioIdsRaw.map(String);
+          if (scenarioIdsStr.length > 0) {
             setResourcesLoading(true);
             // ⚠️ Importante: no hacemos embed a scenarios para evitar restricciones RLS adicionales
             const { data: resRows, error: resErr } = await supabase
               .from("case_resources")
               .select("id, scenario_id, source, url, year, access, weight")
-              .in("scenario_id", scenarioIds)
-              .order("weight", { ascending: true });
+              .in("scenario_id", scenarioIdsStr)
+              .order("weight", { ascending: true })
+              .order("id", { ascending: true });
 
             if (resErr) {
               console.warn("[Evaluacion] resources select error:", resErr);
@@ -180,6 +187,7 @@ export default function Evaluacion() {
                 if (!map[sid]) map[sid] = { title: titleByScenario[sid] || `Escenario ${sid}`, items: [] };
                 map[sid].items.push({ id: r.id, source: r.source, url: r.url, year: r.year, access: r.access });
               }
+              console.debug("[Evaluacion] loaded resources:", { scenarioIdsRaw, scenarioIdsStr, count: (resRows || []).length });
               setResourcesByScenario(map);
             }
           } else {
