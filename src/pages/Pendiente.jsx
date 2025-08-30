@@ -4,7 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
-// Utilidad: URL de retorno tras verificar
+/**
+ * Optimizaciones clave para que no "tarde tanto":
+ * 1) Menos llamadas: ya no hacemos refreshSession en bucle.
+ * 2) Polling ligero con backoff y parada temprana (verificado → más lento; aprobado → paramos).
+ * 3) Suscripción Realtime a profiles (id = user.id) para enterarnos AL INSTANTE
+ *    cuando el admin aprueba (requiere Realtime habilitado en la tabla).
+ * 4) Un solo SELECT al perfil por id; sólo si falla probamos email como fallback.
+ */
+
+// URL de retorno tras verificar
 const REDIRECT_TO =
   typeof window !== "undefined"
     ? `${window.location.origin}/pendiente`
@@ -23,17 +32,20 @@ export default function Pendiente() {
 
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
+
   const [email, setEmail] = useState("");
   const [userId, setUserId] = useState("");
   const [verified, setVerified] = useState(false);
+
   const [approved, setApproved] = useState(null); // true/false/null
   const [approvedAt, setApprovedAt] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [emailConfirmedAtRaw, setEmailConfirmedAtRaw] = useState(null);
 
-  const tries = useRef(0);
+  // Timers y canales
   const pollTimer = useRef(null);
-  const didFirstRefresh = useRef(false);
+  const backoffMs = useRef(1000); // 1s inicial; luego 2s, 3s, tope 10s
+  const realtimeChan = useRef(null);
 
   const nextStep = useMemo(() => {
     if (verified && approved) return "Todo listo. Puedes entrar.";
@@ -42,153 +54,194 @@ export default function Pendiente() {
     return "";
   }, [verified, approved]);
 
+  // Arranque: cargar usuario + perfil una vez
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       setLoading(true);
-      // Primer refresh de sesión al aterrizar (por si venimos del enlace de verificación)
-      try {
-        if (!didFirstRefresh.current) {
-          await supabase.auth.refreshSession();
-          didFirstRefresh.current = true;
+      await primeUserAndProfile(); // primer disparo
+      if (!mounted) return;
+
+      // Suscripción a cambios de sesión (evita refrescos manuales continuos)
+      const { data: subAuth } = supabase.auth.onAuthStateChange((evt, sess) => {
+        // Cuando cambie el token o se confirme email, volvemos a leer rápido
+        if (evt === "SIGNED_IN" || evt === "USER_UPDATED" || evt === "TOKEN_REFRESHED") {
+          safePrimeUserAndProfile();
         }
-      } catch (e) {
-        console.warn("[Pendiente] refreshSession inicial falló:", e);
+      });
+
+      // Suscripción Realtime para aprobación instantánea (si ya tenemos userId)
+      if (userId) {
+        attachRealtime(userId);
       }
 
-      await refreshStates();
+      // Polling con backoff suave sólo mientras falte algo
+      schedulePoll();
+
       setLoading(false);
 
-      // Autopoll hasta 60s (20 intentos cada 3s)
-      clearInterval(pollTimer.current);
-      pollTimer.current = setInterval(async () => {
-        tries.current += 1;
-        if (tries.current > 20) {
-          clearInterval(pollTimer.current);
-          return;
-        }
-        await refreshStates();
-      }, 3000);
+      // Limpieza
+      return () => {
+        mounted = false;
+        try { subAuth?.subscription?.unsubscribe?.(); } catch {}
+        clearTimer();
+        detachRealtime();
+      };
     })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((evt) => {
-      // Cuando el token se refresca o cambia el usuario, revalidamos estados
-      if (
-        evt === "TOKEN_REFRESHED" ||
-        evt === "USER_UPDATED" ||
-        evt === "SIGNED_IN"
-      ) {
-        refreshStates().catch(() => {});
-      }
-    });
-
-    return () => {
-      clearInterval(pollTimer.current);
-      try {
-        sub?.subscription?.unsubscribe?.();
-      } catch {}
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function refreshStates() {
-    try {
-      setErrorMsg("");
-      setChecking(true);
+  // Si conseguimos userId más tarde (p.ej., venimos sin sesión y luego inicia),
+  // adjuntamos Realtime entonces.
+  useEffect(() => {
+    if (!userId) return;
+    attachRealtime(userId);
+    return () => detachRealtime();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, verified]);
 
-      // 1) Usuario actual (email / verificado)
-      const { data: userRes, error: uErr } = await supabase.auth.getUser();
-      if (uErr) {
-        console.warn("[Pendiente] getUser error:", uErr);
-      }
-      const user = userRes?.user || null;
-      setEmailConfirmedAtRaw(user?.email_confirmed_at || null);
+  async function primeUserAndProfile() {
+    setErrorMsg("");
 
-      // Si no hay sesión (p.ej. email no verificado y Auth bloquea login), intenta mostrar email recordado
-      if (!user) {
-        const pendingEmail = localStorage.getItem("pending_email") || "";
-        setEmail(pendingEmail);
-        setUserId("");
-        setVerified(false);
-        setApproved(null);
-        setApprovedAt(null);
-        setChecking(false);
-        return;
-      }
+    // 1) Usuario actual
+    const { data: userRes, error: uErr } = await supabase.auth.getUser();
+    if (uErr) {
+      console.warn("[Pendiente] getUser error:", uErr);
+    }
+    const user = userRes?.user || null;
+    setEmailConfirmedAtRaw(user?.email_confirmed_at || null);
 
-      setEmail(user.email || "");
-      try {
-        localStorage.setItem("pending_email", user.email || "");
-      } catch {}
-      setUserId(user.id || "");
-      const isVerified = !!user.email_confirmed_at;
-      setVerified(isVerified);
+    if (!user) {
+      // Sin sesión: mostramos lo que sepamos y no seguimos tirando de perfil
+      const pendingEmail = localStorage.getItem("pending_email") || "";
+      setEmail(pendingEmail);
+      setUserId("");
+      setVerified(false);
+      setApproved(null);
+      setApprovedAt(null);
+      return;
+    }
 
-      // 2) Approved en profiles (preferir id; fallback por email si hubiese desajuste)
-      let prof = null;
-      let pErr = null;
+    setEmail(user.email || "");
+    try { localStorage.setItem("pending_email", user.email || ""); } catch {}
+    setUserId(user.id || "");
+    const isVerified = !!user.email_confirmed_at;
+    setVerified(isVerified);
 
-      const byId = await supabase
-        .from("profiles")
-        .select("id, email, approved, approved_at, updated_at")
-        .eq("id", user.id)
-        .maybeSingle();
+    // 2) Perfil (approved)
+    const prof = await getProfileByIdOrEmail(user.id, user.email);
+    if (prof) {
+      setApproved(!!prof.approved);
+      setApprovedAt(prof.approved_at || null);
+    } else {
+      setApproved(null);
+      setApprovedAt(null);
+    }
 
-      pErr = byId.error;
-      prof = byId.data;
+    // 3) Redirección inmediata si todo OK
+    if (isVerified && prof?.approved) {
+      navigate("/dashboard", { replace: true });
+    }
+  }
 
-      if (pErr || !prof) {
-        console.warn(
-          "[Pendiente] profiles by id no encontrado o error, probando por email",
-          pErr
-        );
-        const byEmail = await supabase
-          .from("profiles")
-          .select("id, email, approved, approved_at, updated_at")
-          .eq("email", user.email)
-          .maybeSingle();
-        pErr = byEmail.error;
-        prof = byEmail.data;
-      }
+  function safePrimeUserAndProfile() {
+    // Evita solapes si ya hay uno en curso
+    if (checking) return;
+    setChecking(true);
+    primeUserAndProfile().finally(() => setChecking(false));
+  }
 
-      if (pErr) {
-        console.warn("[Pendiente] profiles select error:", pErr);
-        setApproved(null);
-        setApprovedAt(null);
+  async function getProfileByIdOrEmail(uid, mail) {
+    // Intento por id (rápido, 1 llamada)
+    let { data: byId, error: e1 } = await supabase
+      .from("profiles")
+      .select("id, email, approved, approved_at, updated_at")
+      .eq("id", uid)
+      .maybeSingle();
+
+    if (!e1 && byId) return byId;
+
+    // Fallback por email si por alguna razón el id aún no cuadra
+    let { data: byEmail, error: e2 } = await supabase
+      .from("profiles")
+      .select("id, email, approved, approved_at, updated_at")
+      .eq("email", mail)
+      .maybeSingle();
+
+    if (e2) {
+      console.warn("[Pendiente] profiles por email error:", e2);
+    }
+    return byEmail || null;
+  }
+
+  function clearTimer() {
+    if (pollTimer.current) {
+      clearTimeout(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }
+
+  function schedulePoll() {
+    clearTimer();
+    // Si ya está todo listo, no seguimos
+    if (verified && approved) return;
+
+    // Backoff: 1s → 2s → 3s … tope 10s
+    const ms = Math.min(backoffMs.current, 10000);
+    pollTimer.current = setTimeout(async () => {
+      await primeUserAndProfile();
+      // Si ya verificó el email, espaciamos más aún
+      if (verified) {
+        backoffMs.current = Math.min(backoffMs.current + 2000, 10000);
       } else {
-        setApproved(!!prof?.approved);
-        setApprovedAt(prof?.approved_at || null);
+        backoffMs.current = Math.min(backoffMs.current + 1000, 8000);
       }
+      schedulePoll();
+    }, ms);
+  }
 
-      // 3) Redirigir si todo OK
-      if (isVerified && prof?.approved) {
-        clearInterval(pollTimer.current);
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-    } catch (e) {
-      console.error("[Pendiente] refreshStates excepción:", e);
-      setErrorMsg(e.message || "No se pudo comprobar el estado actualmente.");
-    } finally {
-      setChecking(false);
+  function attachRealtime(uid) {
+    // Evitar duplicados
+    detachRealtime();
+    realtimeChan.current = supabase
+      .channel(`profile-approve-${uid}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${uid}` },
+        (payload) => {
+          const row = payload.new || {};
+          setApproved(!!row.approved);
+          setApprovedAt(row.approved_at || null);
+          // Si ya está verificado y ahora aprobado → ir al panel
+          if (verified && row.approved) {
+            navigate("/dashboard", { replace: true });
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") {
+          // No bloqueamos nada si la subscripción tarda; el polling hará su trabajo
+          // pero normalmente llega en milisegundos.
+        }
+      });
+  }
+
+  function detachRealtime() {
+    if (realtimeChan.current) {
+      try {
+        supabase.removeChannel(realtimeChan.current);
+      } catch {}
+      realtimeChan.current = null;
     }
   }
 
   async function handleCheckNow() {
     setChecking(true);
     try {
-      // Limpia posibles restos de tokens locales (prefijos de Supabase)
-      try {
-        Object.keys(localStorage).forEach((k) => {
-          if (k.startsWith("sb-")) localStorage.removeItem(k);
-        });
-        Object.keys(sessionStorage).forEach((k) => {
-          if (k.startsWith("sb-")) sessionStorage.removeItem(k);
-        });
-      } catch {}
-  
-      // Fuerza renovación de sesión
+      // Renovamos sesión una vez y refrescamos estados.
       await supabase.auth.refreshSession();
-      // Revalida estados
-      await refreshStates();
+      await primeUserAndProfile();
     } catch (e) {
       console.error("[Pendiente] checkNow error:", e);
       setErrorMsg("No se pudo actualizar la sesión.");
@@ -211,9 +264,7 @@ export default function Pendiente() {
         options: REDIRECT_TO ? { emailRedirectTo: REDIRECT_TO } : undefined,
       });
       if (error) throw error;
-      alert(
-        "Te hemos enviado de nuevo el correo de verificación. Revisa tu bandeja y spam."
-      );
+      alert("Te hemos enviado de nuevo el correo de verificación. Revisa tu bandeja y spam.");
     } catch (e) {
       console.error("[Pendiente] resend error:", e);
       setErrorMsg(e.message || "No se pudo reenviar el correo ahora.");
@@ -236,46 +287,32 @@ export default function Pendiente() {
         )}
 
         <div className="space-y-5">
+          {/* Verificación de email */}
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs text-slate-500">Verificación de email</div>
                 <div className="mt-1 text-slate-800">
-                  {email ? (
-                    <span className="font-medium text-base">{email}</span>
-                  ) : (
-                    "—"
-                  )}
-                  <div className="text-xs text-slate-500">
-                    {userId ? `UID: ${userId}` : ""}
-                  </div>
+                  {email ? <span className="font-medium text-base">{email}</span> : "—"}
+                  <div className="text-xs text-slate-500">{userId ? `UID: ${userId}` : ""}</div>
                 </div>
               </div>
-              <div
-                className={`text-lg md:text-xl ${
-                  verified ? "text-emerald-600" : "text-rose-600"
-                }`}
-              >
+              <div className={`text-lg md:text-xl ${verified ? "text-emerald-600" : "text-rose-600"}`}>
                 {verified ? "✔ Email verificado" : "❌ Email no verificado"}
               </div>
             </div>
+
             {!verified && (
               <div className="mt-3 text-sm text-slate-600 space-y-2">
-                <p>
-                  Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el
-                  enlace, pulsa “Comprobar ahora”.
-                </p>
-                <button
-                  onClick={handleResend}
-                  disabled={checking}
-                  className="text-[#1a69b8] underline disabled:opacity-60"
-                >
+                <p>Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el enlace, pulsa “Comprobar ahora”.</p>
+                <button onClick={handleResend} disabled={checking} className="text-[#1a69b8] underline disabled:opacity-60">
                   {checking ? "Enviando…" : "Reenviar verificación"}
                 </button>
               </div>
             )}
           </section>
 
+          {/* Aprobación admin */}
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -290,30 +327,20 @@ export default function Pendiente() {
                   >
                     {approved ? "✔ Aprobado" : "Pendiente"}
                   </span>
-                  {approvedAt && (
-                    <span className="text-xs text-slate-500">
-                      · desde {fmt(approvedAt)}
-                    </span>
-                  )}
+                  {approvedAt && <span className="text-xs text-slate-500">· desde {fmt(approvedAt)}</span>}
                 </div>
               </div>
-              <div
-                className={`text-lg md:text-xl ${
-                  approved ? "text-emerald-600" : "text-amber-600"
-                }`}
-              >
-                {approved ? "✔" : "—"}
-              </div>
+              <div className={`text-lg md:text-xl ${approved ? "text-emerald-600" : "text-amber-600"}`}>{approved ? "✔" : "—"}</div>
             </div>
             {!approved && (
               <p className="mt-2 text-xs text-slate-500">
-                Si tu cuenta ya aparece aprobada pero sigues sin poder entrar, verifica
-                tu email y pulsa <em>Comprobar ahora</em>.
+                Si tu cuenta ya aparece aprobada pero sigues sin poder entrar, verifica tu email y pulsa <em>Comprobar ahora</em>.
               </p>
             )}
           </section>
         </div>
 
+        {/* DEBUG compacto */}
         <div className="mt-6 text-xs rounded-lg border border-slate-200 bg-white/70 p-3 text-slate-600">
           <div><strong>DEBUG</strong></div>
           <div>Email: {email || "—"}</div>
@@ -338,7 +365,7 @@ export default function Pendiente() {
             onClick={async () => {
               try {
                 await supabase.auth.refreshSession();
-                await refreshStates();
+                await primeUserAndProfile();
               } catch {}
             }}
             className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
@@ -385,8 +412,7 @@ export default function Pendiente() {
         </div>
 
         <p className="text-xs text-slate-500 mt-4">
-          Esta página se actualiza automáticamente durante unos segundos tras
-          confirmar el correo.
+          Esta página se actualiza con backoff y escucha cambios en tiempo real cuando el admin te aprueba.
         </p>
       </main>
     </div>
