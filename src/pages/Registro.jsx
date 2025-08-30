@@ -194,6 +194,7 @@ export default function Registro() {
       }
 
       // 2) Upsert en 'profiles' con los datos del formulario (no bloqueante si falla)
+      console.debug("[Registro] signUp OK -> uid:", signData?.user?.id);
       try {
         const uid = signData?.user?.id;
         if (uid) {
@@ -241,7 +242,15 @@ export default function Registro() {
       // 3) Ya se ha intentado guardar/actualizar el perfil. Continuamos con notificación y redirección.
       setOkMsg("Te hemos enviado un email para confirmar tu cuenta. Tras confirmarlo, revisaremos tu acceso.");
       setLoading(false);
-      setTimeout(() => navigate("/pendiente", { replace: true }), 800);
+      // Guardamos info para la pantalla “Pendiente”
+      try {
+        if (signData?.user?.id) localStorage.setItem("pending_uid", signData.user.id);
+        localStorage.setItem("pending_email", emailNorm);
+      } catch {}
+
+      // Redirige con motivo explícito
+      const reason = "email";
+      setTimeout(() => navigate(`/pendiente?reason=${encodeURIComponent(reason)}`, { replace: true }), 800);
     } catch (err) {
       console.error("[Registro] excepción inesperada:", err);
       setLoading(false);
@@ -249,6 +258,18 @@ export default function Registro() {
     }
   }
 
+  // Validez global del formulario (evita duplicar lógica en el disabled)
+  const emailNormPreview = (email || "").toString().trim().toLowerCase();
+  const dniNormPreview = normalizarDNI(dni);
+  const isFormValid =
+    !!nombre.trim() &&
+    !!apellidos.trim() &&
+    validarEmail(emailNormPreview) &&
+    !!(password || "").trim() &&
+    !!rol &&
+    !!unidad &&
+    !!dni &&
+    validarDNI(dniNormPreview);
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar /> {/* navbar público */}
@@ -450,17 +471,7 @@ export default function Registro() {
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={
-                loading ||
-                !nombre.trim() ||
-                !apellidos.trim() ||
-                !validarEmail((email || '').trim()) ||
-                !(password || '').trim() ||
-                !rol ||
-                !unidad ||
-                !dni ||
-                !validarDNI(normalizarDNI(dni))
-              }
+              disabled={loading || !isFormValid}
               className="px-5 py-2.5 rounded-lg text-white disabled:opacity-70"
               style={{ backgroundColor: COLORS.primary }}
             >
