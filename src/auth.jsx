@@ -13,12 +13,37 @@ export function AuthProvider({ children }) {
   const unsubRef = useRef(null);
   const loadingProfileRef = useRef(false);
 
+  function clearBrokenSessionStorage() {
+    try {
+      const keys = Object.keys(localStorage);
+      for (const k of keys) {
+        if (k.startsWith('sb-')) localStorage.removeItem(k);
+      }
+    } catch {}
+    try {
+      const keys = Object.keys(sessionStorage);
+      for (const k of keys) {
+        if (k.startsWith('sb-')) sessionStorage.removeItem(k);
+      }
+    } catch {}
+  }
+
   // Helper to read the auth user and set email confirmation timestamp
   async function readAuthUser() {
     const { data, error } = await supabase.auth.getUser();
     if (error) {
       console.warn("[Auth] getUser error:", error);
-      setEmailConfirmedAt(null);
+      const msg = (error.message || "").toLowerCase();
+      if (error.status === 403 || msg.includes("sub claim") || msg.includes("does not exist")) {
+        // Token apunta a un usuario que ya no existe en Auth → limpiar sesión local
+        try { await supabase.auth.signOut({ scope: "local" }); } catch {}
+        clearBrokenSessionStorage();
+        setSession(null);
+        setProfile(null);
+        setEmailConfirmedAt(null);
+      } else {
+        setEmailConfirmedAt(null);
+      }
       return null;
     }
     const u = data?.user ?? null;
@@ -85,14 +110,20 @@ export function AuthProvider({ children }) {
         const sess = sessRes?.session ?? null;
         if (!mounted) return;
         setSession(sess);
-        await readAuthUser();
-        if (sess?.user?.id) loadProfile(sess.user.id);
+        const u = await readAuthUser();
+        const uidToLoad = u?.id || sess?.user?.id;
+        if (uidToLoad) loadProfile(uidToLoad);
 
         // 3) Suscripción a cambios de auth
         try { unsubRef.current?.subscription?.unsubscribe?.(); } catch {}
-        const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, newSess) => {
+        const { data: sub } = supabase.auth.onAuthStateChange(async (evt, newSess) => {
           if (!mounted) return;
           setSession(newSess ?? null);
+          if (evt === 'SIGNED_OUT') {
+            setProfile(null);
+            setEmailConfirmedAt(null);
+            return;
+          }
           await readAuthUser();
           const uid = newSess?.user?.id;
           if (uid) await loadProfile(uid); else setProfile(null);
