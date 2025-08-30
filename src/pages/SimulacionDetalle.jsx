@@ -1511,7 +1511,7 @@ export default function SimulacionDetalle() {
               {/* Intentos anteriores */}
               <section className="mt-8">
                 <h3 className="text-lg font-semibold mb-2">Intentos anteriores</h3>
-                <AttemptsList scenarioId={scenario?.id} />
+                <AttemptsList scenarioId={scenario?.id} userId={session?.user?.id} />
               </section>
             </section>
           </main>
@@ -1521,24 +1521,35 @@ export default function SimulacionDetalle() {
   );
 }
 
-function AttemptsList({ scenarioId }) {
+function AttemptsList({ scenarioId, userId }) {
   const [rows, setRows] = useState([]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data, error } = await supabase
-        .from("attempts")
-        .select("id, started_at, finished_at, correct_count, total_count, score, rol")
-        .eq("scenario_id", scenarioId)
-        .order("started_at", { ascending: false });
-      if (!mounted) return;
-      if (!error) setRows(data || []);
+      try {
+        if (!scenarioId || !userId) { setRows([]); return; }
+        // Nota: seleccionamos sólo columnas seguras (sin 'rol' si la columna no existe)
+        const { data, error } = await supabase
+          .from("attempts")
+          .select("id, started_at, finished_at, correct_count, total_count, score")
+          .eq("scenario_id", scenarioId)
+          .eq("user_id", userId)
+          .order("started_at", { ascending: false });
+        if (!mounted) return;
+        if (error) {
+          console.warn('[AttemptsList] error:', error);
+          setRows([]);
+        } else {
+          setRows(data || []);
+        }
+      } catch (e) {
+        console.warn('[AttemptsList] exception:', e);
+        if (mounted) setRows([]);
+      }
     })();
-    return () => {
-      mounted = false;
-    };
-  }, [scenarioId]);
+    return () => { mounted = false; };
+  }, [scenarioId, userId]);
 
   if (!rows.length) return <p className="text-slate-600">Aún no tienes intentos previos.</p>;
   return (
@@ -1559,11 +1570,7 @@ function AttemptsList({ scenarioId }) {
             const res = r.finished_at
               ? `${r.correct_count}/${r.total_count} (${r.score ?? 0}%)`
               : "—";
-            // use formatRole if available
-            let roleLabel = "";
-            if (r.rol) {
-              roleLabel = formatRole(r.rol);
-            }
+            const roleLabel = ""; // no se muestra si la columna no existe
             return (
               <tr key={r.id} className="border-t">
                 <td className="px-4 py-2">{date}</td>
