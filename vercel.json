@@ -1,6 +1,26 @@
 {
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
+
+    // ✅ No reescribir los assets estáticos (evita que Vercel devuelva index.html)
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/(.*\\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|txt|json|map))", "destination": "/$1" },
+
+    // SPA catch‑all (React Router)
     { "source": "/(.*)", "destination": "/" }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)\\.js",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+      ]
+    },
+    {
+      "source": "/(.*)\\.js",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+      ]
+    }
   ]
 }
