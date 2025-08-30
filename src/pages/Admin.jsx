@@ -48,8 +48,8 @@ function Card({ title, count, children }) {
 export default function Admin() {
   function verIntentos(u) {
     if (!u?.id) return;
-    // Redirige a Evaluación con el user_id query param para ver sus intentos
-    navigate(`/evaluacion?user_id=${encodeURIComponent(u.id)}`);
+    // Redirige a Evaluación con el user query param para ver sus intentos
+    navigate(`/evaluacion?user=${encodeURIComponent(u.id)}`);
   }
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -179,13 +179,9 @@ export default function Admin() {
     setProcessingIds((prev) => ({ ...prev, [u.id]: true }));
 
     try {
-      // 1) Marca aprobado
+      // 1) Marca aprobado via RPC para evitar choques de RLS
       const nowIso = new Date().toISOString();
-      const { error: e1 } = await supabase
-        .from("profiles")
-        .update({ approved: true, approved_at: nowIso, updated_at: nowIso })
-        .eq("id", u.id);
-
+      const { error: e1 } = await supabase.rpc("admin_approve_user", { _user_id: u.id });
       if (e1) throw e1;
 
       // 2) Notifica por email (endpoint Vercel). Enviamos nombre y email.
@@ -322,13 +318,13 @@ export default function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col style={{ width: "17rem" }} />  {/* Email */}
-                  <col style={{ width: "10rem" }} />  {/* Nombre */}
-                  <col style={{ width: "11rem" }} />  {/* Rol / Unidad */}
+                  <col style={{ width: "14rem" }} />  {/* Email */}
+                  <col style={{ width: "9rem" }} />   {/* Nombre */}
+                  <col style={{ width: "10rem" }} />  {/* Rol / Unidad */}
                   <col style={{ width: "8rem" }} />   {/* DNI */}
                   <col style={{ width: "9rem" }} />   {/* Alta */}
                   <col style={{ width: "9rem" }} />   {/* Estado */}
-                  <col style={{ width: "12rem" }} />  {/* Acciones */}
+                  <col style={{ width: "11rem" }} />  {/* Acciones */}
                 </colgroup>
                 <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
@@ -399,12 +395,12 @@ export default function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col style={{ width: "18rem" }} />  {/* Email */}
-                  <col style={{ width: "10rem" }} />  {/* Nombre */}
-                  <col style={{ width: "12rem" }} />  {/* Rol / Unidad */}
+                  <col style={{ width: "15rem" }} />  {/* Email */}
+                  <col style={{ width: "9rem" }} />   {/* Nombre */}
+                  <col style={{ width: "11rem" }} />  {/* Rol / Unidad */}
                   <col style={{ width: "9rem" }} />   {/* DNI */}
-                  <col style={{ width: "13rem" }} />  {/* Fechas */}
-                  <col style={{ width: "11rem" }} />  {/* Estado */}
+                  <col style={{ width: "12rem" }} />  {/* Fechas */}
+                  <col style={{ width: "9rem" }} />   {/* Estado */}
                   <col style={{ width: "8rem" }} />   {/* Resultados */}
                 </colgroup>
                 <thead className="bg-slate-50 sticky top-0 z-10">

@@ -1,11 +1,19 @@
 // src/pages/Pendiente.jsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
 // Utilidad: URL de retorno tras verificar
 const REDIRECT_TO = typeof window !== "undefined" ? `${window.location.origin}/pendiente` : undefined;
+
+function fmt(dt) {
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return String(dt || "");
+  }
+}
 
 export default function Pendiente() {
   const navigate = useNavigate();
@@ -22,6 +30,13 @@ export default function Pendiente() {
   const tries = useRef(0);
   const pollTimer = useRef(null);
   const didFirstRefresh = useRef(false);
+
+  const nextStep = useMemo(() => {
+    if (verified && approved) return "Todo listo. Puedes entrar.";
+    if (!verified) return "Verifica tu email para continuar.";
+    if (!approved) return "Esperando aprobación del administrador.";
+    return "";
+  }, [verified, approved]);
 
   useEffect(() => {
     (async () => {
@@ -179,10 +194,8 @@ export default function Pendiente() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar variant="public" />
       <main className="max-w-3xl mx-auto px-5 py-10">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2">Cuenta pendiente de aprobación</h1>
-        <p className="text-slate-600 mb-6">
-          Hemos recibido tu solicitud. Un administrador revisará tu cuenta.
-        </p>
+        <h1 className="text-3xl md:text-4xl font-bold mb-3">Estado de tu acceso</h1>
+        <p className="text-slate-600 mb-6 text-lg">{nextStep}</p>
 
         {errorMsg && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-800 px-4 py-2 text-sm">
@@ -190,17 +203,17 @@ export default function Pendiente() {
           </div>
         )}
 
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="space-y-5">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs text-slate-500">Verificación de email</div>
                 <div className="mt-1 text-slate-800">
-                  {email ? <span className="font-medium">{email}</span> : "—"}
+                  {email ? <span className="font-medium text-base">{email}</span> : "—"}
                   <div className="text-xs text-slate-500">{userId ? `UID: ${userId}` : ''}</div>
                 </div>
               </div>
-              <div className={`text-lg ${verified ? "text-emerald-600" : "text-rose-600"}`}>
+              <div className={`text-lg md:text-xl ${verified ? "text-emerald-600" : "text-rose-600"}`}>
                 {verified ? "✔ Email verificado" : "❌ Email no verificado"}
               </div>
             </div>
@@ -214,7 +227,7 @@ export default function Pendiente() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs text-slate-500">Aprobación de administrador</div>
@@ -223,11 +236,11 @@ export default function Pendiente() {
                     {approved ? '✔ Aprobado' : 'Pendiente'}
                   </span>
                   {approvedAt && (
-                    <span className="text-xs text-slate-500">· desde {new Date(approvedAt).toLocaleString()}</span>
+                    <span className="text-xs text-slate-500">· desde {fmt(approvedAt)}</span>
                   )}
                 </div>
               </div>
-              <div className={`text-lg ${approved ? 'text-emerald-600' : 'text-amber-600'}`}>{approved ? '✔' : '—'}</div>
+              <div className={`text-lg md:text-xl ${approved ? 'text-emerald-600' : 'text-amber-600'}`}>{approved ? '✔' : '—'}</div>
             </div>
             {!approved && (
               <p className="mt-2 text-xs text-slate-500">
@@ -257,8 +270,17 @@ export default function Pendiente() {
 
           <button
             type="button"
+            onClick={() => navigate("/dashboard")}
+            disabled={!(verified && approved)}
+            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:opacity-95 disabled:opacity-40"
+          >
+            Ir al panel
+          </button>
+
+          <button
+            type="button"
             onClick={async () => { try { await supabase.auth.signOut({ scope: "global" }); } finally { navigate("/", { replace: true }); } }}
-            className="px-4 py-2 rounded-lg bg-slate-900 text-white hover:opacity-95"
+            className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
           >
             Cerrar sesión
           </button>

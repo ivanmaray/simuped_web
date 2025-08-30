@@ -122,7 +122,7 @@ export default function Dashboard() {
         const [scRes, sumRes] = await Promise.all([
           supabase
             .from("scenarios")
-            .select("id, title, summary, level, mode, created_at, estimated_minutes")
+            .select("id, title, summary, level, mode, created_at, estimated_minutes, max_attempts")
             .order("created_at", { ascending: false }),
           // Vista opcional; si no existe no rompemos la pantalla
           supabase
@@ -265,6 +265,63 @@ export default function Dashboard() {
                 </Link>
               </div>
             </div>
+          </section>
+
+          {/* Tus escenarios (preview) */}
+          <section className="mt-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-slate-800">Tus escenarios</h2>
+              <Link to="/simulacion" className="text-[#1a69b8] hover:underline text-sm">Ver todos</Link>
+            </div>
+
+            {loadingEsc ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">Cargando escenarios…</div>
+            ) : escenarios.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">No hay escenarios disponibles todavía.</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {escenarios.slice(0, 6).map((sc) => (
+                  <article key={sc.id} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition">
+                    <header className="mb-3">
+                      <h3 className="text-lg font-semibold text-slate-900 group-hover:underline">
+                        <Link to={`/simulacion/${sc.id}/confirm`}>{sc.title}</Link>
+                      </h3>
+                      <p className="text-sm text-slate-600 line-clamp-2">{sc.summary || ""}</p>
+                    </header>
+
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      {sc.level ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] ring-1 ring-slate-200 bg-slate-50">
+                          {formatLevel(sc.level)}
+                        </span>
+                      ) : null}
+                      {sc.estimated_minutes ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] ring-1 ring-slate-200 bg-slate-50">
+                          ~{sc.estimated_minutes} min
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] ring-1 ring-slate-200 bg-slate-50">
+                        Intentos: {sc.attempts_count ?? 0}{typeof sc.max_attempts === 'number' ? `/${sc.max_attempts}` : ''}
+                      </span>
+                    </div>
+
+                    <footer className="flex items-center justify-between">
+                      <Link
+                        to={`/simulacion/${sc.id}/confirm`}
+                        className="text-sm font-medium text-[#1a69b8] hover:underline"
+                      >
+                        Continuar
+                      </Link>
+                      {sc.last_started_at ? (
+                        <span className="text-xs text-slate-500">Último: {new Date(sc.last_started_at).toLocaleDateString()}</span>
+                      ) : (
+                        <span className="text-xs text-slate-400">Sin intentos</span>
+                      )}
+                    </footer>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
         </main>
       </div>

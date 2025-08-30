@@ -62,8 +62,8 @@ export default function Evaluacion() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      // Lee ?user_id=... del querystring (modo admin para revisar a otra persona)
-      const requestedUserId = searchParams.get("user_id");
+      // Lee ?user=... o ?user_id=... del querystring (modo admin para revisar a otra persona)
+      const requestedUserId = searchParams.get("user") || searchParams.get("user_id");
       const storedUserId = sessionStorage.getItem("eval_last_user_id");
       const forceSelf = !!(location.state && location.state.forceSelf);
 
@@ -84,10 +84,10 @@ export default function Evaluacion() {
       const amIAdmin = !!(myProf?.is_admin);
       setIsAdmin(amIAdmin);
 
-      // Si soy admin y no viene user_id pero hay uno guardado, navegar a ese,
+      // Si soy admin y no viene user ni user_id pero hay uno guardado, navegar a ese,
       // excepto si venimos desde Dashboard forzando "mis propios datos".
       if (amIAdmin && !forceSelf && !requestedUserId && storedUserId) {
-        navigate(`/evaluacion?user_id=${storedUserId}`, { replace: true });
+        navigate(`/evaluacion?user=${storedUserId}`, { replace: true });
       }
 
       // Determina qué usuario vamos a visualizar
