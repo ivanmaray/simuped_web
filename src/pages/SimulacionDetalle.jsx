@@ -1267,10 +1267,10 @@ export default function SimulacionDetalle() {
           </header>
 
           <main className="max-w-6xl mx-auto px-5 py-6 mt-2 grid grid-cols-1 md:grid-cols-4 gap-6">
-            {/* Sidebar de pasos */}
+            {/* Sidebar de bloques */}
             <aside className="md:col-span-1">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="text-sm font-semibold text-slate-700 mb-3">Pasos</h2>
+                <h2 className="text-sm font-semibold text-slate-700 mb-3">Bloques</h2>
                 <ol className="space-y-2">
                   {steps.map((s, idx) => {
                     const active = idx === currentIdx;
@@ -1285,7 +1285,7 @@ export default function SimulacionDetalle() {
                                 : "border-slate-200 hover:bg-slate-50"
                             }`}
                         >
-                          <div className="text-sm font-medium">{s.description || `Paso ${idx + 1}`}</div>
+                          <div className="text-sm font-medium">{s.description || `Bloque ${idx + 1}`}</div>
                           {s.role_specific && (
                             <div className="text-xs text-slate-500">Específico de rol</div>
                           )}
@@ -1318,7 +1318,7 @@ export default function SimulacionDetalle() {
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold">
-                    {currentStep?.description || "Paso"}
+                    {currentStep?.description || "Bloque"}
                   </h2>
                   <span className="text-sm text-slate-600">
                     Respondidas en este paso: {answeredInStep}/{currentStep?.questions?.length ?? 0}
@@ -1494,7 +1494,7 @@ export default function SimulacionDetalle() {
                       disabled={currentIdx >= steps.length - 1 || timeUp}
                       className="px-4 py-2 rounded-lg bg-[#1a69b8] text-white hover:opacity-95 disabled:opacity-40"
                     >
-                      {currentIdx >= steps.length - 1 ? "Fin" : "Siguiente paso"}
+                      {currentIdx >= steps.length - 1 ? "Fin" : "Siguiente bloque"}
                     </button>
                     <button
                       onClick={() => finishAttempt()}
