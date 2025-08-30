@@ -8,9 +8,23 @@ export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [emailConfirmedAt, setEmailConfirmedAt] = useState(null);
 
   const unsubRef = useRef(null);
   const loadingProfileRef = useRef(false);
+
+  // Helper to read the auth user and set email confirmation timestamp
+  async function readAuthUser() {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.warn("[Auth] getUser error:", error);
+      setEmailConfirmedAt(null);
+      return null;
+    }
+    const u = data?.user ?? null;
+    setEmailConfirmedAt(u?.email_confirmed_at ?? null);
+    return u;
+  }
 
   async function loadProfile(uid) {
     if (!uid || loadingProfileRef.current) return;
@@ -71,6 +85,7 @@ export function AuthProvider({ children }) {
         const sess = sessRes?.session ?? null;
         if (!mounted) return;
         setSession(sess);
+        await readAuthUser();
         if (sess?.user?.id) loadProfile(sess.user.id);
 
         // 3) Suscripción a cambios de auth
@@ -78,6 +93,7 @@ export function AuthProvider({ children }) {
         const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, newSess) => {
           if (!mounted) return;
           setSession(newSess ?? null);
+          await readAuthUser();
           const uid = newSess?.user?.id;
           if (uid) await loadProfile(uid); else setProfile(null);
         });
@@ -95,15 +111,21 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const value = useMemo(() => ({
-    ready,
-    session,
-    profile,
-    refreshProfile: async () => {
-      const uid = session?.user?.id;
-      if (uid) await loadProfile(uid);
-    },
-  }), [ready, session, profile]);
+  const value = useMemo(() => {
+    const emailConfirmed = !!emailConfirmedAt;
+    return {
+      ready,
+      session,
+      profile,
+      emailConfirmedAt,
+      emailConfirmed,
+      refreshProfile: async () => {
+        const uid = session?.user?.id;
+        if (uid) await loadProfile(uid);
+      },
+      refreshAuthUser: async () => { await readAuthUser(); },
+    };
+  }, [ready, session, profile, emailConfirmedAt, emailConfirmed]);
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

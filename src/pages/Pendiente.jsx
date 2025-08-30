@@ -5,7 +5,10 @@ import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
 // Utilidad: URL de retorno tras verificar
-const REDIRECT_TO = typeof window !== "undefined" ? `${window.location.origin}/pendiente` : undefined;
+const REDIRECT_TO =
+  typeof window !== "undefined"
+    ? `${window.location.origin}/pendiente`
+    : undefined;
 
 function fmt(dt) {
   try {
@@ -68,14 +71,20 @@ export default function Pendiente() {
 
     const { data: sub } = supabase.auth.onAuthStateChange((evt) => {
       // Cuando el token se refresca o cambia el usuario, revalidamos estados
-      if (evt === 'TOKEN_REFRESHED' || evt === 'USER_UPDATED' || evt === 'SIGNED_IN') {
+      if (
+        evt === "TOKEN_REFRESHED" ||
+        evt === "USER_UPDATED" ||
+        evt === "SIGNED_IN"
+      ) {
         refreshStates().catch(() => {});
       }
     });
 
     return () => {
       clearInterval(pollTimer.current);
-      try { sub?.subscription?.unsubscribe?.(); } catch {}
+      try {
+        sub?.subscription?.unsubscribe?.();
+      } catch {}
     };
   }, []);
 
@@ -93,7 +102,7 @@ export default function Pendiente() {
 
       // Si no hay sesión (p.ej. email no verificado y Auth bloquea login), intenta mostrar email recordado
       if (!user) {
-        const pendingEmail = localStorage.getItem('pending_email') || '';
+        const pendingEmail = localStorage.getItem("pending_email") || "";
         setEmail(pendingEmail);
         setUserId("");
         setVerified(false);
@@ -104,7 +113,9 @@ export default function Pendiente() {
       }
 
       setEmail(user.email || "");
-      try { localStorage.setItem('pending_email', user.email || ""); } catch {}
+      try {
+        localStorage.setItem("pending_email", user.email || "");
+      } catch {}
       setUserId(user.id || "");
       const isVerified = !!user.email_confirmed_at;
       setVerified(isVerified);
@@ -119,16 +130,21 @@ export default function Pendiente() {
         .eq("id", user.id)
         .maybeSingle();
 
-      pErr = byId.error; prof = byId.data;
+      pErr = byId.error;
+      prof = byId.data;
 
       if (pErr || !prof) {
-        console.warn("[Pendiente] profiles by id no encontrado o error, probando por email", pErr);
+        console.warn(
+          "[Pendiente] profiles by id no encontrado o error, probando por email",
+          pErr
+        );
         const byEmail = await supabase
           .from("profiles")
           .select("id, email, approved, approved_at, updated_at")
           .eq("email", user.email)
           .maybeSingle();
-        pErr = byEmail.error; prof = byEmail.data;
+        pErr = byEmail.error;
+        prof = byEmail.data;
       }
 
       if (pErr) {
@@ -170,21 +186,23 @@ export default function Pendiente() {
   async function handleResend() {
     setChecking(true);
     try {
-      const target = (email || localStorage.getItem('pending_email') || '').trim();
+      const target = (email || localStorage.getItem("pending_email") || "").trim();
       if (!target) {
-        alert('No tenemos un email para reenviar. Vuelve a iniciar sesión.');
+        alert("No tenemos un email para reenviar. Vuelve a iniciar sesión.");
         return;
       }
       const { error } = await supabase.auth.resend({
-        type: 'signup',
+        type: "signup",
         email: target,
         options: REDIRECT_TO ? { emailRedirectTo: REDIRECT_TO } : undefined,
       });
       if (error) throw error;
-      alert('Te hemos enviado de nuevo el correo de verificación. Revisa tu bandeja y spam.');
+      alert(
+        "Te hemos enviado de nuevo el correo de verificación. Revisa tu bandeja y spam."
+      );
     } catch (e) {
-      console.error('[Pendiente] resend error:', e);
-      setErrorMsg(e.message || 'No se pudo reenviar el correo ahora.');
+      console.error("[Pendiente] resend error:", e);
+      setErrorMsg(e.message || "No se pudo reenviar el correo ahora.");
     } finally {
       setChecking(false);
     }
@@ -209,19 +227,36 @@ export default function Pendiente() {
               <div>
                 <div className="text-xs text-slate-500">Verificación de email</div>
                 <div className="mt-1 text-slate-800">
-                  {email ? <span className="font-medium text-base">{email}</span> : "—"}
-                  <div className="text-xs text-slate-500">{userId ? `UID: ${userId}` : ''}</div>
+                  {email ? (
+                    <span className="font-medium text-base">{email}</span>
+                  ) : (
+                    "—"
+                  )}
+                  <div className="text-xs text-slate-500">
+                    {userId ? `UID: ${userId}` : ""}
+                  </div>
                 </div>
               </div>
-              <div className={`text-lg md:text-xl ${verified ? "text-emerald-600" : "text-rose-600"}`}>
+              <div
+                className={`text-lg md:text-xl ${
+                  verified ? "text-emerald-600" : "text-rose-600"
+                }`}
+              >
                 {verified ? "✔ Email verificado" : "❌ Email no verificado"}
               </div>
             </div>
             {!verified && (
               <div className="mt-3 text-sm text-slate-600 space-y-2">
-                <p>Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el enlace, pulsa “Comprobar ahora”.</p>
-                <button onClick={handleResend} disabled={checking} className="text-[#1a69b8] underline disabled:opacity-60">
-                  {checking ? 'Enviando…' : 'Reenviar verificación'}
+                <p>
+                  Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el
+                  enlace, pulsa “Comprobar ahora”.
+                </p>
+                <button
+                  onClick={handleResend}
+                  disabled={checking}
+                  className="text-[#1a69b8] underline disabled:opacity-60"
+                >
+                  {checking ? "Enviando…" : "Reenviar verificación"}
                 </button>
               </div>
             )}
@@ -232,19 +267,34 @@ export default function Pendiente() {
               <div>
                 <div className="text-xs text-slate-500">Aprobación de administrador</div>
                 <div className="mt-1 text-slate-800 flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-sm font-medium ${approved ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                    {approved ? '✔ Aprobado' : 'Pendiente'}
+                  <span
+                    className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-sm font-medium ${
+                      approved
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                    }`}
+                  >
+                    {approved ? "✔ Aprobado" : "Pendiente"}
                   </span>
                   {approvedAt && (
-                    <span className="text-xs text-slate-500">· desde {fmt(approvedAt)}</span>
+                    <span className="text-xs text-slate-500">
+                      · desde {fmt(approvedAt)}
+                    </span>
                   )}
                 </div>
               </div>
-              <div className={`text-lg md:text-xl ${approved ? 'text-emerald-600' : 'text-amber-600'}`}>{approved ? '✔' : '—'}</div>
+              <div
+                className={`text-lg md:text-xl ${
+                  approved ? "text-emerald-600" : "text-amber-600"
+                }`}
+              >
+                {approved ? "✔" : "—"}
+              </div>
             </div>
             {!approved && (
               <p className="mt-2 text-xs text-slate-500">
-                Si tu cuenta ya aparece aprobada pero sigues sin poder entrar, verifica tu email y pulsa <em>Comprobar ahora</em>.
+                Si tu cuenta ya aparece aprobada pero sigues sin poder entrar, verifica
+                tu email y pulsa <em>Comprobar ahora</em>.
               </p>
             )}
           </section>
@@ -262,7 +312,12 @@ export default function Pendiente() {
 
           <button
             type="button"
-            onClick={async () => { try { await supabase.auth.refreshSession(); await refreshStates(); } catch {} }}
+            onClick={async () => {
+              try {
+                await supabase.auth.refreshSession();
+                await refreshStates();
+              } catch {}
+            }}
             className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
           >
             Forzar refresco
@@ -279,7 +334,13 @@ export default function Pendiente() {
 
           <button
             type="button"
-            onClick={async () => { try { await supabase.auth.signOut({ scope: "global" }); } finally { navigate("/", { replace: true }); } }}
+            onClick={async () => {
+              try {
+                await supabase.auth.signOut({ scope: "global" });
+              } finally {
+                navigate("/", { replace: true });
+              }
+            }}
             className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
           >
             Cerrar sesión
@@ -287,7 +348,8 @@ export default function Pendiente() {
         </div>
 
         <p className="text-xs text-slate-500 mt-4">
-          Esta página se actualiza automáticamente durante unos segundos tras confirmar el correo.
+          Esta página se actualiza automáticamente durante unos segundos tras
+          confirmar el correo.
         </p>
       </main>
     </div>
