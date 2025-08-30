@@ -147,19 +147,28 @@ export default function Evaluacion() {
       } else {
         setAttempts(rows || []);
         // Cargar lecturas recomendadas (bibliografía) de los escenarios con intentos
+        // Cargar lecturas recomendadas (bibliografía) de los escenarios con intentos
         try {
+          // Construir mapa de títulos a partir de los attempts ya cargados
+          const titleByScenario = {};
+          for (const r of (rows || [])) {
+            const sid = r.scenario_id;
+            if (!sid) continue;
+            // Prioriza el primero visto (o el más reciente), normalmente es el mismo título
+            if (!titleByScenario[sid]) {
+              titleByScenario[sid] = r.scenarios?.title || `Escenario ${sid}`;
+            }
+          }
+
           const scenarioIds = Array.from(new Set((rows || []).map(r => r.scenario_id).filter(Boolean)));
           if (scenarioIds.length > 0) {
             setResourcesLoading(true);
+            // ⚠️ Importante: no hacemos embed a scenarios para evitar restricciones RLS adicionales
             const { data: resRows, error: resErr } = await supabase
               .from("case_resources")
-              .select(`
-                id, scenario_id, source, url, year, access, weight,
-                scenarios ( title )
-              `)
+              .select("id, scenario_id, source, url, year, access, weight")
               .in("scenario_id", scenarioIds)
-              .order("weight", { ascending: true })
-              .order("year", { ascending: false, nullsFirst: false });
+              .order("weight", { ascending: true });
 
             if (resErr) {
               console.warn("[Evaluacion] resources select error:", resErr);
@@ -168,7 +177,7 @@ export default function Evaluacion() {
               const map = {};
               for (const r of (resRows || [])) {
                 const sid = r.scenario_id;
-                if (!map[sid]) map[sid] = { title: r.scenarios?.title || `Escenario ${sid}`, items: [] };
+                if (!map[sid]) map[sid] = { title: titleByScenario[sid] || `Escenario ${sid}`, items: [] };
                 map[sid].items.push({ id: r.id, source: r.source, url: r.url, year: r.year, access: r.access });
               }
               setResourcesByScenario(map);

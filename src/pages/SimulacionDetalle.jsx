@@ -1110,44 +1110,6 @@ export default function SimulacionDetalle() {
               );
             })()}
 
-            {/* Lecturas recomendadas (debrief) */}
-            {resources.length > 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4">
-                <div className="font-semibold mb-2">Lecturas recomendadas</div>
-                <ul className="divide-y">
-                  {resources.map((r) => (
-                    <li key={r.id} className="py-2 flex items-start justify-between gap-3">
-                      <div>
-                        <a
-                          href={r.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#1a69b8] hover:underline font-medium"
-                        >
-                          {r.title}
-                        </a>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          {r.source ? `${r.source} · ` : ""}
-                          {r.type ? `${r.type}` : ""}
-                          {r.year ? ` · ${r.year}` : ""}
-                        </div>
-                      </div>
-                      <div className="shrink-0">
-                        {r.free_access ? (
-                          <span className="inline-flex items-center text-xs px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800">
-                            Acceso libre
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center text-xs px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800">
-                            Puede requerir acceso
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
 
             <div className="mt-6 space-y-6">
               {steps.flatMap((s) => s.questions || []).map((q) => {
@@ -1214,6 +1176,45 @@ export default function SimulacionDetalle() {
                 Volver al panel
               </button>
             </div>
+
+            {/* Lecturas recomendadas (debrief, al final) */}
+            {resources.length > 0 && (
+              <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+                <div className="font-semibold mb-2">Lecturas recomendadas</div>
+                <ul className="divide-y">
+                  {resources.map((r) => (
+                    <li key={r.id} className="py-2 flex items-start justify-between gap-3">
+                      <div>
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#1a69b8] hover:underline font-medium"
+                        >
+                          {r.title}
+                        </a>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {r.source ? `${r.source} · ` : ""}
+                          {r.type ? `${r.type}` : ""}
+                          {r.year ? ` · ${r.year}` : ""}
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        {r.free_access ? (
+                          <span className="inline-flex items-center text-xs px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800">
+                            Acceso libre
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-xs px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800">
+                            Puede requerir acceso
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </section>
       ) : (
