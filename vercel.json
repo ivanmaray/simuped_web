@@ -1,22 +1,10 @@
 {
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/(.*\\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|txt|json|map))", "destination": "/$1" },
-    { "source": "/(.*)", "destination": "/" }
-  ],
-  "headers": [
     {
-      "source": "/assets/(.*)\\.js",
-      "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
-      ]
-    },
-    {
-      "source": "/(.*)\\.js",
-      "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
-      ]
+      "source": "/(.*)",
+      "has": [{ "type": "header", "key": "accept", "value": "text/html" }],
+      "destination": "/"
     }
   ]
 }
