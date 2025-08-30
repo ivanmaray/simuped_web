@@ -294,7 +294,6 @@ export default function Pendiente() {
                 <div className="text-xs text-slate-500">Verificación de email</div>
                 <div className="mt-1 text-slate-800">
                   {email ? <span className="font-medium text-base">{email}</span> : "—"}
-                  <div className="text-xs text-slate-500">{userId ? `UID: ${userId}` : ""}</div>
                 </div>
               </div>
               <div className={`text-lg md:text-xl ${verified ? "text-emerald-600" : "text-rose-600"}`}>
@@ -305,6 +304,9 @@ export default function Pendiente() {
             {!verified && (
               <div className="mt-3 text-sm text-slate-600 space-y-2">
                 <p>Revisa tu bandeja de entrada y spam. Si ya has hecho clic en el enlace, pulsa “Comprobar ahora”.</p>
+                <p className="text-xs text-slate-500">
+                  Si tras unos minutos no se actualiza, <strong>cierra sesión y vuelve a entrar</strong>.
+                </p>
                 <button onClick={handleResend} disabled={checking} className="text-[#1a69b8] underline disabled:opacity-60">
                   {checking ? "Enviando…" : "Reenviar verificación"}
                 </button>
@@ -340,16 +342,6 @@ export default function Pendiente() {
           </section>
         </div>
 
-        {/* DEBUG compacto */}
-        <div className="mt-6 text-xs rounded-lg border border-slate-200 bg-white/70 p-3 text-slate-600">
-          <div><strong>DEBUG</strong></div>
-          <div>Email: {email || "—"}</div>
-          <div>UID: {userId || "—"}</div>
-          <div>email_confirmed_at (getUser): {emailConfirmedAtRaw ? new Date(emailConfirmedAtRaw).toLocaleString() : "null"}</div>
-          <div>approved: {approved === null ? "null" : approved ? "true" : "false"}</div>
-          <div>approved_at: {approvedAt ? new Date(approvedAt).toLocaleString() : "null"}</div>
-        </div>
-
         <div className="mt-6 flex items-center gap-3 flex-wrap">
           <button
             type="button"
@@ -358,33 +350,6 @@ export default function Pendiente() {
             className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
           >
             {checking ? "Comprobando…" : "Comprobar ahora"}
-          </button>
-
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await supabase.auth.refreshSession();
-                await primeUserAndProfile();
-              } catch {}
-            }}
-            className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-          >
-            Forzar refresco
-          </button>
-
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await supabase.auth.signOut({ scope: "local" });
-              } finally {
-                window.location.href = "/";
-              }
-            }}
-            className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-          >
-            Salir y volver a entrar (plan B)
           </button>
 
           <button
@@ -412,7 +377,7 @@ export default function Pendiente() {
         </div>
 
         <p className="text-xs text-slate-500 mt-4">
-          Esta página se actualiza con backoff y escucha cambios en tiempo real cuando el admin te aprueba.
+          Tras confirmar el correo, esta pantalla puede tardar un poco en actualizarse. Si no cambia, <strong>cierra sesión y vuelve a entrar</strong>.
         </p>
       </main>
     </div>
