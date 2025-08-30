@@ -29,6 +29,7 @@ export default function Pendiente() {
   const [approved, setApproved] = useState(null); // true/false/null
   const [approvedAt, setApprovedAt] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [emailConfirmedAtRaw, setEmailConfirmedAtRaw] = useState(null);
 
   const tries = useRef(0);
   const pollTimer = useRef(null);
@@ -99,6 +100,7 @@ export default function Pendiente() {
         console.warn("[Pendiente] getUser error:", uErr);
       }
       const user = userRes?.user || null;
+      setEmailConfirmedAtRaw(user?.email_confirmed_at || null);
 
       // Si no hay sesión (p.ej. email no verificado y Auth bloquea login), intenta mostrar email recordado
       if (!user) {
@@ -173,7 +175,19 @@ export default function Pendiente() {
   async function handleCheckNow() {
     setChecking(true);
     try {
+      // Limpia posibles restos de tokens locales (prefijos de Supabase)
+      try {
+        Object.keys(localStorage).forEach((k) => {
+          if (k.startsWith("sb-")) localStorage.removeItem(k);
+        });
+        Object.keys(sessionStorage).forEach((k) => {
+          if (k.startsWith("sb-")) sessionStorage.removeItem(k);
+        });
+      } catch {}
+  
+      // Fuerza renovación de sesión
       await supabase.auth.refreshSession();
+      // Revalida estados
       await refreshStates();
     } catch (e) {
       console.error("[Pendiente] checkNow error:", e);
@@ -300,6 +314,15 @@ export default function Pendiente() {
           </section>
         </div>
 
+        <div className="mt-6 text-xs rounded-lg border border-slate-200 bg-white/70 p-3 text-slate-600">
+          <div><strong>DEBUG</strong></div>
+          <div>Email: {email || "—"}</div>
+          <div>UID: {userId || "—"}</div>
+          <div>email_confirmed_at (getUser): {emailConfirmedAtRaw ? new Date(emailConfirmedAtRaw).toLocaleString() : "null"}</div>
+          <div>approved: {approved === null ? "null" : approved ? "true" : "false"}</div>
+          <div>approved_at: {approvedAt ? new Date(approvedAt).toLocaleString() : "null"}</div>
+        </div>
+
         <div className="mt-6 flex items-center gap-3 flex-wrap">
           <button
             type="button"
@@ -321,6 +344,20 @@ export default function Pendiente() {
             className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
           >
             Forzar refresco
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await supabase.auth.signOut({ scope: "local" });
+              } finally {
+                window.location.href = "/";
+              }
+            }}
+            className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
+          >
+            Salir y volver a entrar (plan B)
           </button>
 
           <button
