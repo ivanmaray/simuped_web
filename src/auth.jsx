@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id,email,nombre,apellidos,rol,unidad,approved,is_admin,updated_at")
+        .select("id,email,nombre,apellidos,rol,unidad,approved,approved_at,is_admin,updated_at")
         .eq("id", uid)
         .maybeSingle();
 
@@ -125,7 +125,7 @@ export function AuthProvider({ children }) {
       },
       refreshAuthUser: async () => { await readAuthUser(); },
     };
-  }, [ready, session, profile, emailConfirmedAt, emailConfirmed]);
+  }, [ready, session, profile, emailConfirmedAt]);
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
