@@ -303,6 +303,67 @@ export default function SimulacionDetalle() {
   const [remainingSecs, setRemainingSecs] = useState(null);       // number in seconds
   const [timeUp, setTimeUp] = useState(false);
 
+  // Arranca el contador del intento (y fija expires_at si no estaba)
+  async function startAttemptCountdown() {
+    if (!attemptId) {
+      setShowBriefing(false);
+      return;
+    }
+
+    try {
+      let expISO = initialExpiresAt;
+
+      // Si el intento aún no tenía expires_at en DB, lo fijamos ahora usando time_limit
+      if (!expISO && attemptTimeLimit && Number(attemptTimeLimit) > 0) {
+        const now = new Date();
+        const exp = new Date(now.getTime() + Number(attemptTimeLimit) * 1000);
+        expISO = exp.toISOString();
+
+        // Persistimos inicio/expiración/status
+        const { error: upErr } = await supabase
+          .from("attempts")
+          .update({
+            started_at: now.toISOString(),
+            expires_at: expISO,
+            status: "en_curso",
+          })
+          .eq("id", attemptId);
+
+        if (upErr) {
+          console.warn("[SimulacionDetalle] No se pudo fijar expires_at al iniciar:", upErr);
+        }
+      }
+
+      // Si ya existía expires_at (p.ej. porque el usuario ya había comenzado antes), usamos ese valor
+      if (expISO) {
+        setExpiresAt(expISO);
+        const diff = Math.max(0, Math.floor((new Date(expISO).getTime() - Date.now()) / 1000));
+        setRemainingSecs(diff);
+        setTimeUp(diff === 0);
+      } else {
+        // Intento sin límite global -> sin contador
+        setExpiresAt(null);
+        setRemainingSecs(null);
+        setTimeUp(false);
+      }
+    } catch (e) {
+      console.error("[SimulacionDetalle] startAttemptCountdown error:", e);
+    } finally {
+      setShowBriefing(false);
+    }
+  }
+
+  // Auto-iniciar el contador si no hay briefing (una vez que tenemos el intento)
+  useEffect(() => {
+    if (loading) return;
+    if (showBriefing) return;           // mientras se muestra briefing, no arrancar
+    if (!attemptId) return;
+    if (expiresAt) return;              // ya arrancado
+    if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
+      startAttemptCountdown();
+    }
+  }, [loading, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt]);
+
   const currentStep = steps[currentIdx] || null;
 
   useEffect(() => {
@@ -375,67 +436,6 @@ export default function SimulacionDetalle() {
         setInitialExpiresAt(null);
       }
       // Aún no seteamos expiresAt/remainingSecs aquí; se hará al salir del briefing
-
-  // Arranca el contador del intento (y fija expires_at si no estaba)
-  async function startAttemptCountdown() {
-    if (!attemptId) {
-      setShowBriefing(false);
-      return;
-    }
-
-    try {
-      let expISO = initialExpiresAt;
-
-      // Si el intento aún no tenía expires_at en DB, lo fijamos ahora usando time_limit
-      if (!expISO && attemptTimeLimit && Number(attemptTimeLimit) > 0) {
-        const now = new Date();
-        const exp = new Date(now.getTime() + Number(attemptTimeLimit) * 1000);
-        expISO = exp.toISOString();
-
-        // Persistimos inicio/expiración/status
-        const { error: upErr } = await supabase
-          .from("attempts")
-          .update({
-            started_at: now.toISOString(),
-            expires_at: expISO,
-            status: "en_curso",
-          })
-          .eq("id", attemptId);
-
-        if (upErr) {
-          console.warn("[SimulacionDetalle] No se pudo fijar expires_at al iniciar:", upErr);
-        }
-      }
-
-      // Si ya existía expires_at (p.ej. porque el usuario ya había comenzado antes), usamos ese valor
-      if (expISO) {
-        setExpiresAt(expISO);
-        const diff = Math.max(0, Math.floor((new Date(expISO).getTime() - Date.now()) / 1000));
-        setRemainingSecs(diff);
-        setTimeUp(diff === 0);
-      } else {
-        // Intento sin límite global -> sin contador
-        setExpiresAt(null);
-        setRemainingSecs(null);
-        setTimeUp(false);
-      }
-    } catch (e) {
-      console.error("[SimulacionDetalle] startAttemptCountdown error:", e);
-    } finally {
-      setShowBriefing(false);
-    }
-  }
-
-  // Auto-iniciar el contador si no hay briefing (una vez que tenemos el intento)
-  useEffect(() => {
-    if (loading) return;
-    if (showBriefing) return;           // mientras se muestra briefing, no arrancar
-    if (!attemptId) return;
-    if (expiresAt) return;              // ya arrancado
-    if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
-      startAttemptCountdown();
-    }
-  }, [loading, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt]);
 
       // Rol del usuario
       let userRole = "";
