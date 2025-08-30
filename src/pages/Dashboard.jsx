@@ -153,8 +153,17 @@ export default function Dashboard() {
           };
         });
 
-        setEscenarios(enriched);
-        console.debug("[Dashboard] cargarEscenarios: loaded", enriched.length);
+        // Solo mostrar escenarios empezados/completados por el usuario
+        const started = enriched
+          .filter(sc => (sc?.attempts_count ?? 0) > 0)
+          .sort((a, b) => {
+            const ta = a.last_started_at ? new Date(a.last_started_at).getTime() : 0;
+            const tb = b.last_started_at ? new Date(b.last_started_at).getTime() : 0;
+            return tb - ta; // más recientes primero
+          });
+
+        setEscenarios(started);
+        console.debug("[Dashboard] cargarEscenarios: loaded", started.length);
       } catch (e) {
         console.error("[Dashboard] cargarEscenarios catch:", e);
         setEscenarios([]);
@@ -267,18 +276,17 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Tus escenarios (preview) */}
-          <section className="mt-10">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-slate-800">Tus escenarios</h2>
-              <Link to="/simulacion" className="text-[#1a69b8] hover:underline text-sm">Ver todos</Link>
-            </div>
-
-            {loadingEsc ? (
+          {/* Tus escenarios (solo empezados/completados) */}
+          {loadingEsc ? (
+            <section className="mt-10">
               <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">Cargando escenarios…</div>
-            ) : escenarios.length === 0 ? (
-              <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">No hay escenarios disponibles todavía.</div>
-            ) : (
+            </section>
+          ) : escenarios.length > 0 ? (
+            <section className="mt-10">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-slate-800">Tus escenarios recientes</h2>
+                <Link to="/simulacion" className="text-[#1a69b8] hover:underline text-sm">Ver todos</Link>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {escenarios.slice(0, 6).map((sc) => (
                   <article key={sc.id} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition">
@@ -321,8 +329,8 @@ export default function Dashboard() {
                   </article>
                 ))}
               </div>
-            )}
-          </section>
+            </section>
+          ) : null}
         </main>
       </div>
     </ErrorBoundary>

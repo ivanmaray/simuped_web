@@ -62,6 +62,8 @@ export default function SimulacionConfirm() {
 
   const [brief, setBrief] = useState(null);
   const [loadingBrief, setLoadingBrief] = useState(true);
+  const [resources, setResources] = useState([]);
+  const [loadingResources, setLoadingResources] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -147,6 +149,25 @@ export default function SimulacionConfirm() {
         }
       } finally {
         setLoadingBrief(false);
+      }
+
+      // 3c) Cargar lecturas / bibliografía recomendada
+      try {
+        setLoadingResources(true);
+        const { data: res, error: rErr } = await supabase
+          .from("case_resources")
+          .select("id, title, url, source, type, year, free_access, weight")
+          .eq("scenario_id", scenarioId)
+          .order("weight", { ascending: true })
+          .limit(12);
+        if (rErr) {
+          console.warn("[Confirm] resources error (no bloqueante):", rErr);
+          setResources([]);
+        } else {
+          setResources(res || []);
+        }
+      } finally {
+        setLoadingResources(false);
       }
 
       // 4) Contar intentos del usuario para este escenario
@@ -453,6 +474,59 @@ export default function SimulacionConfirm() {
             </ul>
           </div>
         </section>
+
+        {/* LECTURAS / BIBLIOGRAFÍA RECOMENDADA */}
+        {(loadingResources || (resources && resources.length)) ? (
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm mb-6">
+            <div className="flex items-start gap-4">
+              <div className="shrink-0 w-10 h-10 rounded-full bg-[#1a69b8] text-white grid place-items-center">📚</div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Lecturas recomendadas <span className="font-normal text-slate-600">· antes de iniciar el caso</span>
+                </h2>
+
+                {loadingResources ? (
+                  <p className="mt-2 text-sm text-slate-600">Cargando recursos…</p>
+                ) : resources.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-500">El autor del caso aún no ha añadido bibliografía aquí.</p>
+                ) : (
+                  <ul className="mt-3 space-y-3">
+                    {resources.slice(0, 8).map((r) => (
+                      <li key={r.id} className="rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <a
+                              href={r.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[15px] font-medium text-[#1a69b8] hover:underline"
+                              title={r.url}
+                            >
+                              {r.title}
+                            </a>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              {[
+                                r.source || null,
+                                r.type ? r.type.charAt(0).toUpperCase() + r.type.slice(1) : null,
+                                r.year || null,
+                                r.free_access ? "Acceso libre" : null,
+                              ].filter(Boolean).join(" · ")}
+                            </div>
+                          </div>
+                          {esAdmin ? (
+                            <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                              Peso: {r.weight ?? 100}
+                            </span>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {errorMsg && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">

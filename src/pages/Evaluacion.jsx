@@ -58,6 +58,8 @@ export default function Evaluacion() {
   const [viewUserId, setViewUserId] = useState(null);      // usuario sobre el que se muestra la evaluación
   const [viewUserEmail, setViewUserEmail] = useState("");  // email del usuario visto (si admin está filtrando)
   const [critFeatureAvailable, setCritFeatureAvailable] = useState(true);
+  const [resourcesByScenario, setResourcesByScenario] = useState({});
+  const [resourcesLoading, setResourcesLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -144,6 +146,42 @@ export default function Evaluacion() {
         setCritMap({});
       } else {
         setAttempts(rows || []);
+        // Cargar lecturas recomendadas (bibliografía) de los escenarios con intentos
+        try {
+          const scenarioIds = Array.from(new Set((rows || []).map(r => r.scenario_id).filter(Boolean)));
+          if (scenarioIds.length > 0) {
+            setResourcesLoading(true);
+            const { data: resRows, error: resErr } = await supabase
+              .from("case_resources")
+              .select(`
+                id, scenario_id, source, url, year, access, weight,
+                scenarios ( title )
+              `)
+              .in("scenario_id", scenarioIds)
+              .order("weight", { ascending: true })
+              .order("year", { ascending: false, nullsFirst: false });
+
+            if (resErr) {
+              console.warn("[Evaluacion] resources select error:", resErr);
+              setResourcesByScenario({});
+            } else {
+              const map = {};
+              for (const r of (resRows || [])) {
+                const sid = r.scenario_id;
+                if (!map[sid]) map[sid] = { title: r.scenarios?.title || `Escenario ${sid}`, items: [] };
+                map[sid].items.push({ id: r.id, source: r.source, url: r.url, year: r.year, access: r.access });
+              }
+              setResourcesByScenario(map);
+            }
+          } else {
+            setResourcesByScenario({});
+          }
+        } catch (e) {
+          console.warn("[Evaluacion] resources load exception:", e);
+          setResourcesByScenario({});
+        } finally {
+          setResourcesLoading(false);
+        }
         // Cargar resumen de críticas para esos attempts (si hay)
         const ids = (rows || []).map(r => r.id);
         if (ids.length > 0) {
@@ -297,6 +335,35 @@ export default function Evaluacion() {
             </div>
           )}
         </div>
+        {/* Lecturas recomendadas por escenario (a partir de escenarios con intentos) */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-lg font-semibold">Lecturas recomendadas</h3>
+            {resourcesLoading && <span className="text-xs text-slate-500">Cargando…</span>}
+          </div>
+          {Object.keys(resourcesByScenario).length === 0 ? (
+            <p className="text-slate-600 mt-2">De momento no hay bibliografía asociada a tus escenarios.</p>
+          ) : (
+            <div className="mt-3 space-y-6">
+              {Object.entries(resourcesByScenario).map(([sid, group]) => (
+                <div key={sid}>
+                  <h4 className="font-medium text-slate-800 mb-2">{group.title}</h4>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {group.items.map(item => (
+                      <li key={item.id} className="text-sm">
+                        <a href={item.url || "#"} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                          {item.source}
+                        </a>
+                        {item.year ? <span className="text-slate-500"> · {item.year}</span> : null}
+                        {item.access ? <span className="ml-1 inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">{item.access}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );

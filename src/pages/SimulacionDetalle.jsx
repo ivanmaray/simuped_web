@@ -217,10 +217,10 @@ function TEPTriangle({ appearance, breathing, circulation }) {
           Apariencia
         </text>
         <text x={left.x} y={left.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
-          Resp / Trabajo
+          Respiración / Trabajo resp.
         </text>
         <text x={right.x} y={right.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
-          Circulación a piel
+          Circulación cutánea
         </text>
       </svg>
 
@@ -243,6 +243,25 @@ function TEPTriangle({ appearance, breathing, circulation }) {
   );
 }
 
+// Traduce estado a etiqueta humana
+function humanizeTepStatus(v) {
+  const k = String(v || '').toLowerCase();
+  if (["verde","green","normal"].includes(k)) return "Normal";
+  if (["amarillo","ámbar","ambar","amber","sospechoso"].includes(k)) return "Sospechoso";
+  if (["rojo","red","anormal","alterado"].includes(k)) return "Anormal";
+  return "—";
+}
+
+// Mensaje por defecto si no hay motivo específico en el briefing
+function defaultTepReason(kind, status) {
+  const s = humanizeTepStatus(status);
+  if (s === "Normal") return "Sin hallazgos relevantes";
+  if (kind === "appearance") return s === "Sospechoso" ? "Irritabilidad o letargo leve" : "Aspecto tóxico o inconsciente";
+  if (kind === "breathing")  return s === "Sospechoso" ? "Aleteo nasal o tiraje leve" : "Apnea, tiraje severo o quejido";
+  if (kind === "circulation") return s === "Sospechoso" ? "Palidez o moteado" : "Cianosis o piel marmórea";
+  return "";
+}
+
 
 
 export default function SimulacionDetalle() {
@@ -260,6 +279,8 @@ export default function SimulacionDetalle() {
   // Escenario + pasos + preguntas
   const [scenario, setScenario] = useState(null);
   const [brief, setBrief] = useState(null);
+  const [resources, setResources] = useState([]);
+  const [loadingResources, setLoadingResources] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
   const [steps, setSteps] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -485,6 +506,28 @@ export default function SimulacionDetalle() {
         console.warn("[SimulacionDetalle] error cargando briefing:", e);
         setBrief(null);
         setShowBriefing(false);
+      }
+
+      // Cargar lecturas/bibliografía para el debrief
+      try {
+        setLoadingResources(true);
+        const { data: res, error: rErr } = await supabase
+          .from("case_resources")
+          .select("id, title, url, source, type, year, free_access, weight")
+          .eq("scenario_id", esc.id)
+          .order("weight", { ascending: true })
+          .order("title", { ascending: true });
+        if (!rErr) {
+          setResources(res || []);
+        } else {
+          console.warn("[SimulacionDetalle] case_resources error:", rErr);
+          setResources([]);
+        }
+      } catch (e) {
+        console.warn("[SimulacionDetalle] excepción cargando case_resources:", e);
+        setResources([]);
+      } finally {
+        setLoadingResources(false);
       }
 
       // Cargar pasos + preguntas en UNA sola consulta (evita N+1)
@@ -835,11 +878,52 @@ export default function SimulacionDetalle() {
 
           {/* Triángulo pediátrico */}
           <CaseCard title="Triángulo de evaluación pediátrica (TEP)">
-            <TEPTriangle
-              appearance={brief?.triangle?.appearance}
-              breathing={brief?.triangle?.breathing}
-              circulation={brief?.triangle?.circulation}
-            />
+            <div className="grid lg:grid-cols-2 gap-4 items-start">
+              <div>
+                <TEPTriangle
+                  appearance={brief?.triangle?.appearance}
+                  breathing={brief?.triangle?.breathing}
+                  circulation={brief?.triangle?.circulation}
+                />
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                <div className="font-semibold text-slate-700 mb-2">Resumen y motivos</div>
+                <ul className="space-y-2">
+                  <li className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-slate-500 text-xs">Apariencia</div>
+                      <div className="text-slate-800">{brief?.triangle_details?.appearance || defaultTepReason('appearance', brief?.triangle?.appearance)}</div>
+                    </div>
+                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs border"
+                          style={{background:'#f8fafc'}}>
+                      {humanizeTepStatus(brief?.triangle?.appearance)}
+                    </span>
+                  </li>
+                  <li className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-slate-500 text-xs">Respiración / Trabajo respiratorio</div>
+                      <div className="text-slate-800">{brief?.triangle_details?.breathing || defaultTepReason('breathing', brief?.triangle?.breathing)}</div>
+                    </div>
+                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs border"
+                          style={{background:'#f8fafc'}}>
+                      {humanizeTepStatus(brief?.triangle?.breathing)}
+                    </span>
+                  </li>
+                  <li className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-slate-500 text-xs">Circulación cutánea</div>
+                      <div className="text-slate-800">{brief?.triangle_details?.circulation || defaultTepReason('circulation', brief?.triangle?.circulation)}</div>
+                    </div>
+                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs border"
+                          style={{background:'#f8fafc'}}>
+                      {humanizeTepStatus(brief?.triangle?.circulation)}
+                    </span>
+                  </li>
+                </ul>
+                <p className="mt-3 text-xs text-slate-500">Si el briefing incluye detalles específicos (triangle_details), se mostrarán aquí.</p>
+              </div>
+            </div>
           </CaseCard>
 
           {/* Constantes y Exploración */}
@@ -1025,6 +1109,45 @@ export default function SimulacionDetalle() {
                 </div>
               );
             })()}
+
+            {/* Lecturas recomendadas (debrief) */}
+            {resources.length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 mb-4">
+                <div className="font-semibold mb-2">Lecturas recomendadas</div>
+                <ul className="divide-y">
+                  {resources.map((r) => (
+                    <li key={r.id} className="py-2 flex items-start justify-between gap-3">
+                      <div>
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#1a69b8] hover:underline font-medium"
+                        >
+                          {r.title}
+                        </a>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {r.source ? `${r.source} · ` : ""}
+                          {r.type ? `${r.type}` : ""}
+                          {r.year ? ` · ${r.year}` : ""}
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        {r.free_access ? (
+                          <span className="inline-flex items-center text-xs px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800">
+                            Acceso libre
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-xs px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800">
+                            Puede requerir acceso
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="mt-6 space-y-6">
               {steps.flatMap((s) => s.questions || []).map((q) => {
