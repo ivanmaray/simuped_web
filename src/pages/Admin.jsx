@@ -10,11 +10,12 @@ function fmtDateShort(v) {
   try { return new Date(v).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }); } catch { return "—"; }
 }
 
-function StatusPills({ verified, approved, notifiedAt }) {
+function StatusPills({ verified, approved, notifiedAt, verifiedAt }) {
   return (
     <div className="flex flex-col gap-1 min-w-[100px]">
       <Badge ok={!!verified} labelTrue="Verif." labelFalse="Sin verif." />
       <Badge ok={!!approved} labelTrue="Aprob." labelFalse="Pend." />
+      <span className="text-[11px] text-slate-500">{verifiedAt ? `Verif. ${fmtDateShort(verifiedAt)}` : "Verif. —"}</span>
       <span className="text-[11px] text-slate-500">{notifiedAt ? `Notif. ${fmtDateShort(notifiedAt)}` : "Notif. —"}</span>
     </div>
   );
@@ -46,12 +47,12 @@ function Card({ title, count, children }) {
 }
 
 export default function Admin() {
+  const navigate = useNavigate();
   function verIntentos(u) {
     if (!u?.id) return;
     // Redirige a Evaluación con el user query param para ver sus intentos
     navigate(`/evaluacion?user=${encodeURIComponent(u.id)}`);
   }
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [yo, setYo] = useState(null);
   const [rows, setRows] = useState([]);
@@ -62,7 +63,7 @@ export default function Admin() {
   const qTimerRef = useRef(null);
   const [processingIds, setProcessingIds] = useState({}); // { [userId]: true }
   const [mailStatus, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
-  const [authMap, setAuthMap] = useState({}); // { [userId]: { email_confirmed: bool } }
+  const [authMap, setAuthMap] = useState({}); // { [userId]: { email_confirmed: bool, email_confirmed_at: string|null } }
   const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified }
 
   useEffect(() => {
@@ -129,7 +130,7 @@ export default function Admin() {
       // 4) Mapa de verificación (desde la propia RPC)
       const map = {};
       for (const r of authRows) {
-        if (r && r.id) map[r.id] = { email_confirmed: !!r.email_confirmed };
+        if (r && r.id) map[r.id] = { email_confirmed: !!r.email_confirmed, email_confirmed_at: r.email_confirmed_at || null };
       }
       setAuthMap(map);
 
@@ -318,13 +319,13 @@ export default function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col style={{ width: "14rem" }} />  {/* Email */}
-                  <col style={{ width: "9rem" }} />   {/* Nombre */}
-                  <col style={{ width: "10rem" }} />  {/* Rol / Unidad */}
+                  <col style={{ width: "12rem" }} />  {/* Email */}
+                  <col style={{ width: "8rem" }} />   {/* Nombre */}
+                  <col style={{ width: "9rem" }} />   {/* Rol / Unidad */}
                   <col style={{ width: "8rem" }} />   {/* DNI */}
-                  <col style={{ width: "9rem" }} />   {/* Alta */}
-                  <col style={{ width: "9rem" }} />   {/* Estado */}
-                  <col style={{ width: "11rem" }} />  {/* Acciones */}
+                  <col style={{ width: "8rem" }} />   {/* Alta */}
+                  <col style={{ width: "8rem" }} />   {/* Estado */}
+                  <col style={{ width: "10rem" }} />  {/* Acciones */}
                 </colgroup>
                 <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
@@ -357,7 +358,12 @@ export default function Admin() {
                         <td className="px-3 py-2 whitespace-nowrap">{u.dni || "—"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDateShort(u.created_at)}</td>
                         <td className="px-3 py-2">
-                          <StatusPills verified={verif ?? false} approved={false} notifiedAt={null} />
+                          <StatusPills
+                            verified={verif ?? false}
+                            approved={false}
+                            notifiedAt={null}
+                            verifiedAt={authMap[u.id]?.email_confirmed_at || null}
+                          />
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
@@ -368,14 +374,19 @@ export default function Admin() {
                             >
                               {processingIds[u.id] ? "…" : "Aprobar"}
                             </button>
-                            <button
-                              onClick={() => reenviarVerificacion(u)}
-                              disabled={!!processingIds[u.id]}
-                              className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-60 text-xs"
-                              title="Reenviar correo de verificación"
-                            >
-                              Reenviar verif.
-                            </button>
+                            {(() => {
+                              const isVerified = !!(authMap[u.id]?.email_confirmed);
+                              return (
+                                <button
+                                  onClick={() => reenviarVerificacion(u)}
+                                  disabled={!!processingIds[u.id] || isVerified}
+                                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-60 text-xs"
+                                  title={isVerified ? "Ya verificado" : "Reenviar correo de verificación"}
+                                >
+                                  {isVerified ? "Verif. OK" : "Reenviar verif."}
+                                </button>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
@@ -395,13 +406,13 @@ export default function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col style={{ width: "15rem" }} />  {/* Email */}
+                  <col style={{ width: "13rem" }} />  {/* Email */}
                   <col style={{ width: "9rem" }} />   {/* Nombre */}
-                  <col style={{ width: "11rem" }} />  {/* Rol / Unidad */}
+                  <col style={{ width: "10rem" }} />  {/* Rol / Unidad */}
                   <col style={{ width: "9rem" }} />   {/* DNI */}
                   <col style={{ width: "12rem" }} />  {/* Fechas */}
                   <col style={{ width: "9rem" }} />   {/* Estado */}
-                  <col style={{ width: "8rem" }} />   {/* Resultados */}
+                  <col style={{ width: "7.5rem" }} />   {/* Resultados */}
                 </colgroup>
                 <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr>
@@ -435,7 +446,12 @@ export default function Admin() {
                           </div>
                         </td>
                         <td className="px-3 py-2">
-                          <StatusPills verified={verif ?? false} approved={true} notifiedAt={u.notified_at || mailTime[u.id]} />
+                          <StatusPills
+                            verified={verif ?? false}
+                            approved={true}
+                            notifiedAt={u.notified_at || mailTime[u.id]}
+                            verifiedAt={authMap[u.id]?.email_confirmed_at || null}
+                          />
                         </td>
                         <td className="px-3 py-2">
                           <button
