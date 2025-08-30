@@ -193,8 +193,33 @@ export default function Registro() {
         return;
       }
 
-      // 2) Upsert en 'profiles' con los datos del formulario (no bloqueante si falla)
+      // 3) Upsert en 'profiles' con los datos del formulario (no bloqueante si falla)
       console.debug("[Registro] signUp OK -> uid:", signData?.user?.id);
+      // 2) Sembrar/actualizar perfil vía endpoint con Service Role (evita RLS en registro)
+      try {
+        const uid = signData?.user?.id;
+        if (uid) {
+          const resp = await fetch("/api/seed_profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: uid,
+              email: emailNorm,
+              nombre: nombre.trim(),
+              apellidos: apellidos.trim(),
+              dni: dniNorm,
+              rol: rolApi,                    // 'medico' | 'enfermeria' | 'farmacia'
+              unidad,
+              areas_interes: Array.isArray(areasInteres) ? areasInteres : [],
+            }),
+          });
+          if (!resp.ok) {
+            console.warn("[Registro] seed_profile no OK:", await resp.text());
+          }
+        }
+      } catch (e) {
+        console.warn("[Registro] error en seed_profile:", e);
+      }
       try {
         const uid = signData?.user?.id;
         if (uid) {
@@ -221,7 +246,7 @@ export default function Registro() {
         console.warn("[Registro] excepción upsert profiles (no bloqueante):", e);
       }
 
-      // 2) Notificar al admin por email (no bloqueante)
+      // 4) Notificar al admin por email (no bloqueante)
       try {
         await fetch("/api/new-user-email", {
           method: "POST",
@@ -239,7 +264,7 @@ export default function Registro() {
         console.error("[Registro] error notificando admin:", err);
       }
 
-      // 3) Ya se ha intentado guardar/actualizar el perfil. Continuamos con notificación y redirección.
+      // 5) Ya se ha intentado guardar/actualizar el perfil. Continuamos con notificación y redirección.
       setOkMsg("Te hemos enviado un email para confirmar tu cuenta. Tras confirmarlo, revisaremos tu acceso.");
       setLoading(false);
       // Guardamos info para la pantalla “Pendiente”
