@@ -335,7 +335,7 @@ useEffect(() => {
       <section id="equipo" className="bg-white">
         <div className="max-w-6xl mx-auto px-5 py-12">
           <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo SimuPed</h3>
-          {/* Logos institucionales (HUCA / SESPA / Bayer) */}
+          {/* Logos institucionales (HUCA / SESPA) */}
           <div className="mb-8 flex flex-wrap items-center justify-center gap-6 opacity-90">
             <img
               src="/logos/huca.png"
@@ -346,12 +346,6 @@ useEffect(() => {
             <img
               src="/logos/sespa.png"
               alt="SESPA"
-              className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-            <img
-              src="/logos/bayer.png"
-              alt="Bayer"
               className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
               onError={(e) => (e.currentTarget.style.display = 'none')}
             />
