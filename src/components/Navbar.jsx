@@ -14,7 +14,7 @@ export default function Navbar({ variant = "auto" }) {
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
 
-  // Público si no hay sesión
+  // Privado si hay sesión o si se fuerza por prop
   const isPrivate = variant === "private" || (variant === "auto" && !!session);
 
   async function handleSignOut() {
@@ -33,12 +33,24 @@ export default function Navbar({ variant = "auto" }) {
             {/* Brand */}
             <Link to="/" className="flex items-center gap-2 shrink-0">
               <img src={logo} alt="SimuPed" className="h-8 w-auto object-contain" />
-              <span className="sr-only">SimuPed</span>
+              {/* Hacemos visible el nombre para mejor contraste/SEO */}
+              <span className="text-slate-900 font-semibold tracking-tight">SimuPed</span>
             </Link>
 
             {/* Desktop nav */}
             <nav className="hidden md:flex items-center gap-2">
               <NavItem to="/" label="Inicio" />
+
+              {/* Enlaces a secciones públicas cuando NO hay sesión */}
+              {!isPrivate && (
+                <>
+                  <AnchorItem href="/#proyecto" label="Proyecto" />
+                  <AnchorItem href="/#equipo" label="Equipo" />
+                  <AnchorItem href="/#apoyos" label="Apoyos" />
+                  <AnchorItem href="/#como-participar" label="Cómo participar" />
+                </>
+              )}
+
               {isPrivate && <NavItem to="/simulacion" label="Simulaciones" />}
               {isPrivate && <NavItem to="/evaluacion" label="Evaluación" />}
               {isAdmin && <NavItem to="/admin" label="Admin" emphasize />}
@@ -57,7 +69,7 @@ export default function Navbar({ variant = "auto" }) {
               ) : (
                 <div className="flex items-center gap-2">
                   <NavItem to="/registro" label="Registro" />
-                  {/* Entra al hero/login de la home */}
+                  {/* Botón de login que lleva al hero de la home */}
                   <NavItem to="/" label="Entrar" />
                 </div>
               )}
@@ -87,6 +99,16 @@ export default function Navbar({ variant = "auto" }) {
           <div className="bg-white">
             <nav className="max-w-6xl mx-auto px-4 py-3 grid gap-2">
               <MobileItem to="/" label="Inicio" onClick={() => setOpen(false)} />
+
+              {!isPrivate && (
+                <>
+                  <MobileAnchor href="/#proyecto" label="Proyecto" onClick={() => setOpen(false)} />
+                  <MobileAnchor href="/#equipo" label="Equipo" onClick={() => setOpen(false)} />
+                  <MobileAnchor href="/#apoyos" label="Apoyos" onClick={() => setOpen(false)} />
+                  <MobileAnchor href="/#como-participar" label="Cómo participar" onClick={() => setOpen(false)} />
+                </>
+              )}
+
               {isPrivate && <MobileItem to="/simulacion" label="Simulaciones" onClick={() => setOpen(false)} />}
               {isPrivate && <MobileItem to="/evaluacion" label="Evaluación" onClick={() => setOpen(false)} />}
               {isAdmin && <MobileItem to="/admin" label="Admin" emphasize onClick={() => setOpen(false)} />}
@@ -134,6 +156,15 @@ function NavItem({ to, label, emphasize = false }) {
   );
 }
 
+function AnchorItem({ href, label }) {
+  const base = "px-3 py-2 text-sm font-medium rounded-lg hover:bg-slate-100 transition whitespace-nowrap text-slate-700";
+  return (
+    <a href={href} className={base}>
+      {label}
+    </a>
+  );
+}
+
 function MobileItem({ to, label, emphasize = false, onClick }) {
   const base = "w-full px-3 py-2 text-base rounded-lg border border-slate-200";
   const cls = emphasize ? base + " bg-slate-900 text-white" : base + " bg-white text-slate-800";
@@ -147,5 +178,14 @@ function MobileItem({ to, label, emphasize = false, onClick }) {
     >
       {label}
     </NavLink>
+  );
+}
+
+function MobileAnchor({ href, label, onClick }) {
+  const base = "w-full px-3 py-2 text-base rounded-lg border border-slate-200 bg-white text-slate-800";
+  return (
+    <a href={href} onClick={onClick} className={base}>
+      {label}
+    </a>
   );
 }
