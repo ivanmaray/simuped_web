@@ -340,7 +340,7 @@ useEffect(() => {
             <img
               src="/logos/huca.png"
               alt="HUCA"
-              className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
+              className="h-16 w-auto object-contain grayscale hover:grayscale-0 transition"
               onError={(e) => (e.currentTarget.style.display = 'none')}
             />
             <img
@@ -404,7 +404,7 @@ useEffect(() => {
                 <img
                   src="/logos/huca.png"
                   alt="HUCA"
-                  className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  className="h-16 w-auto object-contain grayscale hover:grayscale-0 transition"
                   onError={(e) => (e.currentTarget.style.display = 'none')}
                 />
                 <img
@@ -416,7 +416,7 @@ useEffect(() => {
                 <img
                   src="/logos/bayer.png"
                   alt="Bayer"
-                  className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  className="h-12 w-auto object-contain grayscale hover:grayscale-0 transition"
                   onError={(e) => (e.currentTarget.style.display = 'none')}
                 />
               </div>
@@ -426,7 +426,7 @@ useEffect(() => {
                 <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">HUCA — UCI Pediátrica</span>
                 <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">SESPA</span>
                 <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Principado de Asturias</span>
-                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Bayer (fondos)</span>
+                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Bayer (Premio Pharmachallenge v5.0)</span>
               </div>
             </div>
           </Reveal>
