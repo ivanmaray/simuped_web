@@ -395,7 +395,7 @@ useEffect(() => {
          px-5 py-10">
           <h3 className="text-3xl font-bold mb-6 text-center text-slate-900">Apoyos y colaboración</h3>
           <Reveal>
-            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de UGC Farmacia y UCI Pediátrica, y apoyo institucional del SESPA y el Principado de Asturias.</p>
+            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de UGC Farmacia y UCI Pediátrica, apoyo institucional del SESPA y el Principado de Asturias y fondos del premio Pharmachallange 5.0 otorgado por Bayer.</p>
           </Reveal>
           <Reveal delay={100}>
             <div className="flex flex-col items-center gap-4">
