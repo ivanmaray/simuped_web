@@ -340,13 +340,13 @@ useEffect(() => {
             <img
               src="/logos/huca.png"
               alt="HUCA"
-              className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
+              className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
               onError={(e) => (e.currentTarget.style.display = 'none')}
             />
             <img
               src="/logos/sespa.png"
               alt="SESPA"
-              className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
+              className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
               onError={(e) => (e.currentTarget.style.display = 'none')}
             />
           </div>
@@ -404,19 +404,19 @@ useEffect(() => {
                 <img
                   src="/logos/huca.png"
                   alt="HUCA"
-                  className="h-12 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
                   onError={(e) => (e.currentTarget.style.display = 'none')}
                 />
                 <img
                   src="/logos/sespa.png"
                   alt="SESPA"
-                  className="h-12 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
                   onError={(e) => (e.currentTarget.style.display = 'none')}
                 />
                 <img
                   src="/logos/bayer.png"
                   alt="Bayer"
-                  className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
                   onError={(e) => (e.currentTarget.style.display = 'none')}
                 />
               </div>
