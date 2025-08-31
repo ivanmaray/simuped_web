@@ -335,6 +335,27 @@ useEffect(() => {
       <section id="equipo" className="bg-white">
         <div className="max-w-6xl mx-auto px-5 py-12">
           <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo SimuPed</h3>
+          {/* Logos institucionales (HUCA / SESPA / Bayer) */}
+          <div className="mb-8 flex flex-wrap items-center justify-center gap-6 opacity-90">
+            <img
+              src="/logos/huca.png"
+              alt="HUCA"
+              className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
+            <img
+              src="/logos/sespa.png"
+              alt="SESPA"
+              className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
+            <img
+              src="/logos/bayer.png"
+              alt="Bayer"
+              className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
+          </div>
           {(() => {
             const miembros = [
               { foto: "/equipo/ivan-maray.jpg",   nombre: "Iván Maray",         rol: "Facultativo UGC Farmacia HUCA" },
@@ -383,12 +404,36 @@ useEffect(() => {
             <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de UGC Farmacia y UCI Pediátrica, y apoyo institucional del SESPA y el Principado de Asturias.</p>
           </Reveal>
           <Reveal delay={100}>
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 opacity-95">
-              <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">HUCA — UGC Farmacia</span>
-              <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">HUCA — UCI Pediátrica</span>
-              <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">SESPA</span>
-              <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Principado de Asturias</span>
-              <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Bayer (fondos)</span>
+            <div className="flex flex-col items-center gap-4">
+              {/* Fila de logos */}
+              <div className="flex flex-wrap items-center justify-center gap-6 opacity-95">
+                <img
+                  src="/logos/huca.png"
+                  alt="HUCA"
+                  className="h-12 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  onError={(e) => (e.currentTarget.style.display = 'none')}
+                />
+                <img
+                  src="/logos/sespa.png"
+                  alt="SESPA"
+                  className="h-12 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  onError={(e) => (e.currentTarget.style.display = 'none')}
+                />
+                <img
+                  src="/logos/bayer.png"
+                  alt="Bayer"
+                  className="h-10 w-auto object-contain grayscale hover:grayscale-0 transition"
+                  onError={(e) => (e.currentTarget.style.display = 'none')}
+                />
+              </div>
+              {/* Badges de texto como apoyo/backup visual */}
+              <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 opacity-90">
+                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">HUCA — UGC Farmacia</span>
+                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">HUCA — UCI Pediátrica</span>
+                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">SESPA</span>
+                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Principado de Asturias</span>
+                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Bayer (fondos)</span>
+              </div>
             </div>
           </Reveal>
         </div>
