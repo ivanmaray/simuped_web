@@ -1,20 +1,29 @@
 // src/components/Navbar.jsx
 import { useState, useEffect } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient";
 import { useAuth } from "../auth.jsx";
 import logo from "../assets/logo.png";
 
 export default function Navbar({ variant = "auto" }) {
-  const { ready, session, profile } = useAuth?.() || { ready: true, session: null, profile: null };
+  const { session, profile } = useAuth?.() || { session: null, profile: null };
   const isAdmin = !!profile?.is_admin;
   const location = useLocation();
-  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
 
-  // Cierra el menú móvil al navegar
+  const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
 
-  // Si no se especifica, navbar público cuando no hay sesión y privado cuando sí la hay
+  // Público si no hay sesión
   const isPrivate = variant === "private" || (variant === "auto" && !!session);
+
+  async function handleSignOut() {
+    try {
+      await supabase.auth.signOut({ scope: "global" });
+    } finally {
+      navigate("/", { replace: true });
+    }
+  }
 
   return (
     <>
@@ -27,19 +36,30 @@ export default function Navbar({ variant = "auto" }) {
               <span className="sr-only">SimuPed</span>
             </Link>
 
-            {/* Desktop */}
-            <nav className="hidden md:flex items-center gap-4">
+            {/* Desktop nav */}
+            <nav className="hidden md:flex items-center gap-2">
               <NavItem to="/" label="Inicio" />
-              <NavItem to="/simulacion" label="Simulaciones" />
+              {isPrivate && <NavItem to="/simulacion" label="Simulaciones" />}
               {isPrivate && <NavItem to="/evaluacion" label="Evaluación" />}
               {isAdmin && <NavItem to="/admin" label="Admin" emphasize />}
+
               {isPrivate ? (
-                <NavItem to="/perfil" label="Perfil" />
+                <div className="flex items-center gap-2">
+                  <NavItem to="/perfil" label="Perfil" />
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="px-3 py-2 text-sm font-medium rounded-lg text-slate-700 hover:bg-slate-100 transition"
+                  >
+                    Cerrar sesión
+                  </button>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center gap-2">
                   <NavItem to="/registro" label="Registro" />
+                  {/* Entra al hero/login de la home */}
                   <NavItem to="/" label="Entrar" />
-                </>
+                </div>
               )}
             </nav>
 
@@ -67,11 +87,21 @@ export default function Navbar({ variant = "auto" }) {
           <div className="bg-white">
             <nav className="max-w-6xl mx-auto px-4 py-3 grid gap-2">
               <MobileItem to="/" label="Inicio" onClick={() => setOpen(false)} />
-              <MobileItem to="/simulacion" label="Simulaciones" onClick={() => setOpen(false)} />
+              {isPrivate && <MobileItem to="/simulacion" label="Simulaciones" onClick={() => setOpen(false)} />}
               {isPrivate && <MobileItem to="/evaluacion" label="Evaluación" onClick={() => setOpen(false)} />}
               {isAdmin && <MobileItem to="/admin" label="Admin" emphasize onClick={() => setOpen(false)} />}
+
               {isPrivate ? (
-                <MobileItem to="/perfil" label="Perfil" onClick={() => setOpen(false)} />
+                <>
+                  <MobileItem to="/perfil" label="Perfil" onClick={() => setOpen(false)} />
+                  <button
+                    type="button"
+                    onClick={async () => { setOpen(false); await handleSignOut(); }}
+                    className="w-full px-3 py-2 text-base rounded-lg border border-slate-200 bg-white text-slate-800 text-left"
+                  >
+                    Cerrar sesión
+                  </button>
+                </>
               ) : (
                 <>
                   <MobileItem to="/registro" label="Registro" onClick={() => setOpen(false)} />
@@ -83,7 +113,7 @@ export default function Navbar({ variant = "auto" }) {
         </div>
       </header>
 
-      {/* Spacer para que el contenido no quede debajo del header fijo */}
+      {/* Spacer to avoid overlap with fixed header */}
       <div className="h-14 md:h-16" />
     </>
   );
