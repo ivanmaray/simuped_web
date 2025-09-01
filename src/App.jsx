@@ -488,16 +488,24 @@ useEffect(() => {
       {/* FOOTER */}
       <footer className="bg-white border-t border-slate-200">
         <Reveal>
-          <div className="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between">
+          <div className="max-w-6xl mx-auto px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
             <span className="text-slate-500">
               © {new Date().getFullYear()} SimuPed
             </span>
-            <a
-              href="#inicio"
-              className="text-[rgb(26,105,184)] hover:underline"
-            >
-              Volver arriba
-            </a>
+            <div className="flex gap-4 items-center">
+              <a
+                href="mailto:contacto@simuped.com"
+                className="text-[rgb(26,105,184)] hover:underline"
+              >
+                contacto@simuped.com
+              </a>
+              <a
+                href="#inicio"
+                className="text-[rgb(26,105,184)] hover:underline"
+              >
+                Volver arriba
+              </a>
+            </div>
           </div>
         </Reveal>
       </footer>
