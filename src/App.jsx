@@ -315,7 +315,7 @@ useEffect(() => {
           </div>
 
           {/* Etiquetas del proyecto */}
-          <div className="mt-8 flex flex-wrap items-center gap-2 sm:gap-3 opacity-90 justify-start md:justify-end">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3 opacity-90">
             <span className="text-sm px-3 py-1 rounded border bg-slate-100 border-slate-200">HUCA — UGC Farmacia & UCI Pediátrica</span>
             <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.blue + '14', borderColor: colors.blue }}>Pediatría</span>
             <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.cyan + '14', borderColor: colors.cyan }}>Enfermería</span>
