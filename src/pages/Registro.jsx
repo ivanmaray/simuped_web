@@ -46,6 +46,7 @@ export default function Registro() {
   const [apellidos, setApellidos] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [dni, setDni] = useState("");
   const [rol, setRol] = useState(""); // pediatra | enfermera | farmaceutico
   const [unidad, setUnidad] = useState(""); // Farmacia | UCI | Urgencias
@@ -114,6 +115,11 @@ export default function Registro() {
     if (!validarEmail(emailNorm)) return setErrorMsg("Introduce un email válido.");
     if (!password || password.length < 6)
       return setErrorMsg("La contraseña debe tener al menos 6 caracteres.");
+    if (password !== confirmPassword) {
+      setErrorMsg("Las contraseñas no coinciden.");
+      setLoading(false);
+      return;
+    }
     if (!rol) return setErrorMsg("Selecciona tu rol.");
     if (!unidad) return setErrorMsg("Selecciona tu unidad.");
     if (!dniNorm) {
@@ -291,6 +297,8 @@ export default function Registro() {
     !!apellidos.trim() &&
     validarEmail(emailNormPreview) &&
     !!(password || "").trim() &&
+    password.length >= 6 &&
+    password === confirmPassword &&
     !!rol &&
     !!unidad &&
     !!dni &&
@@ -348,7 +356,7 @@ export default function Registro() {
           </div>
 
           {/* Email y Password */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <label className="block">
               <span className="text-sm text-slate-700">Email</span>
               <input
@@ -372,6 +380,23 @@ export default function Registro() {
                 placeholder="Mínimo 6 caracteres"
                 autoComplete="new-password"
               />
+            </label>
+            <label className="block">
+              <span className="text-sm text-slate-700">Repite la contraseña</span>
+              <input
+                type="password"
+                required
+                className={`mt-1 w-full rounded-lg border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf] ${
+                  confirmPassword && password !== confirmPassword ? "border-red-400" : "border-slate-300"
+                }`}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repite la contraseña"
+                autoComplete="new-password"
+              />
+              {confirmPassword && password !== confirmPassword && (
+                <p className="text-xs text-red-600 mt-1">Las contraseñas no coinciden.</p>
+              )}
             </label>
           </div>
 
