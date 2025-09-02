@@ -442,14 +442,18 @@ useEffect(() => {
             {/* Profesionales */}
             <Reveal>
               <div className="p-6 bg-slate-50 rounded-2xl shadow hover:shadow-md transition">
-                <h4 className="text-xl font-semibold mb-2">Médicos adjuntos, enfermería y farmacéuticos hospitalarios</h4>
+                <h4 className="text-xl font-semibold mb-2">Profesionales adjuntos (medicina, enfermería, farmacia)</h4>
                 <p className="text-slate-600 mb-4">
-                  Profesionales adjuntos de medicina, enfermería y farmacia hospitalaria pueden solicitar acceso para
-                  entrenar en la plataforma online y participar en sesiones presenciales de simulación clínica.
+                  Puedes solicitar acceso individual para entrenar en la plataforma online y participar en sesiones presenciales.
+                  La aprobación la realiza el equipo administrador de SimuPed.
                 </p>
                 <div className="flex flex-wrap gap-3">
-                  <a href="/registro" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.teal }}>Solicitar acceso</a>
-                  <a href="#proyecto" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">Más info</a>
+                  <a href="/registro" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.teal }}>
+                    Solicitar acceso
+                  </a>
+                  <a href="#que-ofrece" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">
+                    Qué incluye
+                  </a>
                 </div>
               </div>
             </Reveal>
@@ -457,13 +461,16 @@ useEffect(() => {
               <div className="p-6 bg-slate-50 rounded-2xl shadow hover:shadow-md transition">
                 <h4 className="text-xl font-semibold mb-2">Residentes y estudiantes</h4>
                 <p className="text-slate-600 mb-4">
-                  El alta se gestiona a través de tu centro. Si ya dispones de
-                  invitación, accede con tus credenciales para comenzar los
-                  escenarios guiados y el seguimiento de desempeño.
+                  El alta se tramita a través de tu centro/tutor. Si ya tienes invitación, entra con tus credenciales.
+                  Si aún no la tienes, solicítala a tu responsable o escríbenos.
                 </p>
                 <div className="flex flex-wrap gap-3">
-                  <a href="#login" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.cyan }}>Tengo invitación</a>
-                  <a href="#que-ofrece" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">Ver qué ofrece</a>
+                  <a href="#login" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.cyan }}>
+                    Tengo invitación
+                  </a>
+                  <a href="mailto:contacto@simuped.com?subject=Alta%20SimuPed%20(Residentes/Estudiantes)" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">
+                    Pedir invitación
+                  </a>
                 </div>
               </div>
             </Reveal>
@@ -471,13 +478,16 @@ useEffect(() => {
               <div className="p-6 bg-slate-50 rounded-2xl shadow hover:shadow-md transition">
                 <h4 className="text-xl font-semibold mb-2">Centros y unidades</h4>
                 <p className="text-slate-600 mb-4">
-                  ¿Quieres implantar SimuPed en tu servicio (UCI pediátrica,
-                  enfermería, farmacia hospitalaria)? Ofrecemos demo, soporte de
-                  implantación, licencias y métricas de resultados.
+                  Implanta SimuPed en tu servicio (UCI pediátrica, enfermería, farmacia hospitalaria).
+                  Ofrecemos demo, soporte de implantación, licencias y métricas de resultados.
                 </p>
                 <div className="flex flex-wrap gap-3">
-                  <a href="#login" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.apricot }}>Concertar demo</a>
-                  <a href="#inicio" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">Contactar</a>
+                  <a href="mailto:contacto@simuped.com?subject=Solicitar%20demo%20SimuPed" className="px-4 py-2 rounded-lg font-semibold text-slate-900" style={{ background: colors.apricot }}>
+                    Solicitar demo
+                  </a>
+                  <a href="#proyecto" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">
+                    Ficha técnica
+                  </a>
                 </div>
               </div>
             </Reveal>
