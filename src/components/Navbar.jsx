@@ -29,10 +29,14 @@ export default function Navbar({ variant = "auto" }) {
     <>
       <header className="fixed top-0 inset-x-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
         <div className="max-w-6xl mx-auto px-4 sm:px-5">
-          <div className="h-14 md:h-16 flex items-center justify-between gap-3">
+          <div className="h-16 md:h-20 flex items-center justify-between gap-3">
             {/* Brand */}
-            <Link to="/" className="flex items-center gap-2 shrink-0">
-              <img src={logo} alt="SimuPed" className="h-8 w-auto object-contain" />
+            <Link to="/" aria-label="Inicio SimuPed" className="flex items-center gap-2 shrink-0">
+              <img
+                src={logo}
+                alt="SimuPed"
+                className="h-9 md:h-10 lg:h-12 w-auto object-contain"
+              />
               {/* Hacemos visible el nombre para mejor contraste/SEO */}
               <span className="text-slate-900 font-semibold tracking-tight">SimuPed</span>
             </Link>
@@ -136,7 +140,7 @@ export default function Navbar({ variant = "auto" }) {
       </header>
 
       {/* Spacer to avoid overlap with fixed header */}
-      <div className="h-14 md:h-16" />
+      <div className="h-16 md:h-20" />
     </>
   );
 }
