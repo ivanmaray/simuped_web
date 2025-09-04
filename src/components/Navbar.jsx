@@ -35,7 +35,7 @@ export default function Navbar({ variant = "auto" }) {
               <img
                 src={logo}
                 alt="SimuPed"
-                className="h-9 md:h-10 lg:h-12 w-auto object-contain"
+                className="h-12 md:h-14 lg:h-16 w-auto object-contain"
               />
               {/* Hacemos visible el nombre para mejor contraste/SEO */}
               <span className="text-slate-900 font-semibold tracking-tight">SimuPed</span>
