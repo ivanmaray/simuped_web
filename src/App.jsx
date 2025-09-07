@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import logo from './assets/logo.png'
-import logoWhite from './assets/logo-negative.png';
 import Navbar from "./components/Navbar.jsx"
 
 // Paleta SimuPed (alineada al logo)
@@ -130,7 +129,7 @@ useEffect(() => {
         <div className="relative max-w-6xl mx-auto px-5 py-16 sm:py-20 grid gap-10 md:grid-cols-[1.15fr_1fr] items-center">
           {/* Marca de agua: logo en blanco para hero */}
           <img
-            src={logoWhite}
+            src="/logo-negative.png"
             alt=""
             aria-hidden
             className="hidden sm:block absolute left-0 -top-10 h-12 w-auto opacity-95 select-none pointer-events-none z-0"
