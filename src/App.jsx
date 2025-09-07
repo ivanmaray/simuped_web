@@ -132,7 +132,7 @@ useEffect(() => {
             src="/logo-negative.png"
             alt=""
             aria-hidden
-            className="hidden sm:block absolute left-0 -top-10 h-12 w-auto opacity-95 select-none pointer-events-none z-0"
+            className="hidden sm:block absolute left-12 top-1/4 h-48 w-auto opacity-20 select-none pointer-events-none z-0"
             style={{ filter: 'none' }}
           />
           {/* Decorative background accents */}
