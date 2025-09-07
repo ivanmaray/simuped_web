@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import logo from './assets/logo.png'
+import logoWhite from './assets/logo-negative.png';
 import Navbar from "./components/Navbar.jsx"
 
 // Paleta SimuPed (alineada al logo)
@@ -127,10 +128,18 @@ useEffect(() => {
         }}
       >
         <div className="relative max-w-6xl mx-auto px-5 py-16 sm:py-20 grid gap-10 md:grid-cols-[1.15fr_1fr] items-center">
+          {/* Marca de agua: logo en blanco para hero */}
+          <img
+            src={logoWhite}
+            alt=""
+            aria-hidden
+            className="hidden sm:block absolute left-0 -top-10 h-12 w-auto opacity-95 select-none pointer-events-none z-0"
+            style={{ filter: 'none' }}
+          />
           {/* Decorative background accents */}
-          <div aria-hidden className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full blur-3xl opacity-20 float-blob"
+          <div aria-hidden className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full blur-3xl opacity-20 float-blob z-0"
                style={{ background: 'radial-gradient(closest-side, rgba(255,255,255,0.7), rgba(255,255,255,0))' }} />
-          <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full blur-3xl opacity-20 float-blob"
+          <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full blur-3xl opacity-20 float-blob z-0"
                style={{ background: 'radial-gradient(closest-side, rgba(255,255,255,0.55), rgba(255,255,255,0))' }} />
 
           {/* Left: headline and actions */}
