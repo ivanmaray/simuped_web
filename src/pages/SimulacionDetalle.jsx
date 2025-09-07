@@ -1170,7 +1170,8 @@ export default function SimulacionDetalle() {
               </button>
               <button
                 onClick={() => navigate("/dashboard")}
-                className="px-4 py-2 rounded-lg bg-[#1a69b8] text-white hover:opacity-95"
+                lassName="px-4 py-2 rounded-lg text-slate-900 font-semibold transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
+                style={{ background: '#4FA3E3' }}
               >
                 Volver al panel
               </button>
@@ -1188,7 +1189,7 @@ export default function SimulacionDetalle() {
                           href={r.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[#1a69b8] hover:underline font-medium"
+                          className="text-[#0A3D91] hover:underline font-medium"
                         >
                           {r.title}
                         </a>
@@ -1220,7 +1221,7 @@ export default function SimulacionDetalle() {
         <>
           {/* Header del escenario (fijo bajo el Navbar) */}
           <header className="sticky top-[72px] z-30">
-            <div className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1]">
+            <div className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]">
               <div className="max-w-6xl mx-auto px-5 py-3 flex items-center gap-3 text-white">
                 {/* Chips */}
                 <div className="flex items-center gap-2">
@@ -1281,7 +1282,7 @@ export default function SimulacionDetalle() {
                           className={`w-full text-left px-3 py-2 rounded-lg border transition
                             ${
                               active
-                                ? "border-[#1d99bf] bg-[#1d99bf]/10"
+                                ? "border-[#1E6ACB] bg-[#4FA3E3]/10"
                                 : "border-slate-200 hover:bg-slate-50"
                             }`}
                         >
@@ -1413,7 +1414,7 @@ export default function SimulacionDetalle() {
                                 className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border
                                 ${
                                   checked
-                                    ? "border-[#1d99bf] bg-[#1d99bf]/10"
+                                    ? "border-[#1E6ACB] bg-[#4FA3E3]/10"
                                     : "border-transparent hover:bg-slate-50"
                                 }
                                 ${answers[q.id]?.selectedKey != null ? " opacity-70 cursor-not-allowed" : ""}
@@ -1422,7 +1423,7 @@ export default function SimulacionDetalle() {
                                 <input
                                   type="radio"
                                   name={`q-${q.id}`}
-                                  className="accent-[#1d99bf]"
+                                  className="accent-[#1E6ACB]"
                                   checked={checked}
                                   disabled={
                                     timeUp ||
@@ -1492,7 +1493,8 @@ export default function SimulacionDetalle() {
                     <button
                       onClick={nextStep}
                       disabled={currentIdx >= steps.length - 1 || timeUp}
-                      className="px-4 py-2 rounded-lg bg-[#1a69b8] text-white hover:opacity-95 disabled:opacity-40"
+                      + className="px-4 py-2 rounded-lg text-slate-900 font-semibold disabled:opacity-40 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
+                      + style={{ background: currentIdx >= steps.length - 1 ? '#1E6ACB' : '#4FA3E3' }}
                     >
                       {currentIdx >= steps.length - 1 ? "Fin" : "Siguiente bloque"}
                     </button>
