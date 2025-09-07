@@ -1493,8 +1493,8 @@ export default function SimulacionDetalle() {
                     <button
                       onClick={nextStep}
                       disabled={currentIdx >= steps.length - 1 || timeUp}
-                      + className="px-4 py-2 rounded-lg text-slate-900 font-semibold disabled:opacity-40 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
-                      + style={{ background: currentIdx >= steps.length - 1 ? '#1E6ACB' : '#4FA3E3' }}
+                      className="px-4 py-2 rounded-lg text-slate-900 font-semibold disabled:opacity-40 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
+                      style={{ background: currentIdx >= steps.length - 1 ? '#1E6ACB' : '#4FA3E3' }}
                     >
                       {currentIdx >= steps.length - 1 ? "Fin" : "Siguiente bloque"}
                     </button>
