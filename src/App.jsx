@@ -4,13 +4,12 @@ import { supabase } from './supabaseClient'
 import logo from './assets/logo.png'
 import Navbar from "./components/Navbar.jsx"
 
-// Paleta SimuPed
+// Paleta SimuPed (alineada al logo)
 const colors = {
-  coral: '#f6a9a3',
-  apricot: '#f2c28c',
-  blue: '#1a69b8',
-  cyan: '#1d99bf',
-  teal: '#1fced1',
+  primary: '#0A3D91',      // azul corporativo del logo
+  primaryLight: '#4FA3E3', // azul claro para degradados/CTAs
+  accent: '#1E6ACB',       // punto medio para hover/focos
+  muted: '#F3F6FA'         // fondos suaves
 }
 
 // Micro-animaciones de entrada y blobs flotantes
@@ -124,7 +123,7 @@ useEffect(() => {
         id="inicio"
         className="w-full"
         style={{
-          background: `linear-gradient(135deg, ${colors.blue} 0%, ${colors.cyan} 100%)`,
+          background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryLight} 100%)`,
         }}
       >
         <div className="relative max-w-6xl mx-auto px-5 py-16 sm:py-20 grid gap-10 md:grid-cols-[1.15fr_1fr] items-center">
@@ -147,13 +146,13 @@ useEffect(() => {
               <a
                 href="#que-es"
                 className="px-4 py-2 rounded-lg font-semibold text-slate-900 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-                style={{ background: colors.teal }}
+                style={{ background: colors.primaryLight }}
               >
                 Cómo funciona
               </a>
               <a
                 href="#login"
-                className="px-4 py-2 rounded-lg border border-white/70 text-white hover:bg-white/10 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+                className="px-4 py-2 rounded-lg border border-white/80 text-white hover:bg-white/10 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
               >
                 Entrar
               </a>
@@ -175,7 +174,7 @@ useEffect(() => {
                 autoComplete="username"
                 autoFocus
                 disabled={loading}
-                className="px-3 py-2 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-[rgb(31,206,209)] transition-shadow"
+                className="px-3 py-2 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-[#1E6ACB] transition-shadow"
               />
               <input
                 name="password"
@@ -184,7 +183,7 @@ useEffect(() => {
                 placeholder="Contraseña"
                 autoComplete="current-password"
                 disabled={loading}
-                className="px-3 py-2 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-[rgb(31,206,209)] transition-shadow"
+                className="px-3 py-2 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-[#1E6ACB] transition-shadow"
               />
               <div aria-live="assertive" className="min-h-[1.25rem]">
                 {errorMsg && (
@@ -197,8 +196,8 @@ useEffect(() => {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading ? "true" : "false"}
-                className="px-4 py-2 rounded-lg font-semibold text-slate-900 disabled:opacity-60 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(31,206,209)]"
-                style={{ background: colors.cyan }}
+                className="px-4 py-2 rounded-lg font-semibold text-slate-900 disabled:opacity-60 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
+                style={{ background: colors.primaryLight }}
               >
                 {loading ? 'Entrando…' : 'Entrar'}
               </button>
@@ -207,7 +206,7 @@ useEffect(() => {
               </p>
               <p className="text-sm text-slate-700">
                 ¿No tienes cuenta?{" "}
-                <Link to="/registro" className="text-[rgb(26,105,184)] hover:underline">
+                <Link to="/registro" className="text-[#0A3D91] hover:underline">
                   Solicita acceso
                 </Link>
                 .
@@ -317,17 +316,17 @@ useEffect(() => {
           {/* Etiquetas del proyecto */}
           <div className="mt-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3 opacity-90">
             <span className="text-sm px-3 py-1 rounded border bg-slate-100 border-slate-200">HUCA — UGC Farmacia & UCI Pediátrica</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.blue + '14', borderColor: colors.blue }}>Pediatría</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.cyan + '14', borderColor: colors.cyan }}>Enfermería</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.teal + '14', borderColor: colors.teal }}>Farmacia hospitalaria</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.blue + '14', borderColor: colors.blue }}>UCI Pediátrica</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.apricot + '33', borderColor: colors.apricot }}>Simulación clínica</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.coral + '33', borderColor: colors.coral }}>Seguridad del paciente</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.teal + '20', borderColor: colors.teal }}>Uso seguro del medicamento</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.coral + '20', borderColor: colors.coral }}>Medicamentos de alto riesgo</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.blue + '14', borderColor: colors.blue }}>Prescripción</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.cyan + '14', borderColor: colors.cyan }}>Administración de medicamentos</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.apricot + '33', borderColor: colors.apricot }}>Validación farmacéutica</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primary + '14', borderColor: colors.primary }}>Pediatría</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Enfermería</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Farmacia hospitalaria</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primary + '14', borderColor: colors.primary }}>UCI Pediátrica</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Simulación clínica</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Seguridad del paciente</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Uso seguro del medicamento</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Medicamentos de alto riesgo</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primary + '14', borderColor: colors.primary }}>Prescripción</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Administración de medicamentos</span>
+            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Validación farmacéutica</span>
           </div>
         </div>
       </section>
@@ -505,13 +504,13 @@ useEffect(() => {
             <div className="flex gap-4 items-center">
               <a
                 href="mailto:contacto@simuped.com"
-                className="text-[rgb(26,105,184)] hover:underline"
+                className="text-[#0A3D91] hover:underline"
               >
                 contacto@simuped.com
               </a>
               <a
                 href="#inicio"
-                className="text-[rgb(26,105,184)] hover:underline"
+                className="text-[#0A3D91] hover:underline"
               >
                 Volver arriba
               </a>
