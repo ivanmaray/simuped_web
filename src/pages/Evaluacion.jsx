@@ -31,7 +31,7 @@ function BarChart({ data, title = "Media por escenario" }) {
             return (
               <g key={d.label}>
                 <text x={0} y={y + barH * 0.7} fontSize="12" fill="#334155">{d.label}</text>
-                <rect x={150} y={y} width={Math.max(2, w)} height={barH} rx="6" fill="#1d99bf" opacity="0.9" />
+                <rect x={150} y={y} width={Math.max(2, w)} height={barH} rx="6" fill="#4FA3E3" opacity="0.9" />
                 <text x={150 + Math.max(2, w) + 8} y={y + barH * 0.7} fontSize="12" fill="#0f172a">
                   {Math.round(d.value)}%
                 </text>
@@ -258,7 +258,7 @@ export default function Evaluacion() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
-      <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] text-white">
+      <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white">
         <div className="max-w-6xl mx-auto px-5 py-8">
           <p className="text-white/80 text-sm">
             Evaluación del desempeño{formatRole(role) ? " • " + formatRole(role) : ""}
@@ -342,7 +342,7 @@ export default function Evaluacion() {
                         <td className="px-4 py-2">{estado}</td>
                         {hasCritData ? <td className="px-4 py-2">{critText}</td> : null}
                         <td className="px-4 py-2">
-                          <Link to={`/evaluacion/attempt/${a.id}`} className="text-blue-600 underline">Revisar</Link>
+                          <Link to={`/evaluacion/attempt/${a.id}`} className="text-[#0A3D91] underline">Revisar</Link>
                         </td>
                       </tr>
                     );
@@ -368,7 +368,7 @@ export default function Evaluacion() {
                   <ul className="list-disc pl-5 space-y-1">
                     {group.items.map(item => (
                       <li key={item.id} className="text-sm">
-                        <a href={item.url || "#"} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                        <a href={item.url || "#"} target="_blank" rel="noreferrer" className="text-[#0A3D91] hover:underline">
                           {item.source}
                         </a>
                         {item.year ? <span className="text-slate-500"> · {item.year}</span> : null}

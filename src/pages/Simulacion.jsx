@@ -269,7 +269,7 @@ export default function Simulacion() {
       <Navbar />
 
       {/* Hero */}
-      <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1]">
+      <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]">
         <div className="max-w-6xl mx-auto px-5 py-10 text-white">
           <h1 className="text-3xl md:text-4xl font-semibold">Simulación online</h1>
           <p className="opacity-95 mt-1">Escoge un escenario y empieza la práctica.</p>
@@ -289,7 +289,7 @@ export default function Simulacion() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar por título o resumen…"
-            className="w-full md:flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
+            className="w-full md:flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
           />
           <select
             value={nivel}

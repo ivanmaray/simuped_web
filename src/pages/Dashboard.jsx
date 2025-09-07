@@ -213,7 +213,7 @@ export default function Dashboard() {
         <Navbar />
 
         {/* Hero */}
-        <section className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] border-b border-white/20">
+        <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] border-b border-white/20">
           <div className="max-w-6xl mx-auto px-5 py-10 text-white">
             <p className="opacity-95">Bienvenido{nombre ? `, ${nombre}` : ""}</p>
             <h1 className="text-3xl md:text-4xl font-semibold mt-1">Tu panel de simulación clínica</h1>
@@ -285,7 +285,7 @@ export default function Dashboard() {
             <section className="mt-10">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-slate-800">Tus escenarios recientes</h2>
-                <Link to="/simulacion" className="text-[#1a69b8] hover:underline text-sm">Ver todos</Link>
+                <Link to="/simulacion" className="text-[#0A3D91] hover:underline text-sm">Ver todos</Link>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {escenarios.slice(0, 6).map((sc) => (
@@ -316,7 +316,7 @@ export default function Dashboard() {
                     <footer className="flex items-center justify-between">
                       <Link
                         to={`/simulacion/${sc.id}/confirm`}
-                        className="text-sm font-medium text-[#1a69b8] hover:underline"
+                        className="text-sm font-medium text-[#0A3D91] hover:underline"
                       >
                         Continuar
                       </Link>
@@ -340,8 +340,8 @@ export default function Dashboard() {
 function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon, titleAttr }) {
   const content = (
     <div className="flex items-start gap-4">
-      <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#1a69b8]/10 via-[#1d99bf]/10 to-[#1fced1]/10 ring-1 ring-[#1a69b8]/15">
-        {Icon ? <Icon className="h-6 w-6 text-[#1a69b8]" /> : null}
+      <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/10 via-[#1E6ACB]/10 to-[#4FA3E3]/10 ring-1 ring-[#0A3D91]/15">
+        {Icon ? <Icon className="h-6 w-6 text-[#0A3D91]" /> : null}
       </div>
       <div className="flex-1">
         <div className="flex items-center gap-3">
