@@ -21,10 +21,14 @@ function formatLevel(level) {
   const map = { basico: 'Básico', básico: 'Básico', medio: 'Medio', avanzado: 'Avanzado' };
   return map[key] || (key ? key[0].toUpperCase() + key.slice(1) : '');
 }
-function formatMode(mode) {
-  const key = String(mode || '').toLowerCase();
+function formatMode(modes) {
+  const arr = Array.isArray(modes) ? modes : (modes ? [modes] : []);
   const map = { online: 'Online', presencial: 'Presencial' };
-  return map[key] || (key ? key[0].toUpperCase() + key.slice(1) : '');
+  return arr
+    .map(m => String(m || '').toLowerCase())
+    .filter(Boolean)
+    .map(k => map[k] || (k ? k[0].toUpperCase() + k.slice(1) : ''))
+    .join(' · ');
 }
 
 export default function Simulacion() {
@@ -64,7 +68,8 @@ export default function Simulacion() {
       const cats = e.scenario_categories?.map(sc => sc.categories?.name).filter(Boolean) || [];
       const matchQ = !q || e.title?.toLowerCase().includes(q.trim().toLowerCase()) || e.summary?.toLowerCase().includes(q.trim().toLowerCase());
       const matchNivel = !nivel || String(e.level || '').toLowerCase() === nivel;
-      const matchModo  = !modo  || String(e.mode  || '').toLowerCase() === modo;
+      const modeArr = Array.isArray(e.mode) ? e.mode : (e.mode ? [e.mode] : []);
+      const matchModo = !modo || modeArr.map(m => String(m).toLowerCase()).includes(modo);
       const matchCat   = !categoria || cats.includes(categoria);
       return matchQ && matchNivel && matchModo && matchCat;
     });
@@ -346,9 +351,21 @@ export default function Simulacion() {
                   <h3 className="text-lg font-semibold text-slate-900 group-hover:underline">
                     {esc.title || "Escenario sin título"}
                   </h3>
-                  <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-                    {formatMode(esc.mode)}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {(Array.isArray(esc.mode) ? esc.mode : (esc.mode ? [esc.mode] : []))
+                      .map((m) => {
+                        const k = String(m || '').toLowerCase();
+                        const label = k === 'online' ? 'Online' : k === 'presencial' ? 'Presencial' : (m || '');
+                        return (
+                          <span
+                            key={label}
+                            className="px-2 py-0.5 rounded-full text-[11px] bg-white ring-1 ring-slate-200 text-slate-700 whitespace-nowrap"
+                          >
+                            {label}
+                          </span>
+                        );
+                      })}
+                  </div>
                 </div>
                 <p className="text-slate-600 mt-2 overflow-hidden text-ellipsis">{esc.summary}</p>
                 <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">

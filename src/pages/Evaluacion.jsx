@@ -13,6 +13,13 @@ function formatRole(rol) {
 }
 
 // Gráfico de barras simple con SVG (sin dependencias)
+function pct(ok, total) {
+  const t = Number(total || 0);
+  const k = Number(ok || 0);
+  if (!t) return 0;
+  return Math.round((k / t) * 100);
+}
+
 function BarChart({ data, title = "Media por escenario" }) {
   const max = Math.max(100, ...data.map(d => d.value || 0));
   const barH = 28, gap = 10, padding = 20, width = 700;
@@ -60,6 +67,11 @@ export default function Evaluacion() {
   const [critFeatureAvailable, setCritFeatureAvailable] = useState(true);
   const [resourcesByScenario, setResourcesByScenario] = useState({});
   const [resourcesLoading, setResourcesLoading] = useState(false);
+  // --- Simulacros presenciales (dual) ---
+  const [presRows, setPresRows] = useState([]);             // [{session_id, scenario_title, role, started_at, ended_at, ok, wrong, missed, na, total, score}]
+  const [presLoading, setPresLoading] = useState(false);
+  const [presErr, setPresErr] = useState("");
+  const [presFeatureAvailable, setPresFeatureAvailable] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -220,6 +232,81 @@ export default function Evaluacion() {
           setCritMap({});
         }
       }
+      // --- Cargar simulacros presenciales del usuario (si la tabla existe) ---
+      async function loadPresencialesFor(userId) {
+        setPresLoading(true);
+        setPresErr("");
+        try {
+          // 1) Obtener sesiones en las que participó el usuario
+          const { data: parts, error: pErr } = await supabase
+            .from("session_participants")
+            .select(`
+              user_id, role,
+              presencial_sessions:session_id (
+                id, scenario_id, started_at, ended_at,
+                scenarios:title ( title )
+              )
+            `)
+            .eq("user_id", userId)
+            .order("started_at", { ascending: false });
+          if (pErr) {
+            // Si la tabla no existe o no hay permisos, deshabilita la sección de simulacros
+            if (String(pErr?.code) === "42P01") {
+              setPresFeatureAvailable(false);
+              setPresRows([]);
+              setPresLoading(false);
+              return;
+            }
+            throw pErr;
+          }
+
+          const items = Array.isArray(parts) ? parts.filter(x => !!x.presencial_sessions) : [];
+          // 2) Para cada sesión, traer su checklist y calcular resumen
+          const results = [];
+          for (const row of items) {
+            const sess = row.presencial_sessions;
+            // Checklist (puede fallar si no existe la tabla)
+            let ok = 0, wrong = 0, missed = 0, na = 0, total = 0;
+            try {
+              const { data: chk } = await supabase
+                .from("session_checklist")
+                .select("status")
+                .eq("session_id", sess.id);
+              for (const c of (chk || [])) {
+                switch ((c.status || "").toLowerCase()) {
+                  case "ok": ok += 1; total += 1; break;
+                  case "wrong": wrong += 1; total += 1; break;
+                  case "missed": missed += 1; total += 1; break;
+                  case "na": na += 1; break;
+                }
+              }
+            } catch {
+              // si no existe la tabla, mostramos sin desglose
+            }
+            results.push({
+              session_id: sess.id,
+              scenario_id: sess.scenario_id,
+              scenario_title: (sess.scenarios || {})?.title || `Escenario ${sess.scenario_id}`,
+              role: row.role || "",
+              started_at: sess.started_at || null,
+              ended_at: sess.ended_at || null,
+              ok, wrong, missed, na, total,
+              score: pct(ok, total)
+            });
+          }
+          setPresRows(results);
+          setPresFeatureAvailable(true);
+        } catch (e) {
+          console.warn("[Evaluacion] presenciales error:", e);
+          setPresErr(e?.message || "No se pudieron cargar los simulacros presenciales.");
+          setPresRows([]);
+        } finally {
+          setPresLoading(false);
+        }
+      }
+      try {
+        if (targetUserId) await loadPresencialesFor(targetUserId);
+      } catch {}
       setLoading(false);
     })();
 
@@ -352,6 +439,65 @@ export default function Evaluacion() {
             </div>
           )}
         </div>
+        {/* Simulacros presenciales (dual) */}
+        {presFeatureAvailable && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Simulacros presenciales</h3>
+              {presLoading && <span className="text-xs text-slate-500">Cargando…</span>}
+            </div>
+            {presErr && <div className="mt-2 text-sm text-red-600">{presErr}</div>}
+            {(!presRows || presRows.length === 0) ? (
+              <p className="text-slate-600 mt-2">
+                {viewUserId && session?.user?.id && viewUserId !== session.user.id
+                  ? "Este usuario no tiene simulacros presenciales registrados."
+                  : "Aún no figuran simulacros presenciales."}
+              </p>
+            ) : (
+              <div className="overflow-x-auto mt-3">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left px-4 py-2">Fecha</th>
+                      <th className="text-left px-4 py-2">Escenario</th>
+                      <th className="text-left px-4 py-2">Rol</th>
+                      <th className="text-left px-4 py-2">Resultado</th>
+                      <th className="text-left px-4 py-2">Estado</th>
+                      <th className="text-left px-4 py-2">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {presRows.map((r) => {
+                      const dateStr = r.started_at
+                        ? new Date(r.started_at).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })
+                        : "—";
+                      const estado = r.ended_at ? "Finalizada" : (r.started_at ? "En curso" : "—");
+                      const res = r.total ? `${r.ok}/${r.total} (${r.score}%)` : "—";
+                      return (
+                        <tr key={r.session_id} className="border-t">
+                          <td className="px-4 py-2">{dateStr}</td>
+                          <td className="px-4 py-2">{r.scenario_title}</td>
+                          <td className="px-4 py-2">{formatRole(r.role)}</td>
+                          <td className="px-4 py-2">{res}</td>
+                          <td className="px-4 py-2">{estado}</td>
+                          <td className="px-4 py-2">
+                            {/* Enlaza a un reporte detallado si tienes una ruta, p. ej.: /presencial/reporte/:sessionId */}
+                            <Link to={`/presencial/reporte/${r.session_id}`} className="text-[#0A3D91] underline">
+                              Ver informe
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="mt-2 text-xs text-slate-500">
+              Nota: el resultado resume la checklist del equipo (ok/wrong/missed). Los ítems "N/A" no puntúan.
+            </p>
+          </section>
+        )}
         {/* Lecturas recomendadas por escenario (a partir de escenarios con intentos) */}
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-baseline justify-between">

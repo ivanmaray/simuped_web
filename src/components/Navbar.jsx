@@ -55,7 +55,17 @@ export default function Navbar({ variant = "auto" }) {
                 </>
               )}
 
-              {isPrivate && <NavItem to="/simulacion" label="Simulaciones" />}
+              {isPrivate && <NavItem to="/simulacion" label="Simulación online" />}
+              {isPrivate && (
+                isAdmin ? (
+                  <NavItem to="/presencial" label="Simulación Presencial" />
+                ) : (
+                  <NavItem to="/presencial-info" label="Presencial (info)" />
+                )
+              )}
+              {isPrivate && isAdmin && (
+                <NavItem to="/presencial/instructor" label="Presencial (dual)" />
+              )}
               {isPrivate && <NavItem to="/evaluacion" label="Evaluación" />}
               {isAdmin && <NavItem to="/admin" label="Admin" emphasize />}
 
@@ -113,7 +123,17 @@ export default function Navbar({ variant = "auto" }) {
                 </>
               )}
 
-              {isPrivate && <MobileItem to="/simulacion" label="Simulaciones" onClick={() => setOpen(false)} />}
+              {isPrivate && (
+                isAdmin ? (
+                  <MobileItem to="/presencial" label="Presencial" onClick={() => setOpen(false)} />
+                ) : (
+                  <MobileItem to="/presencial-info" label="Presencial (info)" onClick={() => setOpen(false)} />
+                )
+              )}
+              {isPrivate && isAdmin && (
+                <MobileItem to="/presencial/instructor" label="Presencial (dual)" onClick={() => setOpen(false)} />
+              )}
+              {isPrivate && <MobileItem to="/simulacion" label="Simulación online" onClick={() => setOpen(false)} />}
               {isPrivate && <MobileItem to="/evaluacion" label="Evaluación" onClick={() => setOpen(false)} />}
               {isAdmin && <MobileItem to="/admin" label="Admin" emphasize onClick={() => setOpen(false)} />}
 

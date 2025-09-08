@@ -5,7 +5,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 import { useAuth } from "../auth";
-import { AcademicCapIcon, DevicePhoneMobileIcon, ChartBarIcon } from "@heroicons/react/24/outline";
+import { UsersIcon, DevicePhoneMobileIcon, ChartBarIcon } from "@heroicons/react/24/outline";
 
 // Debug: marcar que Dashboard.jsx se ha cargado
 console.debug("[Dashboard] componente cargado");
@@ -65,13 +65,18 @@ export default function Dashboard() {
   // Perfil
   const [nombre, setNombre] = useState("");
   const [rol, setRol] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Escenarios + filtros (si quieres mostrar un rápido conteo o futuras vistas)
   const [escenarios, setEscenarios] = useState([]);
   const [loadingEsc, setLoadingEsc] = useState(false);
+  // Presencial: avisos por email (sin consultar sesiones hasta que esté el esquema)
+  const [notifyLoading, setNotifyLoading] = useState(false);
+  const [notifyMsg, setNotifyMsg] = useState("");
 
   useEffect(() => {
     let mounted = true;
+
 
     async function init() {
       if (!ready) return; // espera a que AuthProvider resuelva
@@ -89,7 +94,7 @@ export default function Dashboard() {
         try {
           const { data: prof, error: pErr } = await supabase
             .from("profiles")
-            .select("nombre, rol")
+            .select("nombre, rol, is_admin")
             .eq("id", session.user.id)
             .maybeSingle();
 
@@ -99,6 +104,7 @@ export default function Dashboard() {
 
           setNombre(prof?.nombre ?? session.user?.user_metadata?.nombre ?? "");
           setRol((prof?.rol ?? session.user?.user_metadata?.rol ?? "").toString());
+          setIsAdmin(Boolean(prof?.is_admin ?? session.user?.user_metadata?.is_admin ?? session.user?.app_metadata?.is_admin ?? false));
         } catch (err) {
           console.warn("[Dashboard] profiles select throw (no bloqueante):", err);
         }
@@ -180,6 +186,26 @@ export default function Dashboard() {
     };
   }, [ready, session, navigate]);
 
+  async function handleNotify() {
+    setNotifyLoading(true);
+    setNotifyMsg("");
+    try {
+      const { error } = await supabase
+        .from("presencial_notifications")
+        .upsert(
+          { user_id: session.user.id, email: session?.user?.email ?? "", created_at: new Date().toISOString() },
+          { onConflict: "user_id" }
+        );
+      if (error) throw error;
+      setNotifyMsg("¡Listo! Te avisaremos por email cuando se programe la próxima sesión.");
+    } catch (e) {
+      console.warn("[Dashboard] notify error:", e);
+      setNotifyMsg("No pude activar el aviso (puede faltar la tabla 'presencial_notifications').");
+    } finally {
+      setNotifyLoading(false);
+    }
+  }
+
   if (!ready || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -219,11 +245,16 @@ export default function Dashboard() {
             <h1 className="text-3xl md:text-4xl font-semibold mt-1">Tu panel de simulación clínica</h1>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <span className="px-3 py-1 rounded-full bg-white/10 ring-1 ring-white/30 text-white/90">{email}</span>
-              {rol && (
+              {rol ? (
                 <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ring-1 bg-white/10 ring-white/30">
                   {formatRole(rol)}
                 </span>
-              )}
+              ) : null}
+              {isAdmin ? (
+                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold ring-1 bg-white/10 ring-white/30">
+                  Admin
+                </span>
+              ) : null}
             </div>
           </div>
         </section>
@@ -241,21 +272,82 @@ export default function Dashboard() {
               icon={DevicePhoneMobileIcon}
             />
             <Card
-              title="Simulación presencial"
-              description="Sesiones guiadas con instructor usando la herramienta SimuPed."
-              to={null}
-              badge="En construcción 🚧"
-              badgeColor="bg-red-100 text-red-700"
-              icon={AcademicCapIcon}
-              titleAttr="En construcción: pronto disponible"
-            />
-            <Card
               title="Evaluación del desempeño"
               description="Consulta tus resultados y evolución por escenarios."
               to="/evaluacion"
               stateObj={{ forceSelf: true }}
               icon={ChartBarIcon}
             />
+          </section>
+
+          {/* Simulación presencial (explicación + acciones) */}
+          <section id="presencial" className="mt-8">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/10 via-[#1E6ACB]/10 to-[#4FA3E3]/10 ring-1 ring-[#0A3D91]/15">
+                    <UsersIcon className="h-6 w-6 text-[#0A3D91]" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-slate-900">Simulación presencial</h2>
+                </div>
+                {isAdmin && (
+                  <span className="px-2 py-0.5 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">Versión para instructor</span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <p className="text-slate-700">
+                    Dos vistas sincronizadas en tiempo real: <span className="font-medium">Instructor</span> controla el caso y revela datos; <span className="font-medium">Alumno</span> ve la historia y las variables que se van mostrando.
+                  </p>
+                  <ul className="mt-3 list-disc ml-5 text-slate-700 space-y-1">
+                    <li>El instructor crea una sesión y obtiene un <span className="font-medium">código público</span>.</li>
+                    <li>Los alumnos se conectan con ese código; la pantalla de alumnos se proyecta en la sala.</li>
+                    <li>Al finalizar, se genera un informe con checklist, intervenciones y duración.</li>
+                  </ul>
+                </div>
+
+                <div>
+                  {isAdmin ? (
+                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                      <div className="text-sm text-slate-700 mb-3">Acciones del instructor</div>
+                      <div className="flex flex-wrap gap-3">
+                        <Link
+                          to="/presencial"
+                          className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"
+                        >
+                          Abrir modo Instructor (clásico)
+                        </Link>
+                        <Link
+                          to="/presencial/instructor"
+                          className="px-4 py-2 rounded-lg bg-[#0A3D91] text-white hover:opacity-90 transition"
+                        >
+                          Abrir modo Instructor (dual)
+                        </Link>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                      <div className="text-sm text-slate-700">Próxima sesión</div>
+                      <div className="mt-1 text-slate-900 font-medium">
+                        El instructor anunciará el código en sala cuando inicie la sesión.
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={handleNotify}
+                          disabled={notifyLoading}
+                          className="px-3 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100"
+                        >
+                          {notifyLoading ? "Guardando..." : "Avisarme por correo"}
+                        </button>
+                        {notifyMsg && <span className="text-sm text-slate-600">{notifyMsg}</span>}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">Te avisaremos por email cuando se programe una nueva sesión presencial.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* Perfil CTA */}
