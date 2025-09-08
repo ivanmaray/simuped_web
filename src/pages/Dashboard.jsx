@@ -5,7 +5,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 import { useAuth } from "../auth";
-import { UsersIcon, DevicePhoneMobileIcon, ChartBarIcon } from "@heroicons/react/24/outline";
+import { UsersIcon, DevicePhoneMobileIcon, ChartBarIcon, AcademicCapIcon, ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
 
 // Debug: marcar que Dashboard.jsx se ha cargado
 console.debug("[Dashboard] componente cargado");
@@ -280,13 +280,14 @@ export default function Dashboard() {
             />
           </section>
 
-          {/* Simulación presencial (explicación + acciones) */}
+          {/* Simulación presencial (modos + acciones) */}
           <section id="presencial" className="mt-8">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
+            <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/10 via-[#1E6ACB]/10 to-[#4FA3E3]/10 ring-1 ring-[#0A3D91]/15">
-                    <UsersIcon className="h-6 w-6 text-[#0A3D91]" />
+                  <div className="shrink-0 h-10 w-10 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/10 via-[#1E6ACB]/10 to-[#4FA3E3]/10 ring-1 ring-[#0A3D91]/15">
+                    <UsersIcon className="h-5 w-5 text-[#0A3D91]" />
                   </div>
                   <h2 className="text-lg font-semibold text-slate-900">Simulación presencial</h2>
                 </div>
@@ -295,39 +296,76 @@ export default function Dashboard() {
                 )}
               </div>
 
+              {/* Body: two columns INSIDE the single card */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Columna izquierda: explicación de modos */}
                 <div>
-                  <p className="text-slate-700">
-                    Dos vistas sincronizadas en tiempo real: <span className="font-medium">Instructor</span> controla el caso y revela datos; <span className="font-medium">Alumno</span> ve la historia y las variables que se van mostrando.
-                  </p>
-                  <ul className="mt-3 list-disc ml-5 text-slate-700 space-y-1">
-                    <li>El instructor crea una sesión y obtiene un <span className="font-medium">código público</span>.</li>
-                    <li>Los alumnos se conectan con ese código; la pantalla de alumnos se proyecta en la sala.</li>
-                    <li>Al finalizar, se genera un informe con checklist, intervenciones y duración.</li>
-                  </ul>
+                  <p className="text-slate-700 mb-3">Dos modos de simulación presencial:</p>
+
+                  <div className="rounded-lg ring-1 ring-slate-200 p-3 mb-3">
+                    <div className="font-medium">Dual · 2 pantallas</div>
+                    <ul className="mt-1 list-disc ml-5 space-y-0.5 text-[15px]">
+                      <li>El instructor crea una sesión y comparte un <span className="font-medium">código</span>.</li>
+                      <li>Con ese código se proyecta la <span className="font-medium">pantalla de alumnos</span>.</li>
+                      <li>Desde su consola, el instructor revela datos y cambia de fase en tiempo real.</li>
+                    </ul>
+                  </div>
+
+                  <div className="rounded-lg ring-1 ring-slate-200 p-3">
+                    <div className="font-medium">Clásico · 1 pantalla</div>
+                    <ul className="mt-1 list-disc ml-5 space-y-0.5 text-[15px]">
+                      <li>Una única <span className="font-medium">consola</span> para dirigir la simulación frente al equipo.</li>
+                      <li>Solo el instructor ve esta vista de control. <span className="font-medium">No requiere código</span>.</li>
+                    </ul>
+                  </div>
+
+                  <p className="text-[15px] mt-3 text-slate-700">Al finalizar se genera un <span className="font-medium">informe</span> con checklist, intervenciones y duración.</p>
                 </div>
 
+                {/* Columna derecha: acciones o próximo aviso */}
                 <div>
                   {isAdmin ? (
-                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                    <div>
                       <div className="text-sm text-slate-700 mb-3">Acciones del instructor</div>
-                      <div className="flex flex-wrap gap-3">
+                      <div className="grid grid-cols-1 gap-3">
+                        {/* Clásico */}
                         <Link
                           to="/presencial"
-                          className="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"
+                          className="group flex items-start gap-3 rounded-xl bg-slate-50 ring-1 ring-slate-200 px-4 py-3 hover:ring-slate-300 hover:bg-white transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
                         >
-                          Abrir modo Instructor (clásico)
+                          <AcademicCapIcon className="h-5 w-5 text-slate-600 mt-0.5" />
+                          <div>
+                            <div className="font-semibold text-slate-900">Instructor · Clásico (1 pantalla)</div>
+                            <div className="text-xs text-slate-500">Toolkit completo en una única vista, sin código</div>
+                          </div>
                         </Link>
+
+                        {/* Dual */}
                         <Link
-                          to="/presencial/instructor"
-                          className="px-4 py-2 rounded-lg bg-[#0A3D91] text-white hover:opacity-90 transition"
+                          to="/presencial?flow=dual"
+                          className="group flex items-start gap-3 rounded-xl px-4 py-3 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white shadow hover:shadow-md transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                         >
-                          Abrir modo Instructor (dual)
+                          <ArrowsRightLeftIcon className="h-5 w-5 text-white/90 mt-0.5" />
+                          <div>
+                            <div className="font-semibold">Instructor · Dual (2 pantallas)</div>
+                            <div className="text-xs text-white/90">Consola del instructor + pantalla de alumnos por código</div>
+                          </div>
+                        </Link>
+                      </div>
+                      {/* Nota pequeña para admins: Próxima sesión */}
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                        <div className="font-medium text-slate-700 mb-1">Próxima sesión</div>
+                        <p>
+                          Al iniciar una sesión se generará un <span className="font-semibold">código público</span> para proyectar la pantalla del alumnado. 
+                          Podrás copiarlo desde la barra superior del modo instructor.
+                        </p>
+                        <Link to="/presencial-info" className="inline-block mt-2 text-[#0A3D91] hover:underline">
+                          Más info sobre la pantalla del alumno
                         </Link>
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                    <div>
                       <div className="text-sm text-slate-700">Próxima sesión</div>
                       <div className="mt-1 text-slate-900 font-medium">
                         El instructor anunciará el código en sala cuando inicie la sesión.
@@ -336,7 +374,7 @@ export default function Dashboard() {
                         <button
                           onClick={handleNotify}
                           disabled={notifyLoading}
-                          className="px-3 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100"
+                          className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 hover:bg-white"
                         >
                           {notifyLoading ? "Guardando..." : "Avisarme por correo"}
                         </button>
@@ -347,7 +385,7 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-            </div>
+            </article>
           </section>
 
           {/* Perfil CTA */}

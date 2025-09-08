@@ -64,7 +64,7 @@ export default function Navbar({ variant = "auto" }) {
                 )
               )}
               {isPrivate && isAdmin && (
-                <NavItem to="/presencial/instructor" label="Presencial (dual)" />
+                <NavItem to="/presencial?flow=dual" label="Presencial (dual)" />
               )}
               {isPrivate && <NavItem to="/evaluacion" label="Evaluación" />}
               {isAdmin && <NavItem to="/admin" label="Admin" emphasize />}
@@ -131,7 +131,7 @@ export default function Navbar({ variant = "auto" }) {
                 )
               )}
               {isPrivate && isAdmin && (
-                <MobileItem to="/presencial/instructor" label="Presencial (dual)" onClick={() => setOpen(false)} />
+                <MobileItem to="/presencial?flow=dual" label="Presencial (dual)" onClick={() => setOpen(false)} />
               )}
               {isPrivate && <MobileItem to="/simulacion" label="Simulación online" onClick={() => setOpen(false)} />}
               {isPrivate && <MobileItem to="/evaluacion" label="Evaluación" onClick={() => setOpen(false)} />}

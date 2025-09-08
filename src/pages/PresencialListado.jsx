@@ -1,6 +1,6 @@
 // src/pages/PresencialListado.jsx
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
 
@@ -9,7 +9,7 @@ console.debug("[PresencialListado] componente cargado");
 const estadoStyles = {
   "Disponible": { label: "Disponible", color: "bg-[#0A3D91]/10 text-[#0A3D91] font-medium", clickable: true },
   "En construcción: en proceso": { label: "En construcción: en proceso", color: "bg-[#4FA3E3]/10 text-[#1E6ACB] font-medium", clickable: true },
-  "En construcción: sin iniciar": { label: "En construcción: sin iniciar", color: "bg-slate-200 text-slate-600 font-medium", clickable: false },
+  "En construcción: sin iniciar": { label: "bg-slate-200 text-slate-600 font-medium", clickable: false, label: "En construcción: sin iniciar" },
 };
 
 function formatLevel(level) {
@@ -20,6 +20,8 @@ function formatLevel(level) {
 
 export default function PresencialListado() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isDual = (searchParams.get('flow') || '').toLowerCase() === 'dual';
 
   // Escenarios + filtros
   const [escenarios, setEscenarios] = useState([]);
@@ -108,7 +110,11 @@ export default function PresencialListado() {
       <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]">
         <div className="max-w-6xl mx-auto px-5 py-10 text-white">
           <h1 className="text-3xl md:text-4xl font-semibold">Simulación presencial</h1>
-          <p className="opacity-95 mt-1">Elige un escenario y abre el toolkit presencial.</p>
+          <p className="opacity-95 mt-1">
+            {isDual
+              ? 'Elige un escenario y continúa a Confirmación para iniciar el modo DUAL (instructor + alumnos).'
+              : 'Elige un escenario y abre la versión de 1 pantalla (solo instructor).'}
+          </p>
         </div>
       </section>
 
@@ -169,17 +175,7 @@ export default function PresencialListado() {
             return (
               <article
                 key={esc.id}
-                role={isClickable ? 'button' : undefined}
-                tabIndex={isClickable ? 0 : -1}
-                className={`group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition ${!isClickable ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                onClick={() => { if (isClickable) navigate(`/simulacion/${esc.id}/presencial/confirm`); }}
-                onKeyDown={(e) => {
-                  if (!isClickable) return;
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    navigate(`/simulacion/${esc.id}/presencial/confirm`);
-                  }
-                }}
+                className={`group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition ${!isClickable ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="text-lg font-semibold text-slate-900 group-hover:underline">
@@ -213,6 +209,30 @@ export default function PresencialListado() {
                   <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${estadoStyle.color}`}>
                     {estadoStyle.label}
                   </span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!isClickable}
+                    onClick={() => {
+                      if (!isClickable) return;
+                      if (isDual) {
+                        navigate(`/presencial/${esc.id}/confirm?mode=dual`);
+                      } else {
+                        navigate(`/presencial/${esc.id}/confirm`);
+                      }
+                    }}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold ring-1 transition ${
+                      isClickable
+                        ? 'bg-white text-slate-900 ring-slate-200 hover:bg-slate-50'
+                        : 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed'
+                    }`}
+                    title={isClickable
+                      ? (isDual ? 'Continuar a Confirmación (modo dual)' : 'Abrir versión de 1 pantalla (solo instructor)')
+                      : 'Escenario no disponible'}
+                  >
+                    {isDual ? 'Continuar (DUAL)' : 'Abrir (1 pantalla)'}
+                  </button>
                 </div>
               </article>
             );

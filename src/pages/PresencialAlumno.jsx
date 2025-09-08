@@ -17,6 +17,7 @@ export default function PresencialAlumno() {
   const [vars, setVars] = useState([]); // variables reveladas [{id,label,unit,type,value}]
   const [stepName, setStepName] = useState('');
   const [scenarioTitle, setScenarioTitle] = useState('');
+  const [patientOverview, setPatientOverview] = useState('');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [ended, setEnded] = useState(false);
@@ -200,15 +201,25 @@ export default function PresencialAlumno() {
           if (sEnded && sEnded.ended_at) setEnded(true);
         } catch {}
 
-        // 1b) Cargar título del escenario si existe escenario_id
+        // 1b) Cargar título del escenario + ficha paciente desde función SQL
         if (s.scenario_id) {
           try {
-            const { data: sc } = await supabase
-              .from('scenarios')
-              .select('title')
-              .eq('id', s.scenario_id)
-              .maybeSingle();
-            if (sc?.title && mounted) setScenarioTitle(sc.title);
+            const [scRes, povRes] = await Promise.all([
+              supabase
+                .from('scenarios')
+                .select('title')
+                .eq('id', s.scenario_id)
+                .maybeSingle(),
+              supabase
+                .rpc('get_patient_overview', { p_scenario_id: s.scenario_id })
+            ]);
+            const sc = scRes?.data;
+            const pov = povRes?.data;
+            if (mounted) {
+              if (sc?.title) setScenarioTitle(sc.title);
+              if (typeof pov === 'string' && pov.trim()) setPatientOverview(pov);
+              else setPatientOverview('');
+            }
           } catch {}
         }
 
@@ -262,16 +273,22 @@ export default function PresencialAlumno() {
               if (Object.prototype.hasOwnProperty.call(next, 'ended_at') && next.ended_at) {
                 setEnded(true);
               }
-              // Si cambia el escenario, refrescar el título
+              // Si cambia el escenario, refrescar el título y ficha del paciente
               if (next.scenario_id && next.scenario_id !== session?.scenario_id) {
-                supabase
-                  .from('scenarios')
-                  .select('title')
-                  .eq('id', next.scenario_id)
-                  .maybeSingle()
-                  .then(({ data }) => {
-                    if (data?.title) setScenarioTitle(data.title);
-                  });
+                Promise.all([
+                  supabase
+                    .from('scenarios')
+                    .select('title')
+                    .eq('id', next.scenario_id)
+                    .maybeSingle(),
+                  supabase
+                    .rpc('get_patient_overview', { p_scenario_id: next.scenario_id })
+                ]).then(([scRes, povRes]) => {
+                  const sc = scRes?.data;
+                  const pov = povRes?.data;
+                  if (sc?.title) setScenarioTitle(sc.title);
+                  if (typeof pov === 'string' && pov.trim()) setPatientOverview(pov); else setPatientOverview('');
+                });
               }
               if (next.current_step_id && next.current_step_id !== session?.current_step_id) {
                 // refresh step name cuando cambie el paso
@@ -294,27 +311,39 @@ export default function PresencialAlumno() {
                 if (eventType === 'INSERT' || eventType === 'UPDATE') {
                   const id = newRow?.variable_id;
                   if (!id) return;
+                  const isRevealed = newRow?.is_revealed === true;
+                  const wasRevealed = oldRow ? oldRow.is_revealed === true : false;
+
+                  if (!isRevealed) {
+                    // Ocultar en UPDATE → eliminar del mapa
+                    if (varsMapRef.current.has(id)) {
+                      varsMapRef.current.delete(id);
+                      setVars(Array.from(varsMapRef.current.values()));
+                      playAlert('hide');
+                    }
+                    return;
+                  }
+
+                  // Revelado o sigue revelado → actualizar/insertar tarjeta
                   const meta = varMetaRef.current[id] || {};
-                  const item = {
-                    id,
-                    label: meta.label,
-                    unit: meta.unit,
-                    type: meta.type,
-                    value: newRow?.value
-                  };
+                  const item = { id, label: meta.label, unit: meta.unit, type: meta.type, value: newRow?.value };
                   varsMapRef.current.set(id, item);
                   setVars(Array.from(varsMapRef.current.values()));
-                  // Sonido: alerta al mostrar por primera vez o al insertar
-                  const becameRevealed = (eventType === 'INSERT') ||
-                    (oldRow && oldRow.is_revealed === false && newRow && newRow.is_revealed === true);
-                  if (becameRevealed) playAlert('reveal');
+
+                  // Sonido: si pasó de oculto→visible o cambia el valor estando visible
+                  if (!wasRevealed && isRevealed) {
+                    playAlert('reveal');
+                  } else if (isRevealed && oldRow && oldRow.value !== newRow.value) {
+                    playAlert('reveal');
+                  }
                 } else if (eventType === 'DELETE') {
                   const id = oldRow?.variable_id;
                   if (!id) return;
-                  varsMapRef.current.delete(id);
-                  setVars(Array.from(varsMapRef.current.values()));
-                  // Sonido: alerta grave al ocultar
-                  playAlert('hide');
+                  if (varsMapRef.current.has(id)) {
+                    varsMapRef.current.delete(id);
+                    setVars(Array.from(varsMapRef.current.values()));
+                    playAlert('hide');
+                  }
                 }
               } catch (e) {
                 console.warn('[Alumno] realtime incremental update failed, falling back:', e);
@@ -422,29 +451,63 @@ export default function PresencialAlumno() {
           </div>
         )}
 
-        {/* Variables/constantes reveladas por el instructor */}
-        {vars.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {vars.map(v => (
-              <div key={v.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="text-slate-500 text-xs">{labelByType(v.type)} · {v.label}</div>
-                <div className="text-2xl md:text-3xl font-mono mt-1">
-                  {v.value}{v.unit ? <span className="ml-1 text-slate-500 text-lg">{v.unit}</span> : null}
+        {/* Layout con sidebar sticky para ficha del paciente y participantes */}
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6">
+          {/* Sidebar sticky (solo si hay contenido) */}
+          {(patientOverview || (participants && participants.length > 0)) ? (
+            <aside className="lg:sticky lg:top-4 h-fit space-y-4">
+              {patientOverview ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-sm font-semibold text-slate-700 mb-1">Ficha inicial del paciente</div>
+                  <pre className="whitespace-pre-wrap text-slate-800 text-sm leading-relaxed">{patientOverview}</pre>
                 </div>
+              ) : null}
+              {participants && participants.length > 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="text-sm font-semibold text-slate-700 mb-2">Participantes</div>
+                  <ul className="space-y-1">
+                    {participants.map(p => (
+                      <li key={p.id} className="text-sm text-slate-800 flex items-center gap-2">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                        <span className="font-medium">{p.name}</span>
+                        {p.role ? <span className="text-slate-500">· {p.role}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </aside>
+          ) : (
+            <div className="hidden lg:block" />
+          )}
+
+          {/* Contenido principal: variables/constantes reveladas */}
+          <section>
+            {/* Variables/constantes reveladas por el instructor */}
+            {vars.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {vars.map(v => (
+                  <div key={v.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="text-slate-500 text-xs">{labelByType(v.type)} · {v.label}</div>
+                    <div className="text-2xl md:text-3xl font-mono mt-1">
+                      {v.value}{v.unit ? <span className="ml-1 text-slate-500 text-lg">{v.unit}</span> : null}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : (!loading && !errorMsg) ? (
-          <div className={`rounded-2xl border border-dashed border-slate-300 bg-white ${clean ? 'p-12 text-center' : 'p-6'} text-slate-600`}>
-            {ended ? (
-              <>No hay más datos que mostrar. La sesión ha finalizado.</>
-            ) : clean ? (
-              <div className="text-xl md:text-2xl">Esperando instrucciones del instructor…</div>
-            ) : (
-              <>A medida que el instructor revele información, aparecerá aquí (constantes, analíticas, imagen, etc.).</>
-            )}
-          </div>
-        ) : null}
+            ) : (!loading && !errorMsg) ? (
+              <div className={`rounded-2xl border border-dashed border-slate-300 bg-white ${clean ? 'p-12 text-center' : 'p-6'} text-slate-600`}>
+                {ended ? (
+                  <>No hay más datos que mostrar. La sesión ha finalizado.</>
+                ) : clean ? (
+                  <div className="text-xl md:text-2xl">Esperando instrucciones del instructor…</div>
+                ) : (
+                  <>A medida que el instructor revele información, aparecerá aquí (constantes, analíticas, imagen, etc.).</>
+                )}
+              </div>
+            ) : null}
+          </section>
+        </div>
         {!clean && !mute ? (
           <div className="mt-6 text-xs text-slate-500">
             Sonido: se reproducirá una alerta breve (estilo emergencia) al revelar/ocultar datos o al mostrar texto de caso.

@@ -121,18 +121,26 @@ useEffect(() => {
       {/* HERO */}
       <section
         id="inicio"
-        className="w-full"
+        className="w-full overflow-visible md:overflow-hidden"
         style={{
           background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryLight} 100%)`,
         }}
       >
-        <div className="relative max-w-6xl mx-auto px-5 py-16 sm:py-20 grid gap-10 md:grid-cols-[1.15fr_1fr] items-center">
+        <div className="relative max-w-6xl mx-auto px-6 lg:px-8 py-16 sm:py-20 grid gap-10 md:gap-12 xl:gap-16 md:grid-cols-[1.2fr_0.8fr] items-center">
           {/* Marca de agua: logo en blanco para hero */}
           <img
             src="/logo-negative.png"
             alt=""
             aria-hidden
-            className="hidden sm:block absolute -left-64 md:-left-80 top-20 md:top-24 h-72 md:h-80 w-auto opacity-20 select-none pointer-events-none z-0"
+            className="
+        hidden xl:block
+        absolute
+        top-14 xl:top-20 2xl:top-24
+        -left-[8.6rem] xl:-left-[110.6em] 2xl:-left-[12.6rem]
+        w-[20.4vw] xl:w-[18.7vw] 2xl:w-[17vw]
+        max-w-none h-auto
+        opacity-15 select-none pointer-events-none z-0
+      "
             style={{ filter: 'none' }}
           />
           {/* Decorative background accents */}
@@ -142,7 +150,7 @@ useEffect(() => {
                style={{ background: 'radial-gradient(closest-side, rgba(255,255,255,0.55), rgba(255,255,255,0))' }} />
 
           {/* Left: headline and actions */}
-          <div className={`text-white transition-all duration-700 ease-out ${mountedUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+          <div className={`relative z-[1] text-white md:pl-10 lg:pl-16 xl:pl-28 2xl:pl-36 transition-all duration-700 ease-out ${mountedUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
             <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight tracking-tight">
               Plataforma de simulación pediátrica
             </h1>
@@ -170,7 +178,7 @@ useEffect(() => {
           {/* Right: login card */}
           <div
             id="login"
-            className={`bg-white/95 backdrop-blur border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xl ring-1 ring-slate-900/5 transition-all duration-700 ease-out ${mountedUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
+            className={`relative z-[1] bg-white/95 backdrop-blur border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xl ring-1 ring-slate-900/5 md:justify-self-end w-full max-w-[24.5rem] mr-0 xl:mr-2 2xl:mr-4 transition-all duration-700 ease-out ${mountedUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
           >
             <h3 className="text-xl font-semibold mb-3">Iniciar sesión</h3>
             <form onSubmit={handleLogin} className="flex flex-col gap-3">

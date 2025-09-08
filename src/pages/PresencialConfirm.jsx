@@ -1,5 +1,5 @@
 // src/pages/PresencialConfirm.jsx
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import Navbar from "../components/Navbar.jsx";
@@ -20,6 +20,16 @@ export default function PresencialConfirm() {
   const [submitting, setSubmitting] = useState(false);
   const [userId, setUserId] = useState(null);
   const [users, setUsers] = useState([]); // perfiles (profiles) de Supabase
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  // Si vienes por la ruta de 1 pantalla (/presencial/..), el flujo por defecto es 'single'.
+  // Si vienes por rutas de instructor (/presencial/instructor/..), el defecto es 'dual'.
+  const defaultFlow = (location.pathname.startsWith('/presencial/') && !location.pathname.includes('/presencial/instructor'))
+    ? 'single'
+    : 'dual';
+  const rawFlow = (searchParams.get('flow') || searchParams.get('mode') || defaultFlow).toLowerCase();
+  const flow = (rawFlow === 'dual' || rawFlow === 'single') ? rawFlow : 'single';
+  console.debug('[PresencialConfirm] flow:', flow, 'path:', location.pathname);
 
   useEffect(() => {
     let mounted = true;
@@ -42,12 +52,12 @@ export default function PresencialConfirm() {
 
       // Cargar usuarios (profiles) para el selector de participantes
       try {
-        const { data: profs, error: perfs } = await supabase
+        const { data: profs, error: pErr } = await supabase
           .from('profiles')
           .select('id, email, rol, nombre, apellidos, is_admin')
           .order('apellidos', { ascending: true, nullsFirst: false })
           .order('nombre', { ascending: true, nullsFirst: false });
-        if (!perfs) {
+        if (!pErr) {
           const mapped = (profs || []).map(p => {
             const rol = normalizeRole(p.rol);
             const nameLabel = [p.nombre, p.apellidos].filter(Boolean).join(' ').trim();
@@ -56,7 +66,7 @@ export default function PresencialConfirm() {
           }).filter(u => u.label);
           if (mounted) setUsers(mapped);
         } else {
-          console.warn('[PresencialConfirm] No se pudieron cargar profiles:', perfs);
+          console.warn('[PresencialConfirm] No se pudieron cargar profiles:', pErr);
         }
       } catch (e) {
         console.warn('[PresencialConfirm] error cargando profiles:', e);
@@ -75,7 +85,7 @@ export default function PresencialConfirm() {
       <div className="min-h-screen grid place-items-center">
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-800">
           <p className="mb-3">No se encontró el escenario.</p>
-          <Link to="/presencial/instructor" className="text-[#0A3D91] underline">Volver al listado</Link>
+          <Link to={flow === 'dual' ? '/presencial/instructor' : '/presencial'} className="text-[#0A3D91] underline">Volver al listado</Link>
         </div>
       </div>
     );
@@ -121,6 +131,9 @@ export default function PresencialConfirm() {
   async function handleStart() {
     setSubmitErr("");
     setSubmitting(true);
+    // Defensive: if someone llega aquí con flow=dual pero no tiene sesión, simplemente seguimos;
+    // la ruta protegida de instructor ya valida admin, esto es solo log de ayuda.
+    console.debug('[PresencialConfirm] starting creation, flow =', flow);
     try {
       // 0) Preparar participantes limpios
       const pts = cleanParticipants();
@@ -144,7 +157,6 @@ export default function PresencialConfirm() {
       const base = {
         scenario_id: sc.id,
         user_id: userId || null,
-        started_at: new Date().toISOString(),
         public_code,
         // NUEVO: guardamos los UUIDs seleccionados en la propia sesión
         participants: sessionParticipantIds,
@@ -179,22 +191,31 @@ export default function PresencialConfirm() {
       const key = `presencial:last_session:${sc.id}`;
       try { localStorage.setItem(key, JSON.stringify({ ...base, id: sessionId, participants: pts })); } catch {}
 
-      // 4) Navegar al modo **dual** de instructor
+      // 4) Navegar según flujo: 'single' (una pantalla) o 'dual' (instructor + alumnos)
       if (sessionId) {
-        navigate(`/presencial/instructor/${sc.id}/${sessionId}`);
+        if (flow === 'single') {
+          navigate(`/presencial/${sc.id}/escenario?session=${sessionId}`);
+        } else {
+          navigate(`/presencial/instructor/${sc.id}/${sessionId}`);
+        }
         return;
       }
 
       // Fallback si no hay sessionId (muy raro)
-      navigate('/presencial/instructor');
+      if (flow === 'single') {
+        navigate(`/presencial/${sc.id}/escenario`);
+      } else {
+        navigate('/presencial/instructor');
+      }
     } catch (e) {
       console.error('[PresencialConfirm] handleStart error:', e);
-      setSubmitErr('No se pudo crear la sesión. Puedes volver a intentarlo.');
-      // Fallback: guardar participantes locales y navegar al selector dual
+      setSubmitErr('No se pudo crear la sesión. ' + (e?.message || 'Puedes volver a intentarlo.'));
+      // Fallback: guardar participantes locales y navegar al selector según flujo
+      console.warn('[PresencialConfirm] fallback navigation due to error, flow =', flow);
       const key = `presencial:last_session:${sc.id}`;
       const pts = cleanParticipants();
-      try { localStorage.setItem(key, JSON.stringify({ scenario_id: sc.id, participants: pts, user_id: userId || null, started_at: new Date().toISOString() })); } catch {}
-      navigate('/presencial/instructor');
+      try { localStorage.setItem(key, JSON.stringify({ scenario_id: sc.id, participants: pts, user_id: userId || null })); } catch {}
+      if (flow === 'single') { navigate(`/presencial/${sc.id}/escenario`); } else { navigate('/presencial/instructor'); }
     } finally {
       setSubmitting(false);
     }
@@ -219,6 +240,11 @@ export default function PresencialConfirm() {
       </section>
 
       <main className="max-w-6xl mx-auto px-5 py-8">
+        {submitErr && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-2">
+            {submitErr}
+          </div>
+        )}
         {/* Estado */}
         <div className="mb-6">
           <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ring-1 ${badge.color}`}>
@@ -322,10 +348,10 @@ export default function PresencialConfirm() {
             Asigna roles (opcional) y nombres para tener a todos identificados desde el inicio.
           </Card>
           <Card title="2) Seguridad y cronómetro">
-            En el Toolkit tendrás **checklist ABCDE** y **cronómetro** para guiar la sesión.
+            En el Toolkit tendrás <strong>checklist ABCDE</strong> y <strong>cronómetro</strong> para guiar la sesión.
           </Card>
           <Card title="3) Medicación y debrief">
-            También encontrarás **5 correctos de medicación** y **debrief** con notas exportables.
+            También encontrarás <strong>5 correctos de medicación</strong> y <strong>debrief</strong> con notas exportables.
           </Card>
         </section>
 
@@ -339,7 +365,7 @@ export default function PresencialConfirm() {
           >
             {submitting ? 'Creando sesión…' : 'Comenzar'}
           </button>
-          <Link to="/presencial/instructor" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">
+          <Link to={flow === 'dual' ? '/presencial/instructor' : '/presencial'} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">
             Volver al listado
           </Link>
         </div>
@@ -350,7 +376,7 @@ export default function PresencialConfirm() {
 
 function Card({ title, children }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" role="region" aria-label={title}>
       <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
       <p className="text-slate-700 text-sm">{children}</p>
     </article>

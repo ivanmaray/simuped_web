@@ -238,17 +238,36 @@ export default function Evaluacion() {
         setPresErr("");
         try {
           // 1) Obtener sesiones en las que participó el usuario
-          const { data: parts, error: pErr } = await supabase
-            .from("session_participants")
-            .select(`
-              user_id, role,
-              presencial_sessions:session_id (
-                id, scenario_id, started_at, ended_at,
-                scenarios:title ( title )
-              )
-            `)
-            .eq("user_id", userId)
-            .order("started_at", { ascending: false });
+          let parts = [];
+          let pErr = null;
+          try {
+            // Construimos la query base
+            const baseQ = supabase
+              .from("presencial_participants")
+              .select(`
+                user_id, role,
+                presencial_sessions:session_id (
+                  id, scenario_id, started_at, ended_at, banner_text,
+                  scenarios ( title )
+                )
+              `)
+              .eq("user_id", userId);
+
+            // Intento 1: ordenar en el servidor usando foreignTable
+            let res = await baseQ.order("started_at", { ascending: false, foreignTable: "presencial_sessions" });
+            if (res.error) {
+              // Si el backend no soporta foreignTable o da 42703, reintenta sin order
+              pErr = res.error;
+              const res2 = await baseQ; // sin .order
+              parts = res2.data || [];
+              // Ordena en cliente por la fecha embebida
+              parts.sort((a, b) => new Date(b?.presencial_sessions?.started_at || 0) - new Date(a?.presencial_sessions?.started_at || 0));
+            } else {
+              parts = res.data || [];
+            }
+          } catch (e) {
+            pErr = e;
+          }
           if (pErr) {
             // Si la tabla no existe o no hay permisos, deshabilita la sección de simulacros
             if (String(pErr?.code) === "42P01") {
@@ -258,6 +277,36 @@ export default function Evaluacion() {
               return;
             }
             throw pErr;
+          }
+
+          // Además, incluir sesiones donde este usuario es el creador/instructor
+          // (presencial_sessions.user_id = userId), por si no fue añadido a participants
+          try {
+            const { data: instr, error: instrErr } = await supabase
+              .from("presencial_sessions")
+              .select(`
+                id, scenario_id, started_at, ended_at, banner_text,
+                scenarios ( title )
+              `)
+              .eq("user_id", userId);
+            if (!instrErr && Array.isArray(instr) && instr.length > 0) {
+              // Mapear al mismo formato que `parts`
+              const mapped = instr.map(s => ({
+                user_id: userId,
+                role: "instructor",
+                presencial_sessions: s,
+              }));
+              // Evitar duplicados por id
+              const seen = new Set((parts || []).map(r => r?.presencial_sessions?.id).filter(Boolean));
+              for (const m of mapped) {
+                const sid = m?.presencial_sessions?.id;
+                if (!sid || seen.has(sid)) continue;
+                parts.push(m);
+                seen.add(sid);
+              }
+            }
+          } catch (e) {
+            console.warn("[Evaluacion] cargar sesiones como instructor falló:", e);
           }
 
           const items = Array.isArray(parts) ? parts.filter(x => !!x.presencial_sessions) : [];
@@ -270,7 +319,7 @@ export default function Evaluacion() {
             try {
               const { data: chk } = await supabase
                 .from("session_checklist")
-                .select("status")
+                .select("item_id, status")
                 .eq("session_id", sess.id);
               for (const c of (chk || [])) {
                 switch ((c.status || "").toLowerCase()) {
@@ -283,6 +332,8 @@ export default function Evaluacion() {
             } catch {
               // si no existe la tabla, mostramos sin desglose
             }
+            const endedFlag = !!sess?.ended_at;
+
             results.push({
               session_id: sess.id,
               scenario_id: sess.scenario_id,
@@ -290,8 +341,16 @@ export default function Evaluacion() {
               role: row.role || "",
               started_at: sess.started_at || null,
               ended_at: sess.ended_at || null,
+              endedFlag,
               ok, wrong, missed, na, total,
               score: pct(ok, total)
+            });
+
+            console.debug("[Evaluacion] pres fila", {
+              id: sess.id,
+              started_at: sess.started_at,
+              ended_at: sess.ended_at,
+              endedFlag
             });
           }
           setPresRows(results);
@@ -339,6 +398,18 @@ export default function Evaluacion() {
     })).sort((a, b) => a.label.localeCompare(b.label, "es"));
   }, [attempts]);
 
+  function PresEstadoBadge({ endedFlag, started_at }) {
+    const estado = endedFlag ? 'Finalizada' : (started_at ? 'En curso' : 'Pendiente');
+    const cls = endedFlag
+      ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+      : (started_at ? 'bg-amber-100 text-amber-700 ring-amber-200' : 'bg-slate-100 text-slate-700 ring-slate-200');
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] ring-1 ${cls}`}>
+        {estado}
+      </span>
+    );
+  }
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="text-slate-600">Cargando…</div></div>;
   if (!session) return null;
 
@@ -356,7 +427,7 @@ export default function Evaluacion() {
               : "Tus resultados"}{attempts?.length ? ` · ${attempts.length} intento${attempts.length !== 1 ? "s" : ""}` : ""}
           </h1>
           <p className="opacity-95">
-            Resumen de intentos y medias por escenario.
+            Medias de los simulacros online, resultados de simulacros online,  y resultados de simulacros presenciales.
           </p>
           {isAdmin && viewUserId && session?.user?.id && viewUserId !== session.user.id && (
             <div className="mt-2">
@@ -389,7 +460,7 @@ export default function Evaluacion() {
             <h3 className="text-lg font-semibold">
               {viewUserId && session?.user?.id && viewUserId !== session.user.id
                 ? "Intentos del usuario"
-                : "Intentos"}
+                : "Simulacros online"}
             </h3>
             <Link to="/dashboard" className="text-sm underline text-slate-700">Volver al panel</Link>
           </div>
@@ -471,7 +542,6 @@ export default function Evaluacion() {
                       const dateStr = r.started_at
                         ? new Date(r.started_at).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })
                         : "—";
-                      const estado = r.ended_at ? "Finalizada" : (r.started_at ? "En curso" : "—");
                       const res = r.total ? `${r.ok}/${r.total} (${r.score}%)` : "—";
                       return (
                         <tr key={r.session_id} className="border-t">
@@ -479,12 +549,17 @@ export default function Evaluacion() {
                           <td className="px-4 py-2">{r.scenario_title}</td>
                           <td className="px-4 py-2">{formatRole(r.role)}</td>
                           <td className="px-4 py-2">{res}</td>
-                          <td className="px-4 py-2">{estado}</td>
                           <td className="px-4 py-2">
-                            {/* Enlaza a un reporte detallado si tienes una ruta, p. ej.: /presencial/reporte/:sessionId */}
-                            <Link to={`/presencial/reporte/${r.session_id}`} className="text-[#0A3D91] underline">
-                              Ver informe
-                            </Link>
+                            <PresEstadoBadge endedFlag={r.endedFlag} started_at={r.started_at} />
+                          </td>
+                          <td className="px-4 py-2">
+                            {r.endedFlag ? (
+                              <Link to={`/evaluacion/informe/${r.session_id}`} className="text-[#0A3D91] underline">
+                                Ver informe
+                              </Link>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </td>
                         </tr>
                       );

@@ -9,6 +9,23 @@ const colors = {
   accent: "#1E6ACB",
 };
 
+function checklistStatusFromValue(val) {
+  // Normalize input to one of: 'ok' | 'wrong' | 'missed' | 'na'
+  if (val === 'ok' || val === 'wrong' || val === 'missed' || val === 'na') return val;
+  if (val === true || val === 1 || val === '1' || val === 'true') return 'ok';
+  if (val === false || val === 0 || val === '0' || val === 'false') return 'missed';
+  return 'na';
+}
+
+function statusLabel(s) {
+  switch (s) {
+    case 'ok': return 'Realizado';
+    case 'wrong': return 'Realizado mal';
+    case 'missed': return 'No realizado';
+    default: return 'N/A';
+  }
+}
+
 export default function PresencialEscenario() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -122,15 +139,17 @@ export default function PresencialEscenario() {
               .order('created_at', { ascending: true });
             if (!perr && parts) setParticipants(parts);
           } catch {}
-          // load session meta (started_at) to compute duration
+          // load session meta (started_at, ended_at) to compute duration
           try {
             const { data: srow, error: serr } = await supabase
               .from('presencial_sessions')
-              .select('id, started_at')
+              .select('id, started_at, ended_at')
               .eq('id', sid)
               .maybeSingle();
             if (!serr && srow) {
-              setSessionMeta({ started_at: srow.started_at, ended_at: null });
+              // No iniciar automáticamente aquí: el inicio se controla desde PresencialInstructor
+              setSessionMeta({ started_at: srow.started_at || null, ended_at: srow.ended_at || null });
+              if (srow.ended_at) setDebriefMode(true);
             }
           } catch {}
         } else {
@@ -211,19 +230,28 @@ export default function PresencialEscenario() {
           }
         } catch {}
 
-        // load saved checklist responses for this session (so printing shows historical data)
+        // load saved checklist responses for this session (mirror + normalized tri-state)
         try {
           if (sid) {
-            const { data: rws, error: rerr } = await supabase
+            const acc = {};
+            // Legacy responses table (booleans / text)
+            const { data: rws } = await supabase
               .from('session_item_responses')
               .select('item_id, value')
               .eq('session_id', sid);
-            if (!rerr && rws) {
-              const acc = {};
-              for (const r of rws) acc[r.item_id] = (r.value === '1') ? true : (r.value === '0') ? false : r.value;
-              setResponses(acc);
-              setResponsesLoaded(true);
-            }
+            (rws || []).forEach(r => {
+              acc[r.item_id] = checklistStatusFromValue(r.value);
+            });
+            // Canonical checklist statuses
+            const { data: scl } = await supabase
+              .from('session_checklist')
+              .select('item_id, status')
+              .eq('session_id', sid);
+            (scl || []).forEach(r => {
+              acc[r.item_id] = checklistStatusFromValue(r.status);
+            });
+            setResponses(acc);
+            setResponsesLoaded(true);
           }
         } catch {}
 
@@ -296,6 +324,34 @@ useEffect(() => {
     return v === true || v === 1 || v === '1' || v === 'true';
   }
 
+  async function upsertSessionChecklistRows(rows) {
+    if (!rows || rows.length === 0) return;
+    try {
+      // Remove duplicates by item_id (last wins)
+      const map = new Map();
+      for (const r of rows) map.set(r.item_id, r);
+      const unique = Array.from(map.values());
+      // We use upsert in case rows already exist
+      await supabase
+        .from('session_checklist')
+        .upsert(unique, { onConflict: 'session_id,item_id' });
+    } catch (e) {
+      console.error('[Toolkit] upsertSessionChecklistRows error:', e);
+    }
+  }
+
+  async function saveChecklistMark(itemId, rawVal) {
+    if (!sessionId) return;
+    const status = checklistStatusFromValue(rawVal);
+    try {
+      await supabase
+        .from('session_checklist')
+        .upsert({ session_id: sessionId, item_id: Number(itemId), status }, { onConflict: 'session_id,item_id' });
+    } catch (e) {
+      console.error('[Toolkit] saveChecklistMark error:', e);
+    }
+  }
+
   async function finalizeSimulation() {
     if (!sessionId) return;
     if (!participants || participants.length === 0) {
@@ -306,6 +362,18 @@ useEffect(() => {
       // ensure latest checklist saved
       await handleSave();
 
+      // Ensure a last mirror of checkbox items into session_checklist
+      try {
+        const chkRows = (items || [])
+          .filter(it => it && it.type === 'checkbox')
+          .map(it => ({
+            session_id: sessionId,
+            item_id: Number(it.id),
+            status: checklistStatusFromValue(responses[it.id])
+          }));
+        await upsertSessionChecklistRows(chkRows);
+      } catch {}
+
       // fetch latest actions for report
       const { data: acts } = await supabase
         .from('session_actions')
@@ -314,7 +382,8 @@ useEffect(() => {
         .order('created_at', { ascending: true });
 
       // build report object
-      const ended_at = new Date().toISOString();
+      const nowIso = new Date().toISOString();
+      const ended_at = nowIso;
       const report = {
         scenario_id: Number(id),
         session_id: sessionId,
@@ -336,37 +405,68 @@ useEffect(() => {
         kpis: kpis,
       };
 
-      // 1) Try insert into a dedicated reports table
-      let saved = false;
+      // 1) (opcional) guardar en reports (best-effort)
       try {
-        const ins = await supabase
+        await supabase
           .from('presencial_reports')
-          .insert({ session_id: sessionId, scenario_id: Number(id), duration_sec: elapsedSec, payload: report, created_at: ended_at })
-          .select('id')
-          .single();
-        if (!ins.error) saved = true;
-      } catch {}
+          .insert({
+            session_id: sessionId,
+            scenario_id: Number(id),
+            duration_sec: elapsedSec,
+            payload: report,
+            created_at: ended_at
+          });
+      } catch { /* best-effort */ }
 
-      // 2) Update session with report_json when available (ended_at may not exist in DB)
+      // 2) Marcar la sesión como finalizada y guardar el informe en la propia sesión
       try {
-        await supabase.from('presencial_sessions').update({ report_json: report }).eq('id', sessionId);
-      } catch {}
-
-      // Freeze timer locally y entrar en Debrief
-      setSessionMeta(m => ({ ...m, ended_at }));
-      // Recalcula por si acaso con ended_at
-      if (sessionMeta?.started_at) {
-        const t0 = new Date(sessionMeta.started_at).getTime();
-        const t1 = new Date(ended_at).getTime();
-        setElapsedSec(Math.max(0, Math.floor((t1 - t0) / 1000)));
+        // 2) Marcar la sesión como finalizada y guardar el informe en la propia sesión
+        const updatePayload = {
+          ended_at: nowIso,
+          report_json: report,
+        };
+        // Si la sesión nunca se inició (p.ej. flujo 1 pantalla), fija started_at = ahora
+        if (!sessionMeta?.started_at) {
+          updatePayload.started_at = nowIso;
+          // también ajusta en memoria para que Evaluación vea duración coherente
+          try {
+            setSessionMeta((m) => ({ ...(m || {}), started_at: nowIso, ended_at: nowIso }));
+          } catch {}
+        }
+        const { error: upErr } = await supabase
+          .from('presencial_sessions')
+          .update(updatePayload)
+          .eq('id', sessionId);
+        if (upErr) {
+          console.error('[Toolkit] finalizeSimulation update error:', upErr);
+          // como último recurso, intenta solo ended_at
+          await supabase
+            .from('presencial_sessions')
+            .update({ ended_at: nowIso })
+            .eq('id', sessionId);
+        }
+      } catch (e2) {
+        console.error('[Toolkit] endSession fallback error:', e2);
       }
-      setDebriefMode(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Redirigir al informe dedicado
+      navigate(`/presencial/${id}/informe?session=${sessionId}`, { replace: true });
+      return;
     } catch (e) {
       console.error('[Toolkit] finalizeSimulation error:', e);
       alert('No se pudo finalizar la simulación.');
     }
   }
+  // Redirigir automáticamente al informe si ?debrief=1
+  useEffect(() => {
+    const dbg = searchParams.get('debrief');
+    if (dbg === '1') {
+      const sid = searchParams.get('session') || sessionId;
+      if (sid) {
+        navigate(`/presencial/${id}/informe?session=${sid}`, { replace: true });
+      }
+    }
+  }, [searchParams, sessionId, id, navigate]);
 
   async function revealVariable(variableId) {
     if (!sessionId) return;
@@ -498,6 +598,19 @@ useEffect(() => {
         const { error: ierr } = await supabase.from('session_item_responses').insert(rows);
         if (ierr) console.error('[Toolkit] insert error:', ierr);
       }
+      // Mirror checkbox-type items into session_checklist for reporting
+      try {
+        const chkRows = (items || [])
+          .filter(it => it && it.type === 'checkbox')
+          .map(it => ({
+            session_id: sessionId,
+            item_id: Number(it.id),
+            status: checklistStatusFromValue(responses[it.id])
+          }));
+        await upsertSessionChecklistRows(chkRows);
+      } catch (e2) {
+        console.warn('[Toolkit] handleSave checklist mirror warning:', e2);
+      }
     } catch (e) {
       console.error('[Toolkit] save error:', e);
     } finally {
@@ -520,14 +633,34 @@ useEffect(() => {
             {help}
           </div>
         );
-      case 'checkbox':
-        return (
-          <label className="flex items-start gap-3">
-            <input type="checkbox" className="mt-1 h-4 w-4 rounded border-slate-300 text-[#1E6ACB] focus:ring-[#1E6ACB]" checked={isChecked(val)} onChange={(e)=>on(e.target.checked)} />
-            <span className="text-slate-800">{it.label}</span>
-            {help}
-          </label>
+      case 'checkbox': {
+        const s = checklistStatusFromValue(val);
+        const setStatus = (next) => {
+          on(next);
+          if (sessionId && !noParticipants) saveChecklistMark(it.id, next);
+        };
+        const btn = (code, text) => (
+          <button
+            type="button"
+            onClick={() => setStatus(code)}
+            className={`px-2.5 py-1 rounded-lg text-sm ring-1 transition ${
+              s === code ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 bg-white hover:bg-slate-50'
+            }`}
+          >{text}</button>
         );
+        return (
+          <div>
+            <div className="text-slate-800 mb-1">{it.label}</div>
+            <div className="flex flex-wrap gap-2">
+              {btn('ok', 'Realizado')}
+              {btn('wrong', 'Realizado mal')}
+              {btn('missed', 'No realizado')}
+              {btn('na', 'N/A')}
+            </div>
+            {help}
+          </div>
+        );
+      }
       case 'number':
         return (
           <div>
@@ -610,6 +743,11 @@ useEffect(() => {
         {errorMsg && (
           <div className="lg:col-span-2 mb-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-2">
             {errorMsg}
+          </div>
+        )}
+        {!debriefMode && !sessionMeta?.started_at && (
+          <div className="lg:col-span-2 mb-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-900 px-4 py-2">
+            La sesión aún no está iniciada. Pulsa <strong>Iniciar</strong> en la pantalla del instructor para comenzar el cronómetro.
           </div>
         )}
         {noParticipants && (
@@ -787,11 +925,11 @@ useEffect(() => {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => navigate(`/presencial/${id}/informe?session=${sessionId}`)}
                   className="px-3 py-2 rounded-lg font-semibold text-slate-900 hover:opacity-90"
                   style={{ background: colors.primaryLight }}
                 >
-                  Imprimir informe
+                  Abrir informe
                 </button>
                 <button
                   onClick={() => navigate(`/presencial/${id}/confirm`)}
@@ -863,7 +1001,13 @@ useEffect(() => {
                           <li key={it.id}>
                             <span className="font-medium">{it.label}:</span> {(() => {
                               const val = responses[it.id];
-                              if (it.type === 'checkbox') return isChecked(val) ? 'Sí' : 'No';
+                              if (it.type === 'checkbox') {
+                                const s = checklistStatusFromValue(val);
+                                return s === 'ok' ? 'Realizado'
+                                  : s === 'wrong' ? 'Realizado mal'
+                                  : s === 'missed' ? 'No realizado'
+                                  : 'N/A';
+                              }
                               if (val === true) return 'Sí';
                               if (val === false) return 'No';
                               return val ?? '';
@@ -878,7 +1022,13 @@ useEffect(() => {
                         <li key={it.id}>
                           <span className="font-medium">{it.label}:</span> {(() => {
                             const val = responses[it.id];
-                            if (it.type === 'checkbox') return isChecked(val) ? 'Sí' : 'No';
+                            if (it.type === 'checkbox') {
+                              const s = checklistStatusFromValue(val);
+                              return s === 'ok' ? 'Realizado'
+                                : s === 'wrong' ? 'Realizado mal'
+                                : s === 'missed' ? 'No realizado'
+                                : 'N/A';
+                            }
                             if (val === true) return 'Sí';
                             if (val === false) return 'No';
                             return val ?? '';
@@ -965,103 +1115,6 @@ useEffect(() => {
           </>
         )}
       </main>
-        {/* Printable full report (moved out of print:hidden wrappers) */}
-        <div className="hidden print:block col-span-full">
-          <div className="p-6">
-            <h1 className="text-2xl font-bold">Informe de simulación presencial</h1>
-            <p className="text-slate-700">Escenario: {sc.title}</p>
-            <p className="text-slate-700">Sesión: {sessionId}</p>
-            <p className="text-slate-700">Inicio: {sessionMeta?.started_at ? new Date(sessionMeta.started_at).toLocaleString() : '-'}</p>
-            <p className="text-slate-700">Duración: {sessionMeta?.started_at ? fmtDuration(elapsedSec) : '-'}</p>
-          <div className="mt-2" style={{ breakInside: 'avoid' }}>
-            <strong>Resumen:</strong>
-            <ul className="list-disc ml-6">
-              <li>Fluidos totales: {kpis.total_mlkg} ml/kg (bolos: {kpis.bolus_count})</li>
-              <li>Tiempo a antibiótico: {kpis.time_to_abx_min == null ? '—' : `${kpis.time_to_abx_min} min`}</li>
-            </ul>
-          </div>
-            {participants && participants.length > 0 && (
-              <div className="mt-4" style={{ breakInside: 'avoid' }}>
-                <h2 className="text-xl font-semibold">Participantes</h2>
-                <ul className="list-disc ml-6">
-                  {participants.map(p => (
-                    <li key={p.id || p.name + p.role}>{(p.role === 'medico' ? 'Médico/a' : p.role === 'enfermeria' ? 'Enfermería' : p.role === 'farmacia' ? 'Farmacia' : 'Instructor/a')} · {p.name}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Variables reveladas */}
-            {Object.keys(sessionVars).length > 0 && (
-              <div className="mt-4" style={{ breakInside: 'avoid' }}>
-                <h2 className="text-xl font-semibold">Estado del paciente</h2>
-                <table className="w-full text-sm border border-slate-300 border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100">
-                      <th className="border border-slate-300 text-left px-2 py-1">Variable</th>
-                      <th className="border border-slate-300 text-left px-2 py-1">Valor</th>
-                      <th className="border border-slate-300 text-left px-2 py-1">Unidad</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {variables.filter(v => sessionVars[v.id]?.is_revealed).map(v => (
-                      <tr key={v.id}>
-                        <td className="border border-slate-300 px-2 py-1">{v.label}</td>
-                        <td className="border border-slate-300 px-2 py-1">{sessionVars[v.id]?.value ?? v.initial_value}</td>
-                        <td className="border border-slate-300 px-2 py-1">{v.unit || ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Checklist completo por pasos */}
-            {items && items.length > 0 && (
-              <div className="mt-4" style={{ breakInside: 'avoid' }}>
-                <h2 className="text-xl font-semibold">Checklist completo</h2>
-                {steps.length > 0 ? steps.map(st => (
-                  <div key={st.id} className="mt-3">
-                    <h3 className="font-semibold">{st.name}</h3>
-                    <ul className="list-disc ml-6">
-                      {(itemsByStep[st.id] || []).map(it => (
-                        <li key={it.id}>
-                          <span className="font-medium">{it.label}:</span> {(() => {
-                            const val = responses[it.id];
-                            if (it.type === 'checkbox') return isChecked(val) ? 'Sí' : 'No';
-                            if (val === true) return 'Sí';
-                            if (val === false) return 'No';
-                            return val ?? '';
-                          })()}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )) : (
-                  <ul className="list-disc ml-6">
-                    {items.map(it => (
-                      <li key={it.id}>
-                        <span className="font-medium">{it.label}:</span> {(() => {
-                          const val = responses[it.id];
-                          if (it.type === 'checkbox') return isChecked(val) ? 'Sí' : 'No';
-                          if (val === true) return 'Sí';
-                          if (val === false) return 'No';
-                          return val ?? '';
-                        })()}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            {/* Acciones */}
-            <div className="mt-4" style={{ breakInside: 'avoid' }}>
-              <h2 className="text-xl font-semibold">Intervenciones registradas</h2>
-              <ActionsTable sessionId={sessionId} />
-            </div>
-          </div>
-        </div>
     </div>
   );
 }
@@ -1077,7 +1130,8 @@ function Timer() {
   }, [running]);
   const reset = () => { setSec(0); setRunning(false); };
   const fmt = (n) => String(n).padStart(2, "0");
-  const m = Math.floor(sec / 60), s = sec % 60;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
 
   return (
     <div className="flex items-center gap-3">
