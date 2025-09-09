@@ -316,7 +316,7 @@ export default function Presencial_Instructor() {
         try {
           const { data: items } = await supabase
             .from('scenario_checklist')
-            .select('id,label,order_index')
+            .select('id,label,category,order_index,weight')
             .eq('scenario_id', id)
             .order('order_index', { ascending: true });
           if (items && items.length) {
