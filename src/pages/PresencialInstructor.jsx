@@ -178,11 +178,22 @@ export default function PresencialInstructor() {
         // 1) Escenario
         const { data: sc, error: scErr } = await supabase
           .from("scenarios")
-          .select("id,title,summary,patient_overview")
+          .select("id,title,summary")
           .eq("id", id)
           .maybeSingle();
         if (scErr) throw scErr;
-        if (mounted) setScenario(sc);
+
+        // Obtener overview desde la función (la columna ya no existe)
+        let overview = "";
+        try {
+          const pid = Number(id) || Number(sc?.id);
+          if (!Number.isNaN(pid)) {
+            const { data: ov } = await supabase.rpc('get_patient_overview', { p_scenario_id: pid });
+            if (typeof ov === 'string') overview = ov;
+          }
+        } catch {}
+
+        if (mounted) setScenario(sc ? { ...sc, patient_overview: overview || "" } : null);
 
         // 2) Sesión (ahora también banner_text y current_step_id)
         const { data: s, error: sErr } = await supabase
@@ -582,10 +593,27 @@ export default function PresencialInstructor() {
   }
 
   // Helpers para el guion/narrativa
-  function publishScript(index = scriptIndex) {
+  async function publishScript(index = scriptIndex) {
     const txt = scriptTexts[index] ?? '';
     setBannerText(txt);
     saveBanner(txt);
+    // --- Update current_step_id and banner_text in DB ---
+    const stepId = steps[index]?.id;
+    if (stepId && sessionId) {
+      try {
+        await supabase
+          .from('presencial_sessions')
+          .update({
+            banner_text: txt,
+            current_step_id: stepId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', sessionId);
+        setCurrentStepId(stepId);
+      } catch (e) {
+        // Silencioso; el error de banner/step se muestra por saveBanner
+      }
+    }
     try { logEvent('script.publish', { index, text: txt }); } catch {}
   }
 
@@ -594,19 +622,29 @@ export default function PresencialInstructor() {
   function addScriptLine() { setScriptTexts(arr => [...arr, '']); setScriptIndex(scriptTexts.length); }
   function resetScript() { setScriptIndex(0); }
 
-  // NUEVO: guardar banner
+  // NUEVO: guardar banner (con confirmación sonora)
   async function saveBanner(nextText) {
     if (!sessionId) return;
     const textToSave = typeof nextText === "string" ? nextText : bannerText;
     try {
       await supabase
         .from("presencial_sessions")
-        .update({ banner_text: textToSave })
+        .update({ banner_text: textToSave, updated_at: new Date().toISOString() })
         .eq("id", sessionId);
       console.debug('[Instructor] Banner actualizado en sesión', sessionId);
-      // Asegura estado local coherente en caso de llamada con argumento
+      // Estado local coherente si se llamó con argumento
       if (typeof nextText === "string") setBannerText(nextText);
       try { logEvent('banner.update', { text: textToSave }); } catch {}
+
+      // 🔊 Confirmación sonora (resume AudioContext y beep distinto si se limpia)
+      try { ensureCtx(); } catch {}
+      if (textToSave && String(textToSave).trim().length > 0) {
+        // Publicación de texto
+        playBeep({ freq: 900, ms: 200, gain: 0.16 });
+      } else {
+        // Limpieza del banner
+        playBeep({ freq: 620, ms: 180, gain: 0.14 });
+      }
     } catch (e) {
       console.error("[Instructor] saveBanner error:", e);
       setErrorMsg("No se pudo guardar el texto en pantalla.");
