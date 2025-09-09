@@ -1,8 +1,8 @@
 // src/pages/SimulacionConfirm.jsx
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../supabaseClient";
+import Navbar from "../../../components/Navbar.jsx";
 
 const MAX_ATTEMPTS = 3;
 const DEFAULT_LIMIT_SECS = 900; // 15 minutos por intento
@@ -40,7 +40,7 @@ function statusBadge(status) {
   return { text: status, className: "bg-slate-100 text-slate-700 ring-slate-200" };
 }
 
-export default function SimulacionConfirm() {
+export default function Online_Confirm() {
   const navigate = useNavigate();
   const { id } = useParams(); // scenario id (string)
   const scenarioId = Number(id);

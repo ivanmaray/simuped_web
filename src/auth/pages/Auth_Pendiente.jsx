@@ -1,8 +1,8 @@
 // src/pages/Pendiente.jsx
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../supabaseClient";
+import Navbar from "../../components/Navbar.jsx";
 
 /**
  * Optimizaciones clave para que no "tarde tanto":
@@ -27,7 +27,7 @@ function fmt(dt) {
   }
 }
 
-export default function Pendiente() {
+export default function Auth_Pendiente() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);

@@ -1,7 +1,7 @@
 // src/pages/PresencialEscenario.jsx
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState, useMemo } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../../../../supabaseClient";
 
 const colors = {
   primary: "#0A3D91",
@@ -26,7 +26,7 @@ function statusLabel(s) {
   }
 }
 
-export default function PresencialEscenario() {
+export default function Presencial_Escenario() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);

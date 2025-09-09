@@ -1,11 +1,11 @@
 // /src/pages/PresencialInfo.jsx
 import { Link } from "react-router-dom";
-import Navbar from "../components/Navbar.jsx";
-import { useAuth } from "../auth";
+import Navbar from "../../../../components/Navbar.jsx";
+import { useAuth } from "../../../../auth";
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../../../../supabaseClient";
 
-export default function PresencialInfo() {
+export default function Presencial_Info() {
   const { session } = useAuth() || {};
   const isAdmin = Boolean(
     session?.user?.user_metadata?.is_admin || session?.user?.app_metadata?.is_admin

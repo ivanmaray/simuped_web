@@ -1,8 +1,8 @@
 // src/pages/Registro.jsx
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../supabaseClient";
+import Navbar from "../../components/Navbar.jsx";
 
 const COLORS = { primary: "#1a69b8" };
 const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
@@ -38,7 +38,7 @@ function validarEmail(v) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
-export default function Registro() {
+export default function Auth_Registro() {
   const navigate = useNavigate();
 
   // Campos del formulario

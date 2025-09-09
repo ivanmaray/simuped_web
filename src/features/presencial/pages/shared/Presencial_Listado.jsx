@@ -1,15 +1,19 @@
 // src/pages/PresencialListado.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../../supabaseClient";
+import Navbar from "../../../../components/Navbar.jsx";
 
 console.debug("[PresencialListado] componente cargado");
 
 const estadoStyles = {
   "Disponible": { label: "Disponible", color: "bg-[#0A3D91]/10 text-[#0A3D91] font-medium", clickable: true },
   "En construcción: en proceso": { label: "En construcción: en proceso", color: "bg-[#4FA3E3]/10 text-[#1E6ACB] font-medium", clickable: true },
-  "En construcción: sin iniciar": { label: "bg-slate-200 text-slate-600 font-medium", clickable: false, label: "En construcción: sin iniciar" },
+  "En construcción: sin iniciar": {
+    label: "En construcción: sin iniciar",
+    color: "bg-slate-200 text-slate-600 font-medium",
+    clickable: false
+  },
 };
 
 function formatLevel(level) {
@@ -18,7 +22,7 @@ function formatLevel(level) {
   return map[key] || (key ? key[0].toUpperCase() + key.slice(1) : "");
 }
 
-export default function PresencialListado() {
+export default function Presencial_Listado() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isDual = (searchParams.get('flow') || '').toLowerCase() === 'dual';
@@ -217,7 +221,7 @@ export default function PresencialListado() {
                     onClick={() => {
                       if (!isClickable) return;
                       if (isDual) {
-                        navigate(`/presencial/${esc.id}/confirm?mode=dual`);
+                        navigate(`/presencial/${esc.id}/confirm?flow=dual`);
                       } else {
                         navigate(`/presencial/${esc.id}/confirm`);
                       }

@@ -1,8 +1,8 @@
 // src/pages/SimulacionDetalle.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../supabaseClient";
+import Navbar from "../../../components/Navbar.jsx";
 
 const HINT_PENALTY_POINTS = 5; // puntos que se restan por cada pista usada (puedes ajustar)
 
@@ -264,7 +264,7 @@ function defaultTepReason(kind, status) {
 
 
 
-export default function SimulacionDetalle() {
+export default function Online_Detalle() {
   const { id } = useParams(); // id de scenarios (int)
   const navigate = useNavigate();
   const location = useLocation();

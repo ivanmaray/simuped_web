@@ -1,14 +1,25 @@
 // /src/pages/PresencialInforme.jsx
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../../supabaseClient";
+import Navbar from "../../../../components/Navbar.jsx";
 
 const STATUS_LABEL = { ok: "Bien", wrong: "Mal", missed: "No hecho", na: "N/A" };
 const STATUS_EMOJI = { ok: "✅", wrong: "❌", missed: "⬜", na: "∅" };
 
+// Normalizador robusto para estados provenientes de distintas tablas/idiomas
+function normalizeStatusAny(x) {
+  const s = String(x || "").toLowerCase().trim();
+  if (!s) return undefined;
+  if (["ok", "correcto", "bien", "hecho", "realizado"].includes(s)) return "ok";
+  if (["wrong", "incorrecto", "mal", "error"].includes(s)) return "wrong";
+  if (["missed", "no hecho", "pendiente", "omitido", "no realizado"].includes(s)) return "missed";
+  if (["na", "n/a", "no aplica", "no aplicable"].includes(s)) return "na";
+  return undefined;
+}
+
 // Versión optimizada y bonita del informe presencial
-export default function PresencialInforme() {
+export default function Presencial_Informe() {
   const { sessionId: sessionIdParam, id: routeId } = useParams();
   const [searchParams] = useSearchParams();
   const qpSession = searchParams.get('session') || searchParams.get('sid') || searchParams.get('s');
@@ -136,80 +147,30 @@ export default function PresencialInforme() {
           /* sin participantes -> ignoramos */
         }
 
-        // 4) Checklist: scenario_checklist + (LEFT JOIN) session_checklist
+        // 4) Checklist: usar la vista extendida (incluye quién y cuándo marcó)
         try {
-          if (s?.scenario_id) {
-            // 4a) Cargar items del escenario (estructura oficial)
-            let items = null;
-            try {
-              const q1 = await supabase
-                .from("scenario_checklist")
-                .select("id, label, order_index")
-                .eq("scenario_id", s.scenario_id)
-                .order("order_index", { ascending: true });
-              items = q1.data || null;
-            } catch { items = null; }
+          const { data: rows, error: rowsErr } = await supabase
+            .from("vw_session_checklist_ext")
+            .select("item_id, item_label, status, status_text, note, updated_at, updated_by_display, item_order")
+            .eq("session_id", resolvedSessionId)
+            .order("item_order", { ascending: true });
 
-            // Fallback (muy defensivo): si no existe estructura, intentamos legacy "checklist_items"
-            if (!items || items.length === 0) {
-              try {
-                const qLegacy = await supabase
-                  .from("checklist_items")
-                  .select("id, label, order_index")
-                  .eq("scenario_id", s.scenario_id)
-                  .order("order_index", { ascending: true });
-                items = qLegacy.data || [];
-              } catch { items = []; }
-            }
+          if (rowsErr) throw rowsErr;
 
-            // Marcar si el escenario tiene estructura de checklist
-            setHasChecklistStructure(!!items && items.length > 0);
+          const mapped = (rows || []).map(r => ({
+            item_id: r.item_id,
+            label: r.item_label,
+            status: normalizeStatusAny(r.status) || normalizeStatusAny(r.status_text) || "na",
+            note: r.note || "",
+            updated_at: r.updated_at || null,
+            updated_by_display: r.updated_by_display || ""
+          }));
 
-            let result = [];
-            if (items && items.length) {
-              // 4b) Cargar marcas explícitas de la sesión (si existen)
-              const { data: marks } = await supabase
-                .from("session_checklist")
-                .select("item_id, status, note")
-                .eq("session_id", resolvedSessionId);
-
-              const markById = {};
-              (marks || []).forEach(m => { markById[m.item_id] = m; });
-
-              // 4c) Fallback: si no hay marcas, intentar derivarlas de `session_item_responses`
-              let respById = {};
-              try {
-                const { data: resp } = await supabase
-                  .from("session_item_responses")
-                  .select("item_id, status, note, created_at")
-                  .eq("session_id", resolvedSessionId)
-                  .order("created_at", { ascending: false });
-                (resp || []).forEach(r => {
-                  if (!respById[r.item_id]) respById[r.item_id] = r;
-                });
-              } catch { /* tabla puede no existir */ }
-
-              // 4d) Construir filas del informe
-              result = items.map(it => {
-                const m = markById[it.id];
-                const r = respById[it.id];
-                const normalize = (v) => (['ok','wrong','missed','na'].includes(v) ? v : undefined);
-                const status = normalize(m?.status) || normalize(r?.status) || 'na';
-                const note = (m?.note || r?.note || "");
-                return {
-                  item_id: it.id,
-                  label: it.label,
-                  status,
-                  note
-                };
-              });
-            }
-            if (!mounted) return;
-            setCheckRows(result);
-          } else {
-            setCheckRows([]);
-          }
+          setHasChecklistStructure((rows || []).length > 0);
+          setCheckRows(mapped);
         } catch {
+          // Fallback: si la vista no existe o falla, dejamos vacío (y el resto del informe sigue funcionando)
+          setHasChecklistStructure(false);
           setCheckRows([]);
         }
 
@@ -400,6 +361,7 @@ export default function PresencialInforme() {
                   <tr className="text-slate-500 text-sm">
                     <th className="px-3 py-1.5 rounded-tl-lg">Ítem</th>
                     <th className="px-3 py-1.5">Estado</th>
+                    <th className="px-3 py-1.5">Marcado por</th>
                     <th className="px-3 py-1.5 rounded-tr-lg">Nota</th>
                   </tr>
                 </thead>
@@ -407,7 +369,24 @@ export default function PresencialInforme() {
                   {checkRows.map(row => (
                     <tr key={row.item_id} className="bg-slate-50 rounded-lg shadow-sm">
                       <td className="px-3 py-2 rounded-l-lg">{row.label}</td>
-                      <td className="px-3 py-2">{STATUS_EMOJI[row.status]} <span className="font-medium">{STATUS_LABEL[row.status]}</span></td>
+                      <td className="px-3 py-2">
+                        {STATUS_EMOJI[row.status]}{" "}
+                        <span className="font-medium">{STATUS_LABEL[row.status]}</span>
+                      </td>
+                      <td className="px-3 py-2 text-sm text-slate-600">
+                        {row.updated_by_display ? (
+                          <>
+                            <span className="font-medium">{row.updated_by_display}</span>
+                            {row.updated_at ? (
+                              <span className="ml-1 text-slate-400">
+                                · {new Date(row.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 rounded-r-lg">{row.note || <span className="text-slate-400">—</span>}</td>
                     </tr>
                   ))}

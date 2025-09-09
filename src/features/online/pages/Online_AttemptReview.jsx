@@ -1,8 +1,8 @@
 // src/pages/AttemptReview.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../supabaseClient";
+import Navbar from "../../../components/Navbar.jsx";
 
 function normalizeOptions(opts) {
   if (!opts) return [];
@@ -14,7 +14,7 @@ function normalizeOptions(opts) {
   return [];
 }
 
-export default function AttemptReview() {
+export default function Online_AttemptReview() {
   const { attemptId } = useParams();
   const navigate = useNavigate();
   const [session, setSession] = useState(null);

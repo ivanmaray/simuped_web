@@ -3,8 +3,9 @@
 // También soporta: /presencial/instructor
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState, useRef } from "react";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../../supabaseClient";
+import Navbar from "../../../../components/Navbar.jsx";
+
 
 const CHECK_STATUSES = [
   { key: 'ok', label: 'Bien', icon: '✔️' },
@@ -12,6 +13,38 @@ const CHECK_STATUSES = [
   { key: 'missed', label: 'No hecho', icon: '⬜' },
   { key: 'na', label: 'N/A', icon: '∅' },
 ];
+
+// --- Checklist categorías ABCDE/Patología/Medicación/Otros ---
+const CATEGORY_ORDER = ['A', 'B', 'C', 'D', 'E', 'Diagnóstico', 'Tratamiento', 'Otros'];
+function normalizeCategory(category) {
+  if (!category) return 'Otros';
+  const c = String(category).trim();
+  if (/^a$/i.test(c)) return 'A';
+  if (/^b$/i.test(c)) return 'B';
+  if (/^c$/i.test(c)) return 'C';
+  if (/^d$/i.test(c)) return 'D';
+  if (/^e$/i.test(c)) return 'E';
+  if (/diagnos/i.test(c)) return 'Diagnóstico';
+  if (/(trat|tx)/i.test(c)) return 'Tratamiento';
+  if (CATEGORY_ORDER.includes(c)) return c;
+
+  // Heurística por palabras clave (ES) para items sin prefijo
+  const KEYWORDS = {
+    A: [/v[íi]a\s*a[ée]rea/i, /c[áa]nula|orofaring(ea|ea)|airway|intub/i],
+    B: [/respir|ventila|satur|SpO2|oxigen/i, /auscult/i],
+    C: [/circul|frecuencia\s*card(i|í)a|pulso/i, /tensi[óo]n\s*arterial|\bTA\b/i, /capilar/i, /v[íi]a\s*venosa|acceso\s*vascular|fluidoterapia/i, /monitoriz/i],
+    D: [/neurol|glasgow|AVPU/i, /conscien|pupila/i, /glucem/i],
+    E: [/expos|temperat|lesion|herid|hipoterm/i],
+    'Patología': [/patolog|diagn[óo]stico|\bdx\b/i, /pruebas\s*complement/i],
+    'Medicación': [/medic|f[áa]rmac|farmac|dosis|posolog/i],
+  };
+
+  for (const cat of ['A','B','C','D','E','Patología','Medicación']) {
+    const rules = KEYWORDS[cat] || [];
+    if (rules.some((rx) => rx.test(c))) return cat;
+  }
+  return 'Otros';
+}
 
 console.debug('[Instructor] componente v2 cargado');
 
@@ -56,23 +89,6 @@ function playAlarm() {
   setTimeout(() => playBeep({ freq: 1150, ms: 260, gain: 0.18 }), 520);
 }
 
-// --- Event logger (best-effort) ---
-async function logEvent(kind, payload = {}) {
-  if (!sessionId) return;
-  const at = new Date().toISOString();
-  try {
-    // Intenta escribir en una tabla 'session_events' con payload jsonb.
-    await supabase.from('session_events').insert({
-      session_id: sessionId,
-      at,
-      kind,
-      payload
-    });
-  } catch (e) {
-    // Silencioso: si la tabla/columnas no existen, seguimos sin bloquear la UI
-    console.debug('[Instructor] logEvent skipped:', kind);
-  }
-}
 
 // Texto-guion por defecto (se puede editar en UI)
 const DEFAULT_SCRIPT = [
@@ -81,9 +97,25 @@ const DEFAULT_SCRIPT = [
   'Desaturación progresiva: valorar ventilación no invasiva y monitorización continua.'
 ];
 
-export default function PresencialInstructor() {
+export default function Presencial_Instructor() {
   const { id, sessionId } = useParams();
   const navigate = useNavigate();
+
+  // Event logger tied to current sessionId
+  const logEvent = async (kind, payload = {}) => {
+    if (!sessionId) return;
+    const at = new Date().toISOString();
+    try {
+      await supabase.from('session_events').insert({
+        session_id: sessionId,
+        at,
+        kind,
+        payload
+      });
+    } catch (e) {
+      console.debug('[Instructor] logEvent skipped:', kind);
+    }
+  };
 
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -97,6 +129,13 @@ export default function PresencialInstructor() {
   const timerRef = useRef(null);
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
+
+  // Control de desbloqueo manual y cronómetro locales (solo al pulsar Iniciar)
+  const [uiUnlocked, setUiUnlocked] = useState(false);
+  const [timerActive, setTimerActive] = useState(false);
+  const [timerStartAt, setTimerStartAt] = useState(null);
+
+  const isRunning = uiUnlocked; // sombreado/control habilitado solo tras Iniciar
 
   // NUEVO: estado UI -> fase y banner
   const [currentStepId, setCurrentStepId] = useState(null);
@@ -116,6 +155,19 @@ export default function PresencialInstructor() {
   const [checklist, setChecklist] = useState([]); // scenario_checklist
   const [checkStatus, setCheckStatus] = useState({}); // {item_id: 'ok'|'wrong'|'missed'|'na'}
   const [checkNotes, setCheckNotes] = useState({}); // {item_id: string}
+
+  // Agrupación por categoría (ABCDE / Patología / Medicación / Otros)
+  const [activeCategory, setActiveCategory] = useState('A');
+  const groupedChecklist = useMemo(() => {
+    const buckets = CATEGORY_ORDER.reduce((acc, k) => { acc[k] = []; return acc; }, {});
+    (checklist || []).forEach(item => {
+      const cat = normalizeCategory(item.category);
+      if (!buckets[cat]) buckets[cat] = [];
+      buckets[cat].push(item);
+    });
+    return buckets;
+  }, [checklist]);
+
 
   // Listado para creación de sesión si faltan params
   const [scenarios, setScenarios] = useState([]);
@@ -207,13 +259,13 @@ export default function PresencialInstructor() {
           setBannerText(s.banner_text || "");
           setCurrentStepId(s.current_step_id || null);
           // si existen columnas de tiempo, úsalas; si no, ignora
+          // Mostrar marcas temporales (informativas), pero NO activar UI ni cronómetro
           if (Object.prototype.hasOwnProperty.call(s, "started_at")) {
             setStartedAt(s.started_at || null);
           }
           if (Object.prototype.hasOwnProperty.call(s, "ended_at")) {
             setEndedAt(s.ended_at || null);
           }
-          // Ajustar temporizador si ya estaba finalizada
           if (s && s.started_at && s.ended_at) {
             try {
               const t0 = new Date(s.started_at).getTime();
@@ -221,6 +273,10 @@ export default function PresencialInstructor() {
               setElapsedSec(Math.max(0, Math.floor((t1 - t0) / 1000)));
             } catch {}
           }
+          // Al cargar, la UI permanece bloqueada hasta pulsar Iniciar
+          setUiUnlocked(false);
+          setTimerActive(false);
+          setTimerStartAt(null);
           // Guardar como última sesión (para recuperación) si no está finalizada
           try {
             if (!s.ended_at) {
@@ -340,29 +396,8 @@ export default function PresencialInstructor() {
     setCreatingFor(scenarioId);
     setListError("");
     try {
-      const public_code = Array(6)
-        .fill(0)
-        .map(() =>
-          "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".charAt(
-            Math.floor(Math.random() * 36)
-          )
-        )
-        .join("");
-      const { data: newRow, error: insErr } = await supabase
-        .from("presencial_sessions")
-        .insert({
-          scenario_id: scenarioId,
-          public_code,
-        })
-        .select("id, public_code")
-        .single();
-      if (insErr) throw insErr;
-      try {
-        localStorage.setItem(LS_KEY, JSON.stringify({ id: newRow.id, scenario_id: scenarioId }));
-      } catch {}
-      navigate(`/presencial/confirm/${scenarioId}/${newRow.id}`, {
-        replace: true,
-      });
+      // Derivamos al flujo de confirmación (modo dual) que crea la sesión y redirige correctamente
+      navigate(`/presencial/${scenarioId}/confirm?flow=dual`, { replace: true });
     } catch (e) {
       setListError(e?.message || "No se pudo crear la sesión");
     } finally {
@@ -371,26 +406,26 @@ export default function PresencialInstructor() {
     }
   }
 
-  // Timer local en UI
+  // Timer local en UI (solo corre tras pulsar Iniciar)
   useEffect(() => {
-    if (!startedAt) {
-      setElapsedSec(0);
+    if (!timerActive || !timerStartAt) {
+      if (!timerActive) {
+        // si está parado, no forzamos 0 para conservar el último valor mostrado
+      }
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
-    const t0 = new Date(startedAt).getTime();
+    const t0 = new Date(timerStartAt).getTime();
     const compute = () => {
       const endMs = endedAt ? new Date(endedAt).getTime() : Date.now();
       const diff = Math.max(0, Math.floor((endMs - t0) / 1000));
       setElapsedSec(diff);
     };
     compute();
-    if (endedAt) return;
+    if (endedAt) return; // si ya se marcó fin, no seguir
     timerRef.current = setInterval(compute, 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [startedAt, endedAt]);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [timerActive, timerStartAt, endedAt]);
 
   function fmtDuration(sec) {
     const s = Math.max(0, Number(sec) || 0);
@@ -405,7 +440,12 @@ export default function PresencialInstructor() {
   async function startSession() {
     if (!sessionId) return;
     const now = new Date().toISOString();
-    // Estado local inmediato
+    // Desbloquear controles y arrancar cronómetro locales
+    setUiUnlocked(true);
+    setTimerActive(true);
+    setTimerStartAt(now);
+
+    // Estado temporal informativo
     setStartedAt(now);
     setEndedAt(null);
     setElapsedSec(0);
@@ -432,6 +472,9 @@ export default function PresencialInstructor() {
   async function endSession() {
     if (!sessionId) return;
     const now = new Date().toISOString();
+    // Parar cronómetro y volver a bloquear UI
+    setTimerActive(false);
+    setUiUnlocked(false);
     setEndedAt(now);
     setSession(prev => (prev ? { ...prev, ended_at: now } : prev));
     try {
@@ -484,16 +527,18 @@ export default function PresencialInstructor() {
           },
           { onConflict: 'session_id,variable_id' }
         );
+        // Además: broadcast explícito para listeners
+        try {
+          await supabase.from('session_actions').insert({
+            session_id: sessionId,
+            step_id: currentStepId || null,
+            action_key: 'variable.show',
+            payload: { variable_id: variableId, value: currentVal }
+          });
+        } catch {}
         setRevealed((prev) => { const s = new Set(prev); s.add(variableId); return s; });
         setSessionVarValues(prev => ({ ...prev, [variableId]: currentVal }));
         try { logEvent('variable.show', { variable_id: variableId, label: v?.label, value: currentVal, unit: v?.unit }); } catch {}
-        // Ping de sesión para forzar refresco en alumnos aunque no haya realtime en session_variables
-        try {
-          await supabase
-            .from('presencial_sessions')
-            .update({ updated_at: new Date().toISOString() })
-            .eq('id', sessionId);
-        } catch {}
         playBeep({ freq: 880 });
       } else {
         setRevealed(prev => { const s = new Set(prev); s.delete(variableId); return s; });
@@ -511,15 +556,17 @@ export default function PresencialInstructor() {
             },
             { onConflict: 'session_id,variable_id' }
           );
+        // Además: broadcast explícito para listeners
+        try {
+          await supabase.from('session_actions').insert({
+            session_id: sessionId,
+            step_id: currentStepId || null,
+            action_key: 'variable.hide',
+            payload: { variable_id: variableId }
+          });
+        } catch {}
         setSessionVarValues(prev => ({ ...prev, [variableId]: (v?.initial_value ?? prev[variableId] ?? null) }));
         try { logEvent('variable.hide', { variable_id: variableId, label: v?.label }); } catch {}
-        // Ping de sesión para forzar refresco en alumnos aunque no haya realtime en session_variables
-        try {
-          await supabase
-            .from('presencial_sessions')
-            .update({ updated_at: new Date().toISOString() })
-            .eq('id', sessionId);
-        } catch {}
         playBeep({ freq: 620 });
       }
     } catch (e) {
@@ -542,12 +589,19 @@ export default function PresencialInstructor() {
       await supabase
         .from('session_variables')
         .upsert({ session_id: sessionId, variable_id: variableId, value: val, is_revealed: true, updated_at: new Date().toISOString() }, { onConflict: 'session_id,variable_id' });
+      // Broadcast acción variable.update
+      try {
+        await supabase.from('session_actions').insert({
+          session_id: sessionId,
+          step_id: currentStepId || null,
+          action_key: 'variable.update',
+          payload: { variable_id: variableId, value: val }
+        });
+      } catch {}
       setSessionVarValues(prev => ({ ...prev, [variableId]: val }));
       setRevealed(prev => { const s = new Set(prev); s.add(variableId); return s; });
       // Log
       try { logEvent('variable.update', { variable_id: variableId, label: v?.label, value: val, unit: v?.unit }); } catch {}
-      // ping + sound
-      try { await supabase.from('presencial_sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId); } catch {}
       playBeep({ freq: 900 });
     } catch (e) {
       console.error('[Instructor] publishValue error', e);
@@ -565,10 +619,17 @@ export default function PresencialInstructor() {
       await supabase
         .from('session_variables')
         .upsert({ session_id: sessionId, variable_id: variableId, value: sessionVarValues[variableId] ?? v?.initial_value ?? null, is_revealed: false, updated_at: new Date().toISOString() }, { onConflict: 'session_id,variable_id' });
+      // Broadcast acción variable.hide
+      try {
+        await supabase.from('session_actions').insert({
+          session_id: sessionId,
+          step_id: currentStepId || null,
+          action_key: 'variable.hide',
+          payload: { variable_id: variableId }
+        });
+      } catch {}
       // Log
       try { logEvent('variable.hide', { variable_id: variableId, label: v?.label }); } catch {}
-      // ping
-      try { await supabase.from('presencial_sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId); } catch {}
       playBeep({ freq: 620 });
     } catch(e) {
       console.error('[Instructor] hideVariable error', e);
@@ -580,57 +641,138 @@ export default function PresencialInstructor() {
   async function triggerAlarm() {
     ensureCtx();
     if (!sessionId) return;
-    // try to update a specific alarm column if it exists; always bump updated_at
     const now = new Date().toISOString();
     try {
-      await supabase.from('presencial_sessions').update({ updated_at: now, alarm_ping: now }).eq('id', sessionId);
-    } catch {
-      try { await supabase.from('presencial_sessions').update({ updated_at: now }).eq('id', sessionId); } catch {}
-    }
+      await supabase
+        .from('presencial_sessions')
+        .update({ alarm_ping: now })
+        .eq('id', sessionId);
+    } catch {}
+    // Además: broadcast acción de alarma para listeners
+    try {
+      await supabase.from('session_actions').insert({
+        session_id: sessionId,
+        step_id: currentStepId || null,
+        action_key: 'alarm',
+        payload: { at: now }
+      });
+    } catch {}
     // Log
     try { logEvent('alarm', {}); } catch {}
     playAlarm();
   }
 
+  // Forzar refresco manual en pantallas conectadas
+  async function forceRefresh() {
+    ensureCtx();
+    if (!sessionId) return;
+    const now = new Date().toISOString();
+    try {
+      await supabase.from('session_actions').insert({
+        session_id: sessionId,
+        step_id: currentStepId || null,
+        action_key: 'refresh',
+        payload: { at: now }
+      });
+    } catch {}
+    try { logEvent('session.refresh', { at: now }); } catch {}
+    playBeep({ freq: 980, ms: 160, gain: 0.16 });
+  }
+
   // Helpers para el guion/narrativa
   async function publishScript(index = scriptIndex) {
-    const txt = scriptTexts[index] ?? '';
-    setBannerText(txt);
-    saveBanner(txt);
-    // --- Update current_step_id and banner_text in DB ---
-    const stepId = steps[index]?.id;
-    if (stepId && sessionId) {
+    if (!steps || steps.length === 0) return;
+    ensureCtx();
+    const raw = scriptTexts[index];
+    const txt = (typeof raw === 'string' ? raw : '').trim();
+    if (!txt) return; // no publiques vacío
+    // 1) Publica el texto (incluye beep y update de banner_text + updated_at)
+    await saveBanner(txt);
+
+    // Registrar acción de guion para clientes que escuchen session_actions
+    try {
+      await supabase
+        .from('session_actions')
+        .insert({
+          session_id: sessionId,
+          step_id: steps[index]?.id || null,
+          action_key: 'script.publish',
+          payload: { index, text: txt }
+        });
+    } catch (eAct) {
+      console.debug('[Instructor] session_actions script.publish omitido', eAct?.message);
+    }
+
+    // 2) Marca el paso actual en la sesión (ping explícito de updated_at por si hay clientes sin realtime en banner)
+    const stepId = steps[index]?.id || null;
+    if (sessionId && stepId) {
       try {
         await supabase
           .from('presencial_sessions')
           .update({
-            banner_text: txt,
-            current_step_id: stepId,
-            updated_at: new Date().toISOString(),
+            current_step_id: stepId
           })
           .eq('id', sessionId);
         setCurrentStepId(stepId);
       } catch (e) {
-        // Silencioso; el error de banner/step se muestra por saveBanner
+        console.debug('[Instructor] publishScript: step update skipped', e);
       }
     }
+
     try { logEvent('script.publish', { index, text: txt }); } catch {}
   }
 
-  function nextScript() { if (scriptIndex < scriptTexts.length - 1) { setScriptIndex(scriptIndex + 1); } }
-  function prevScript() { if (scriptIndex > 0) { setScriptIndex(scriptIndex - 1); } }
-  function addScriptLine() { setScriptTexts(arr => [...arr, '']); setScriptIndex(scriptTexts.length); }
-  function resetScript() { setScriptIndex(0); }
+  function nextScript() {
+    if (scriptIndex < scriptTexts.length - 1) {
+      const i = scriptIndex + 1;
+      setScriptIndex(i);
+      ensureCtx();
+      publishScript(i);
+    }
+  }
+  function prevScript() {
+    if (scriptIndex > 0) {
+      const i = scriptIndex - 1;
+      setScriptIndex(i);
+      ensureCtx();
+      publishScript(i);
+    }
+  }
+  function addScriptLine() {
+    setScriptTexts(arr => [...arr, '']);
+    const i = scriptTexts.length; // nuevo índice al final
+    setScriptIndex(i);
+    // no se publica automáticamente porque aún no hay texto
+  }
+  function resetScript() {
+    const i = 0;
+    setScriptIndex(i);
+    ensureCtx();
+    publishScript(i);
+  }
 
   // NUEVO: guardar banner (con confirmación sonora)
   async function saveBanner(nextText) {
     if (!sessionId) return;
-    const textToSave = typeof nextText === "string" ? nextText : bannerText;
+    const textToSave = String(typeof nextText === "string" ? nextText : bannerText || "").trim();
     try {
       await supabase
         .from("presencial_sessions")
-        .update({ banner_text: textToSave, updated_at: new Date().toISOString() })
+        .update({ banner_text: textToSave })
         .eq("id", sessionId);
+      // Además: registra acción explícita para que pantallas que escuchen session_actions lo reciban
+      try {
+        await supabase
+          .from('session_actions')
+          .insert({
+            session_id: sessionId,
+            step_id: currentStepId || null,
+            action_key: 'banner.publish',
+            payload: { text: textToSave }
+          });
+      } catch (eAct) {
+        console.debug('[Instructor] session_actions banner.publish omitido', eAct?.message);
+      }
       console.debug('[Instructor] Banner actualizado en sesión', sessionId);
       // Estado local coherente si se llamó con argumento
       if (typeof nextText === "string") setBannerText(nextText);
@@ -681,12 +823,6 @@ export default function PresencialInstructor() {
         .eq('session_id', sessionId);
       setRevealed(new Set());
       // Ping para notificar a los alumnos la limpieza total
-      try {
-        await supabase
-          .from('presencial_sessions')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', sessionId);
-      } catch {}
       try { logEvent('variable.clear_all', {}); } catch {}
     } catch (e) {
       console.error("[Instructor] clearAllVariables error:", e);
@@ -701,8 +837,6 @@ export default function PresencialInstructor() {
         .from('session_checklist')
         .upsert({ session_id: sessionId, item_id: itemId, status, updated_at: new Date().toISOString() }, { onConflict: 'session_id,item_id' });
       setCheckStatus(prev => ({ ...prev, [itemId]: status }));
-      // Ping para forzar refresco en pantallas conectadas
-      try { await supabase.from('presencial_sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId); } catch {}
       try {
         const label = (checklist.find(i => i.id === itemId) || {}).label;
         logEvent('check.update', { item_id: itemId, status, label });
@@ -762,7 +896,7 @@ export default function PresencialInstructor() {
         (payload) => {
           const next = payload?.new;
           if (!next) return;
-          setSession(prev => ({ ...prev, ...next }));
+          setSession(prev => ({ ...(prev || {}), ...(next || {}) }));
           if (Object.prototype.hasOwnProperty.call(next, 'banner_text')) {
             setBannerText(next.banner_text || '');
           }
@@ -968,6 +1102,11 @@ export default function PresencialInstructor() {
           <div className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/95 border-b border-slate-200">
             <div className="px-6 py-4 flex flex-wrap items-center gap-3">
               <h2 className="text-lg font-semibold mr-auto">Control de la sesión</h2>
+              {!isRunning && (
+                <span className="inline-flex items-center gap-2 text-sm px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 ring-1 ring-amber-200">
+                  ⚠️ Pulsa <span className="font-semibold">Iniciar</span> para activar los controles
+                </span>
+              )}
               {/* Cronómetro compact */}
               <div className="hidden sm:flex items-center gap-2 text-sm text-slate-600">
                 <span className="font-medium">Duración</span>
@@ -975,14 +1114,14 @@ export default function PresencialInstructor() {
               </div>
               <button
                 onClick={startSession}
-                disabled={!!startedAt && !endedAt}
+                disabled={isRunning}
                 className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg font-semibold transition shadow-sm ${
-                  startedAt && !endedAt
-                    ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                    : "text-white hover:opacity-95"
+                  isRunning
+                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                    : 'text-white hover:opacity-95 animate-pulse ring-2 ring-offset-2 ring-[#1E6ACB] shadow-md'
                 }`}
-                style={{ background: startedAt && !endedAt ? undefined : colors.primary }}
-                title={startedAt && !endedAt ? "Ya iniciada" : "Iniciar sesión"}
+                style={{ background: !isRunning ? colors.primary : undefined }}
+                title={!isRunning ? "Iniciar sesión" : "Ya iniciada"}
               >
                 <span>▶</span> Iniciar
               </button>
@@ -1005,6 +1144,13 @@ export default function PresencialInstructor() {
               >
                 🔔 Alarma
               </button>
+              <button
+                onClick={forceRefresh}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 shadow-sm"
+                title="Forzar un refresco inmediato en las pantallas conectadas"
+              >
+                ⚡ Refrescar pantallas
+              </button>
               {endedAt && (
                 <Link
                   to={`/presencial/${id}/informe?session=${sessionId}`}
@@ -1022,7 +1168,7 @@ export default function PresencialInstructor() {
               </button>
             </div>
           </div>
-          <div className="p-6">
+          <div className={`p-6 ${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''}`}>
 
           {/* Guion del caso (publica como banner por pasos) */}
           <div className="mb-6">
@@ -1038,7 +1184,13 @@ export default function PresencialInstructor() {
                     placeholder={idx===0? 'Llegada a urgencias...' : 'Texto del evento...'}
                     className="flex-1 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
                   />
-                  <button onClick={()=> setScriptIndex(idx)} className="px-2 py-1 rounded border border-slate-300 text-sm hover:bg-slate-50" title="Seleccionar este paso">Usar</button>
+                  <button
+                    onClick={() => { setScriptIndex(idx); publishScript(idx); }}
+                    className="px-2 py-1 rounded border border-slate-300 text-sm hover:bg-slate-50"
+                    title="Seleccionar este paso"
+                  >
+                    Usar
+                  </button>
                 </div>
               ))}
             </div>
@@ -1046,7 +1198,7 @@ export default function PresencialInstructor() {
               <button onClick={addScriptLine} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">+ Añadir paso</button>
               <button onClick={prevScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">← Anterior</button>
               <button onClick={nextScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">Siguiente →</button>
-              <button onClick={()=> publishScript()} className="px-3 py-1.5 rounded font-semibold text-slate-900" style={{ background: colors.primaryLight }}>Publicar este paso</button>
+              <button onClick={() => { ensureCtx(); publishScript(); }} className="px-3 py-1.5 rounded font-semibold text-slate-900" style={{ background: colors.primaryLight }}>Publicar este paso</button>
               <button onClick={resetScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">Reiniciar</button>
             </div>
           </div>
@@ -1198,6 +1350,13 @@ export default function PresencialInstructor() {
             >
               🔔 Alarma
             </button>
+            <button
+              onClick={forceRefresh}
+              className="ml-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
+              title="Forzar un refresco inmediato en las pantallas conectadas"
+            >
+              ⚡ Refrescar pantallas
+            </button>
           </div>
 
 
@@ -1205,7 +1364,7 @@ export default function PresencialInstructor() {
         </section>
 
         {/* Ayuda y enlace público */}
-        <aside className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <aside className={`p-6 bg-white rounded-2xl border border-slate-200 shadow-sm ${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''}`}>
           <h3 className="text-lg font-semibold flex items-center gap-2">Pantalla del alumno <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">pública</span></h3>
           {publicUrl ? (
             <div className="mt-2 text-sm">
@@ -1247,38 +1406,77 @@ export default function PresencialInstructor() {
             </ol>
           </details>
 
-          {checklist && checklist.length > 0 && (
+          {(
             <div className="mt-8">
-              <h3 className="text-lg font-semibold mb-2">Checklist</h3>
-              <div className="space-y-3">
-                {checklist.map(item => (
-                  <div key={item.id} className="p-3 rounded-lg border border-slate-200 bg-white shadow-sm">
-                    <div className="flex flex-col gap-2">
-                      <div className="font-medium text-slate-900">{item.label}</div>
-                      <div className="flex flex-wrap gap-2">
-                        {CHECK_STATUSES.map(s => (
-                          <button
-                            key={s.key}
-                            type="button"
-                            onClick={() => upsertChecklist(item.id, s.key)}
-                            className={`px-2.5 py-1.5 rounded ring-1 text-sm ${checkStatus[item.id] === s.key ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 hover:bg-slate-50'}`}
-                            title={s.label}
-                          >
-                            <span className="mr-1">{s.icon}</span>{s.label}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Nota opcional"
-                        value={checkNotes[item.id] || ''}
-                        onChange={(e) => saveChecklistNote(item.id, e.target.value)}
-                        className="w-full rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-                      />
-                    </div>
+              <h3 className="text-lg font-semibold mb-2">Checklist (ABCDE / Patología / Medicación)</h3>
+
+              {(!checklist || checklist.length === 0) ? (
+                <div className="rounded-lg border border-dashed border-slate-300 p-4 bg-slate-50 text-slate-600">
+                  <p>No hay ítems de checklist para este escenario.</p>
+                  <p className="mt-1">Crea los ítems en Supabase en <code>scenario_checklist</code> con columnas <code>label</code>, <code>category</code> (A, B, C, D, E, Diagnóstico, Tratamiento) y <code>order_index</code>.</p>
+                  <div className="mt-3">
+                    <Link
+                      to={`/presencial/${id}/confirm?flow=dual`}
+                      className="inline-block px-3 py-2 rounded-lg border border-slate-300 hover:bg-white"
+                    >
+                      Ir a confirmar alumnos
+                    </Link>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <>
+                  {/* Pestañas de categoría */}
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {CATEGORY_ORDER.map(cat => {
+                      const count = (groupedChecklist[cat] || []).length;
+                      if (count === 0) return null;
+                      const active = activeCategory === cat;
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setActiveCategory(cat)}
+                          className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${active ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10 text-[#0A3D91]' : 'ring-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
+                          title={`Ver items de ${cat}`}
+                        >
+                          {cat} <span className="ml-1 text-xs text-slate-500">({count})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Lista de items de la categoría activa */}
+                  <div className="space-y-3">
+                    {(groupedChecklist[activeCategory] || []).map(item => (
+                      <div key={item.id} className="p-3 rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="flex flex-col gap-2">
+                          <div className="font-medium text-slate-900">{item.label}</div>
+                          <div className="flex flex-wrap gap-2">
+                            {CHECK_STATUSES.map(s => (
+                              <button
+                                key={s.key}
+                                type="button"
+                                onClick={() => upsertChecklist(item.id, s.key)}
+                                className={`px-2.5 py-1.5 rounded ring-1 text-sm ${checkStatus[item.id] === s.key ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 hover:bg-slate-50'}`}
+                                title={s.label}
+                              >
+                                <span className="mr-1">{s.icon}</span>{s.label}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Nota opcional"
+                            value={checkNotes[item.id] || ''}
+                            onChange={(e) => saveChecklistNote(item.id, e.target.value)}
+                            className="w-full rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </aside>

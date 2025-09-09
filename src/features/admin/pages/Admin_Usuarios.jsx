@@ -1,9 +1,9 @@
 // src/pages/Admin.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../../../supabaseClient";
 
-import Navbar from "../components/Navbar.jsx";
+import Navbar from "../../../components/Navbar.jsx";
 
 function fmtDateShort(v) {
   if (!v) return "—";
@@ -46,7 +46,7 @@ function Card({ title, count, children }) {
   );
 }
 
-export default function Admin() {
+export default function Admin_Usuarios() {
   const navigate = useNavigate();
   function verIntentos(u) {
     if (!u?.id) return;

@@ -1,8 +1,8 @@
 // src/pages/Evaluacion.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../supabaseClient";
+import Navbar from "../../../components/Navbar.jsx";
 
 function formatRole(rol) {
   const k = String(rol || "").toLowerCase();
@@ -51,7 +51,7 @@ function BarChart({ data, title = "Media por escenario" }) {
   );
 }
 
-export default function Evaluacion() {
+export default function Evaluacion_Main() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();

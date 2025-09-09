@@ -1,8 +1,8 @@
 // src/pages/Perfil.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../supabaseClient";
+import Navbar from "../../../components/Navbar.jsx";
 
 const COLORS = {
   primary: "#1a69b8",
@@ -57,7 +57,7 @@ function validarDNI(v) {
   return expected === letter;
 }
 
-export default function Perfil() {
+export default function Principal_Perfil() {
   const navigate = useNavigate();
 
   const [session, setSession] = useState(null);

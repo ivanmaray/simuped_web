@@ -2,9 +2,9 @@
 import React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
-import { useAuth } from "../auth";
+import { supabase } from "../../../supabaseClient";
+import Navbar from "../../../components/Navbar.jsx";
+import { useAuth } from "../../../auth";
 import { UsersIcon, DevicePhoneMobileIcon, ChartBarIcon, AcademicCapIcon, ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
 
 // Debug: marcar que Dashboard.jsx se ha cargado
@@ -56,7 +56,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-export default function Dashboard() {
+export default function Principal_Dashboard() {
   const navigate = useNavigate();
   const { ready, session } = useAuth();
   const [loading, setLoading] = useState(true);

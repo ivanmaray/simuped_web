@@ -1,8 +1,8 @@
 // src/pages/Simulacion.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
-import Navbar from "../components/Navbar.jsx";
+import { supabase } from "../../../supabaseClient";
+import Navbar from "../../../components/Navbar.jsx";
 
 
 console.debug("[Simulacion] componente cargado");
@@ -31,7 +31,7 @@ function formatMode(modes) {
     .join(' · ');
 }
 
-export default function Simulacion() {
+export default function Online_Main() {
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
