@@ -1,4 +1,4 @@
-// src/pages/Admin.jsx
+// src/features/admin/pages/Admin_Usuarios.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
@@ -63,8 +63,7 @@ export default function Admin_Usuarios() {
   const qTimerRef = useRef(null);
   const [processingIds, setProcessingIds] = useState({}); // { [userId]: true }
   const [mailStatus, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
-  const [authMap, setAuthMap] = useState({}); // { [userId]: { email_confirmed: bool, email_confirmed_at: string|null } }
-  const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified }
+  const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified via our API }
 
   useEffect(() => {
     let mounted = true;
@@ -108,17 +107,15 @@ export default function Admin_Usuarios() {
 
       // 3) Usuarios (usar RPC admin_list_users para evitar RLS sobre profiles)
       let cleaned = [];
-      let authRows = [];
       try {
         const { data: rpcRows, error: rpcErr } = await supabase.rpc("admin_list_users");
         if (rpcErr) {
           throw rpcErr;
         }
-        // rpcRows ya trae: id, email, nombre, apellidos, dni, rol, unidad,
-        // areas_interes, created_at, updated_at, approved, approved_at, is_admin,
-        // email_confirmed, email_confirmed_at, last_sign_in_at
-        authRows = rpcRows || [];
-        cleaned = authRows.filter((r) => r?.id);
+        // rpcRows trae columnas de public.profiles: id, email, nombre, apellidos, dni, rol, unidad,
+        // approved, approved_at, is_admin, created_at, updated_at, verified_at, notified_at.
+        // No incluye campos de auth.users.
+        cleaned = (rpcRows || []).filter((r) => r?.id);
       } catch (e) {
         setErr(e?.message || "Error cargando usuarios (admin_list_users).");
         setLoading(false);
@@ -126,14 +123,6 @@ export default function Admin_Usuarios() {
       }
 
       setRows(cleaned);
-
-      // 4) Mapa de verificación (desde la propia RPC)
-      const map = {};
-      for (const r of authRows) {
-        if (r && r.id) map[r.id] = { email_confirmed: !!r.email_confirmed, email_confirmed_at: r.email_confirmed_at || null };
-      }
-      setAuthMap(map);
-
       setLoading(false);
     }
 
@@ -182,10 +171,13 @@ export default function Admin_Usuarios() {
     try {
       // 1) Marca aprobado via RPC para evitar choques de RLS
       const nowIso = new Date().toISOString();
-      const { error: e1 } = await supabase.rpc("admin_approve_user", { _user_id: u.id });
+      const { data: rpcRes, error: e1 } = await supabase.rpc("admin_approve_user", { _user_id: u.id });
       if (e1) throw e1;
+      if (rpcRes && rpcRes.ok === false) {
+        throw new Error(rpcRes.msg || "No se pudo aprobar al usuario");
+      }
 
-      // 2) Notifica por email (endpoint Vercel). Enviamos nombre y email.
+      // 2) Notifica por email (endpoint Vercel). Enviamos nombre y email (no usamos auth.users).
       let mailOk = false;
       try {
         const res = await fetch("/api/notify_user_approved", {
@@ -199,7 +191,6 @@ export default function Admin_Usuarios() {
         if (res.ok) {
           mailOk = true;
         } else {
-          // intenta leer error para mostrarlo
           try {
             const j = await res.json();
             console.warn("[Admin] notify_user_approved response:", j);
@@ -340,7 +331,7 @@ export default function Admin_Usuarios() {
                 </thead>
                 <tbody>
                   {pendientes.map((u) => {
-                    const verif = authMap[u.id]?.email_confirmed ?? null;
+                    const verif = !!u.verified_at;
                     const fullName = [u.nombre, u.apellidos].filter(Boolean).join(" ") || "—";
                     return (
                       <tr key={u.id} className="border-t align-top">
@@ -359,23 +350,23 @@ export default function Admin_Usuarios() {
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDateShort(u.created_at)}</td>
                         <td className="px-3 py-2">
                           <StatusPills
-                            verified={verif ?? false}
+                            verified={verif}
                             approved={false}
                             notifiedAt={null}
-                            verifiedAt={authMap[u.id]?.email_confirmed_at || null}
+                            verifiedAt={u.verified_at || null}
                           />
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
                             <button
                               onClick={() => aprobar(u)}
-                              disabled={!!processingIds[u.id]}
+                              disabled={!!processingIds[u.id] || !!u.approved}
                               className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 text-xs"
                             >
                               {processingIds[u.id] ? "…" : "Aprobar"}
                             </button>
                             {(() => {
-                              const isVerified = !!(authMap[u.id]?.email_confirmed);
+                              const isVerified = !!u.verified_at;
                               return (
                                 <button
                                   onClick={() => reenviarVerificacion(u)}
@@ -427,7 +418,7 @@ export default function Admin_Usuarios() {
                 </thead>
                 <tbody>
                   {aprobados.map((u) => {
-                    const verif = authMap[u.id]?.email_confirmed ?? null;
+                    const verif = !!u.verified_at;
                     const fullName = [u.nombre, u.apellidos].filter(Boolean).join(" ") || "—";
                     return (
                       <tr key={u.id} className="border-t align-top">
@@ -447,10 +438,10 @@ export default function Admin_Usuarios() {
                         </td>
                         <td className="px-3 py-2">
                           <StatusPills
-                            verified={verif ?? false}
+                            verified={verif}
                             approved={true}
                             notifiedAt={u.notified_at || mailTime[u.id]}
-                            verifiedAt={authMap[u.id]?.email_confirmed_at || null}
+                            verifiedAt={u.verified_at || null}
                           />
                         </td>
                         <td className="px-3 py-2">
