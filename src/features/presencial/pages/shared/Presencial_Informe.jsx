@@ -18,6 +18,28 @@ function normalizeStatusAny(x) {
   return undefined;
 }
 
+// --- Utilidades de categoría ---
+const CATEGORY_ORDER = ['A','B','C','D','E','Diagnóstico','Tratamiento','Otros'];
+
+function normalizeCategory(categoryOrLabel) {
+  const raw = String(categoryOrLabel || '').trim();
+  const up = raw.toUpperCase();
+  // Coincidencia directa
+  if (['A','B','C','D','E','DIAGNÓSTICO','DIAGNOSTICO','TRATAMIENTO','OTROS'].includes(up)) {
+    return up === 'DIAGNOSTICO' ? 'Diagnóstico' : (up[0] === up ? (up.length === 1 ? up : (up === 'TRATAMIENTO' ? 'Tratamiento' : up === 'OTROS' ? 'Otros' : up)) : up);
+  }
+  // Prefijos comunes en label ("A) ...")
+  if (/^\s*A\)/i.test(raw)) return 'A';
+  if (/^\s*B\)/i.test(raw)) return 'B';
+  if (/^\s*C\)/i.test(raw)) return 'C';
+  if (/^\s*D\)/i.test(raw)) return 'D';
+  if (/^\s*E\)/i.test(raw)) return 'E';
+  // Palabras clave
+  if (/diag|sepsis|shock/i.test(raw)) return 'Diagnóstico';
+  if (/(^|\b)(tx|trat|antibi|vasopres|fluido|norad|foco)(\b|\))/i.test(raw)) return 'Tratamiento';
+  return 'Otros';
+}
+
 // Versión optimizada y bonita del informe presencial
 export default function Presencial_Informe() {
   const { sessionId: sessionIdParam, id: routeId } = useParams();
@@ -157,14 +179,20 @@ export default function Presencial_Informe() {
 
           if (rowsErr) throw rowsErr;
 
-          const mapped = (rows || []).map(r => ({
-            item_id: r.item_id,
-            label: r.item_label,
-            status: normalizeStatusAny(r.status) || normalizeStatusAny(r.status_text) || "na",
-            note: r.note || "",
-            updated_at: r.updated_at || null,
-            updated_by_display: r.updated_by_display || ""
-          }));
+          const mapped = (rows || []).map(r => {
+            const category = normalizeCategory(
+              r.item_category ?? r.item_group ?? r.category ?? r.item_category_name ?? r.item_label
+            );
+            return {
+              item_id: r.item_id,
+              label: r.item_label,
+              category,
+              status: normalizeStatusAny(r.status) || normalizeStatusAny(r.status_text) || 'na',
+              note: r.note || '',
+              updated_at: r.updated_at || null,
+              updated_by_display: r.updated_by_display || ''
+            };
+          });
 
           setHasChecklistStructure((rows || []).length > 0);
           setCheckRows(mapped);
@@ -234,6 +262,17 @@ export default function Presencial_Informe() {
     { label: "Checklist", value: checkRows.length },
     { label: "Datos revelados", value: vars.length },
   ];
+
+  // Agrupar por categoría (memoizado)
+  const groupedByCategory = useMemo(() => {
+    const g = {};
+    for (const r of checkRows) {
+      const c = normalizeCategory(r.category || r.label);
+      if (!g[c]) g[c] = [];
+      g[c].push(r);
+    }
+    return g;
+  }, [checkRows]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -355,43 +394,52 @@ export default function Presencial_Informe() {
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md print:shadow-none print:border print:bg-white">
             <h2 className="text-xl font-semibold mb-3 border-b border-slate-100 pb-2">Checklist</h2>
             <ChecklistSummary rows={checkRows} />
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-left border-separate border-spacing-y-1 print:text-xs">
-                <thead>
-                  <tr className="text-slate-500 text-sm">
-                    <th className="px-3 py-1.5 rounded-tl-lg">Ítem</th>
-                    <th className="px-3 py-1.5">Estado</th>
-                    <th className="px-3 py-1.5">Marcado por</th>
-                    <th className="px-3 py-1.5 rounded-tr-lg">Nota</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {checkRows.map(row => (
-                    <tr key={row.item_id} className="bg-slate-50 rounded-lg shadow-sm">
-                      <td className="px-3 py-2 rounded-l-lg">{row.label}</td>
-                      <td className="px-3 py-2">
-                        {STATUS_EMOJI[row.status]}{" "}
-                        <span className="font-medium">{STATUS_LABEL[row.status]}</span>
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-600">
-                        {row.updated_by_display ? (
-                          <>
-                            <span className="font-medium">{row.updated_by_display}</span>
-                            {row.updated_at ? (
-                              <span className="ml-1 text-slate-400">
-                                · {new Date(row.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 rounded-r-lg">{row.note || <span className="text-slate-400">—</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-4 space-y-6">
+              {CATEGORY_ORDER.filter(cat => groupedByCategory[cat]?.length).map(cat => (
+                <div key={cat} className="border border-slate-100 rounded-xl">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 rounded-t-xl text-sm font-semibold text-slate-700">
+                    {cat}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-separate border-spacing-y-1 print:text-xs">
+                      <thead>
+                        <tr className="text-slate-500 text-sm">
+                          <th className="px-3 py-1.5 rounded-tl-lg">Ítem</th>
+                          <th className="px-3 py-1.5">Estado</th>
+                          <th className="px-3 py-1.5">Marcado por</th>
+                          <th className="px-3 py-1.5 rounded-tr-lg">Nota</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedByCategory[cat].map(row => (
+                          <tr key={row.item_id} className="bg-white rounded-lg shadow-sm">
+                            <td className="px-3 py-2 rounded-l-lg">{row.label}</td>
+                            <td className="px-3 py-2">
+                              {STATUS_EMOJI[row.status]}{" "}
+                              <span className="font-medium">{STATUS_LABEL[row.status]}</span>
+                            </td>
+                            <td className="px-3 py-2 text-sm text-slate-600">
+                              {row.updated_by_display ? (
+                                <>
+                                  <span className="font-medium">{row.updated_by_display}</span>
+                                  {row.updated_at ? (
+                                    <span className="ml-1 text-slate-400">
+                                      · {new Date(row.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 rounded-r-lg">{row.note || <span className="text-slate-400">—</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         ) : hasChecklistStructure ? (

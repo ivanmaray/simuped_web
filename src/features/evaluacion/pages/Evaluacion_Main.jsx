@@ -184,7 +184,7 @@ export default function Evaluacion_Main() {
             // ⚠️ Importante: no hacemos embed a scenarios para evitar restricciones RLS adicionales
             const { data: resRows, error: resErr } = await supabase
               .from("case_resources")
-              .select("id, scenario_id, source, url, year, access, weight")
+              .select("id, scenario_id, source, url, year, weight")
               .in("scenario_id", scenarioIdsStr)
               .order("weight", { ascending: true })
               .order("id", { ascending: true });
@@ -216,7 +216,7 @@ export default function Evaluacion_Main() {
         if (ids.length > 0) {
           const { data: crits, error: e3 } = await supabase
             .from("v_attempt_criticals")
-            .select("attempt_id, total_criticals, criticals_ok, criticals_failed")
+            .select("attempt_id, total_criticas, criticas_ok, criticas_failed")
             .in("attempt_id", ids);
           if (e3) {
             console.warn("[Evaluacion] v_attempt_criticals error:", e3);

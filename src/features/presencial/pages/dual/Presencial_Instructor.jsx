@@ -16,6 +16,27 @@ const CHECK_STATUSES = [
 
 // --- Checklist categorías ABCDE/Patología/Medicación/Otros ---
 const CATEGORY_ORDER = ['A', 'B', 'C', 'D', 'E', 'Diagnóstico', 'Tratamiento', 'Otros'];
+const ROLE_ORDER = ['Todos', 'Medicina', 'Enfermería', 'Farmacia', 'Común'];
+function normalizeRole(role) {
+  const r = String(role || '').trim();
+  if (/^enfer/i.test(r)) return 'Enfermería';
+  if (/^farma/i.test(r)) return 'Farmacia';
+  if (/^med/i.test(r)) return 'Medicina';
+  if (/^com[uú]n$/i.test(r)) return 'Común';
+  if (!r) return 'Medicina'; // por compatibilidad: si no tiene rol lo tratamos como Medicina
+  return r;
+}
+const ROLE_COLORS = {
+  Medicina: 'bg-blue-50 text-blue-700 ring-blue-200',
+  'Enfermería': 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  Farmacia: 'bg-violet-50 text-violet-700 ring-violet-200',
+  'Común': 'bg-slate-100 text-slate-700 ring-slate-300',
+};
+const WEIGHT_BADGE = {
+  3: { label: 'Crítico', cls: 'bg-red-50 text-red-700 ring-red-200' },
+  2: { label: 'Importante', cls: 'bg-amber-50 text-amber-800 ring-amber-200' },
+  1: { label: 'Deseable', cls: 'bg-slate-100 text-slate-700 ring-slate-300' },
+};
 function normalizeCategory(category) {
   if (!category) return 'Otros';
   const c = String(category).trim();
@@ -90,12 +111,33 @@ function playAlarm() {
 }
 
 
+
 // Texto-guion por defecto (se puede editar en UI)
 const DEFAULT_SCRIPT = [
   'Llegada a urgencias: lactante de 12 meses con fiebre alta y decaimiento. Se inicia triage.',
   'Empeora clínicamente: cianosis periférica y relleno capilar lento. Sospecha de hipotensión: preparar fluidoterapia.',
   'Desaturación progresiva: valorar ventilación no invasiva y monitorización continua.'
 ];
+
+// --- Persistencia local del guion por sesión/escenario ---
+function makeScriptKey(sessionId, scenarioId){
+  return `presencial:script:${sessionId||'no-session'}:${scenarioId||'no-id'}`;
+}
+function saveScriptLocal(sessionId, scenarioId, texts, index){
+  try { localStorage.setItem(makeScriptKey(sessionId, scenarioId), JSON.stringify({ texts, index })); } catch {}
+}
+function loadScriptLocal(sessionId, scenarioId){
+  try {
+    const raw = localStorage.getItem(makeScriptKey(sessionId, scenarioId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.texts)) return null;
+    return { texts: parsed.texts, index: typeof parsed.index === 'number' ? parsed.index : 0 };
+  } catch { return null; }
+}
+function clearScriptLocal(sessionId, scenarioId){
+  try { localStorage.removeItem(makeScriptKey(sessionId, scenarioId)); } catch {}
+}
 
 export default function Presencial_Instructor() {
   const { id, sessionId } = useParams();
@@ -149,6 +191,25 @@ export default function Presencial_Instructor() {
   const [scriptTexts, setScriptTexts] = useState(DEFAULT_SCRIPT);
   const [scriptIndex, setScriptIndex] = useState(0);
 
+  // Cargar guion guardado localmente si existe
+  useEffect(() => {
+    if (!id) return;
+    const saved = loadScriptLocal(sessionId, id);
+    if (saved && Array.isArray(saved.texts)) {
+      setScriptTexts(saved.texts);
+      if (typeof saved.index === 'number') {
+        const idx = Math.max(0, Math.min(saved.index, Math.max(0, saved.texts.length - 1)));
+        setScriptIndex(idx);
+      }
+    }
+  }, [id, sessionId]);
+
+  // Guardar automáticamente el guion e índice activo
+  useEffect(() => {
+    if (!id) return;
+    saveScriptLocal(sessionId, id, scriptTexts, scriptIndex);
+  }, [scriptTexts, scriptIndex, id, sessionId]);
+
   // Variables reveladas (para marcar botones activos)
   const [revealed, setRevealed] = useState(new Set());
   // Checklist
@@ -158,6 +219,7 @@ export default function Presencial_Instructor() {
 
   // Agrupación por categoría (ABCDE / Patología / Medicación / Otros)
   const [activeCategory, setActiveCategory] = useState('A');
+  const [activeRole, setActiveRole] = useState('Todos');
   const groupedChecklist = useMemo(() => {
     const buckets = CATEGORY_ORDER.reduce((acc, k) => { acc[k] = []; return acc; }, {});
     (checklist || []).forEach(item => {
@@ -316,7 +378,7 @@ export default function Presencial_Instructor() {
         try {
           const { data: items } = await supabase
             .from('scenario_checklist')
-            .select('id,label,category,order_index,weight')
+            .select('id,label,category,order_index,weight,role')
             .eq('scenario_id', id)
             .order('order_index', { ascending: true });
           if (items && items.length) {
@@ -642,13 +704,8 @@ export default function Presencial_Instructor() {
     ensureCtx();
     if (!sessionId) return;
     const now = new Date().toISOString();
-    try {
-      await supabase
-        .from('presencial_sessions')
-        .update({ alarm_ping: now })
-        .eq('id', sessionId);
-    } catch {}
-    // Además: broadcast acción de alarma para listeners
+
+    // Broadcast acción de alarma para clientes conectados (alumnos/instructor)
     try {
       await supabase.from('session_actions').insert({
         session_id: sessionId,
@@ -657,8 +714,11 @@ export default function Presencial_Instructor() {
         payload: { at: now }
       });
     } catch {}
-    // Log
+
+    // Log (no bloqueante)
     try { logEvent('alarm', {}); } catch {}
+
+    // Sonido local en el panel del instructor
     playAlarm();
   }
 
@@ -746,7 +806,9 @@ export default function Presencial_Instructor() {
   }
   function resetScript() {
     const i = 0;
+    setScriptTexts(DEFAULT_SCRIPT);
     setScriptIndex(i);
+    clearScriptLocal(sessionId, id);
     ensureCtx();
     publishScript(i);
   }
@@ -1200,6 +1262,13 @@ export default function Presencial_Instructor() {
               <button onClick={nextScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">Siguiente →</button>
               <button onClick={() => { ensureCtx(); publishScript(); }} className="px-3 py-1.5 rounded font-semibold text-slate-900" style={{ background: colors.primaryLight }}>Publicar este paso</button>
               <button onClick={resetScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">Reiniciar</button>
+              {/* Acciones de persistencia local */}
+              <button onClick={() => saveScriptLocal(sessionId, id, scriptTexts, scriptIndex)} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50" title="Guardar una copia local del guion">
+                Guardar guion (local)
+              </button>
+              <button onClick={() => { clearScriptLocal(sessionId, id); }} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50" title="Eliminar la copia local del guion">
+                Borrar guardado
+              </button>
             </div>
           </div>
 
@@ -1445,35 +1514,90 @@ export default function Presencial_Instructor() {
                     })}
                   </div>
 
-                  {/* Lista de items de la categoría activa */}
+                  {/* Filtro por rol */}
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {ROLE_ORDER.map(r => {
+                      // contar elementos por rol dentro de la categoría activa
+                      const count = (groupedChecklist[activeCategory] || []).filter(it => (activeRole === 'Todos' ? true : true) && normalizeRole(it.role) === (r === 'Todos' ? normalizeRole(it.role) : r)).length;
+                      // Para el botón "Todos" mostramos el total de la categoría activa
+                      const totalCat = (groupedChecklist[activeCategory] || []).length;
+                      const active = activeRole === r;
+                      if (r === 'Todos') {
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setActiveRole('Todos')}
+                            className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${active ? 'ring-slate-400 bg-slate-100 text-slate-800' : 'ring-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
+                            title="Ver todos los roles"
+                          >
+                            Todos <span className="ml-1 text-xs text-slate-500">({totalCat})</span>
+                          </button>
+                        );
+                      }
+                      const roleCount = (groupedChecklist[activeCategory] || []).filter(it => normalizeRole(it.role) === r).length;
+                      // Ocultar botones de rol sin items
+                      if (roleCount === 0) return null;
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setActiveRole(r)}
+                          className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${active ? 'ring-slate-400 bg-slate-100 text-slate-800' : 'ring-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
+                          title={`Filtrar por rol: ${r}`}
+                        >
+                          {r} <span className="ml-1 text-xs text-slate-500">({roleCount})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Lista de items de la categoría activa y rol activo */}
                   <div className="space-y-3">
-                    {(groupedChecklist[activeCategory] || []).map(item => (
-                      <div key={item.id} className="p-3 rounded-lg border border-slate-200 bg-white shadow-sm">
-                        <div className="flex flex-col gap-2">
-                          <div className="font-medium text-slate-900">{item.label}</div>
-                          <div className="flex flex-wrap gap-2">
-                            {CHECK_STATUSES.map(s => (
-                              <button
-                                key={s.key}
-                                type="button"
-                                onClick={() => upsertChecklist(item.id, s.key)}
-                                className={`px-2.5 py-1.5 rounded ring-1 text-sm ${checkStatus[item.id] === s.key ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 hover:bg-slate-50'}`}
-                                title={s.label}
-                              >
-                                <span className="mr-1">{s.icon}</span>{s.label}
-                              </button>
-                            ))}
+                    {(groupedChecklist[activeCategory] || [])
+                      .filter(item => activeRole === 'Todos' ? true : normalizeRole(item.role) === activeRole)
+                      .map(item => {
+                        const role = normalizeRole(item.role);
+                        const roleCls = ROLE_COLORS[role] || ROLE_COLORS['Común'];
+                        const wb = WEIGHT_BADGE[item.weight] || null;
+                        return (
+                          <div key={item.id} className="p-3 rounded-lg border border-slate-200 bg-white shadow-sm">
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium text-slate-900">{item.label}</div>
+                                <span className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${roleCls}`} title={`Rol: ${role}`}>
+                                  {role}
+                                </span>
+                                {wb && (
+                                  <span className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${wb.cls}`} title={`Peso ${item.weight}`}>
+                                    {wb.label}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {CHECK_STATUSES.map(s => (
+                                  <button
+                                    key={s.key}
+                                    type="button"
+                                    onClick={() => upsertChecklist(item.id, s.key)}
+                                    className={`px-2.5 py-1.5 rounded ring-1 text-sm ${checkStatus[item.id] === s.key ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 hover:bg-slate-50'}`}
+                                    title={s.label}
+                                  >
+                                    <span className="mr-1">{s.icon}</span>{s.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Nota opcional"
+                                value={checkNotes[item.id] || ''}
+                                onChange={(e) => saveChecklistNote(item.id, e.target.value)}
+                                className="w-full rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                              />
+                            </div>
                           </div>
-                          <input
-                            type="text"
-                            placeholder="Nota opcional"
-                            value={checkNotes[item.id] || ''}
-                            onChange={(e) => saveChecklistNote(item.id, e.target.value)}
-                            className="w-full rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-                          />
-                        </div>
-                      </div>
-                    ))}
+                        );
+                      })}
                   </div>
                 </>
               )}
