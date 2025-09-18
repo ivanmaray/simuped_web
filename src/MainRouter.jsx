@@ -42,7 +42,7 @@ import { supabase } from "./supabaseClient";
 
 function DebugRouteLogger() {
   const location = useLocation();
-  console.debug("Montando ruta:", location.pathname);
+  console.debug("Montando ruta:", location.pathname + location.search);
   return null;
 }
 
@@ -171,9 +171,14 @@ export default function MainRouter() {
 
           {/* Presencial (1 pantalla) - NO admin */}
           <Route path="/presencial" element={<PresencialListado />} />
+          <Route path="/presencial/flow/dual" element={<PresencialListado />} />
           <Route
             path="/presencial/dual"
-            element={<Navigate to="/presencial?flow=dual" replace />}
+            element={<Navigate to="/presencial/flow/dual" replace />}
+          />
+          <Route
+            path="/presencial-dual"
+            element={<Navigate to="/presencial/flow/dual" replace />}
           />
           <Route
             path="/presencial/:id/confirm"
