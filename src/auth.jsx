@@ -2,6 +2,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
 
+const log = (...args) => { try { console.debug("[Auth]", ...args); } catch {} };
+
 const AuthCtx = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -51,22 +53,47 @@ export function AuthProvider({ children }) {
     return u;
   }
 
-  async function loadProfile(uid) {
+  // Carga el perfil desde RLS; si no existe, lo crea (upsert) con id/email del auth user.
+  async function loadProfile(uid, email) {
     if (!uid || loadingProfileRef.current) return;
     loadingProfileRef.current = true;
     try {
-      const { data, error } = await supabase
+      const sel = "id,email,nombre,apellidos,rol,unidad,approved,approved_at,is_admin,updated_at";
+      const { data, error, status } = await supabase
         .from("profiles")
-        .select("id,email,nombre,apellidos,rol,unidad,approved,approved_at,is_admin,updated_at")
+        .select(sel)
         .eq("id", uid)
         .maybeSingle();
 
+      if (!error && data) {
+        setProfile(data);
+        return;
+      }
+
+      // Si no hay fila (status 406 / data null), intentamos crear el perfil mínimo.
+      const missing = (!data && !error) || status === 406 || (error && (error.code === "PGRST116"));
+      if (missing) {
+        log("profile missing, creating minimal row for", uid);
+        const { data: up, error: upErr } = await supabase
+          .from("profiles")
+          .upsert({ id: uid, email: email ?? null }, { onConflict: "id" })
+          .select(sel)
+          .maybeSingle();
+
+        if (upErr) {
+          console.warn("[Auth] upsert profile failed:", upErr);
+          setProfile(null);
+          return;
+        }
+        setProfile(up ?? null);
+        return;
+      }
+
+      // Otros errores (p.ej. 500 por CHECK/RLS) → no bloquear app, seguir sin perfil
       if (error) {
         console.warn("[Auth] loadProfile error:", error);
         setProfile(null);
-        return;
       }
-      setProfile(data ?? null);
     } finally {
       loadingProfileRef.current = false;
     }
@@ -77,6 +104,7 @@ export function AuthProvider({ children }) {
 
     async function init() {
       console.log("[Auth] init start");
+      log("Supabase URL:", supabase?.rest?.url ?? "(unknown)");
       try {
         // 1) Intenta hidratar credenciales desde la URL si procede
         try {
@@ -110,9 +138,11 @@ export function AuthProvider({ children }) {
         const sess = sessRes?.session ?? null;
         if (!mounted) return;
         setSession(sess);
+        log("session user:", sess?.user?.id, sess?.user?.email);
         const u = await readAuthUser();
         const uidToLoad = u?.id || sess?.user?.id;
-        if (uidToLoad) loadProfile(uidToLoad);
+        const emailToLoad = u?.email || sess?.user?.email || null;
+        if (uidToLoad) loadProfile(uidToLoad, emailToLoad);
 
         // 3) Suscripción a cambios de auth
         try { unsubRef.current?.subscription?.unsubscribe?.(); } catch {}
@@ -126,7 +156,8 @@ export function AuthProvider({ children }) {
           }
           await readAuthUser();
           const uid = newSess?.user?.id;
-          if (uid) await loadProfile(uid); else setProfile(null);
+          const email = newSess?.user?.email || null;
+          if (uid) await loadProfile(uid, email); else setProfile(null);
         });
         unsubRef.current = sub;
       } finally {
@@ -152,7 +183,8 @@ export function AuthProvider({ children }) {
       emailConfirmed,
       refreshProfile: async () => {
         const uid = session?.user?.id;
-        if (uid) await loadProfile(uid);
+        const email = session?.user?.email || null;
+        if (uid) await loadProfile(uid, email);
       },
       refreshAuthUser: async () => { await readAuthUser(); },
     };

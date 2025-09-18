@@ -61,6 +61,7 @@ export default function Principal_Dashboard() {
   const { ready, session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  const [summaryWarn, setSummaryWarn] = useState("");
 
   // Perfil
   const [nombre, setNombre] = useState("");
@@ -144,6 +145,7 @@ export default function Principal_Dashboard() {
         if (sumRes.error) {
           // No bloquear: continuar sin resumen
           console.warn("[Dashboard] summary warning:", sumRes.error);
+          setSummaryWarn("No se pudo cargar el resumen de intentos. Puedes seguir usando el panel sin ese dato.");
         }
 
         const scenarios = scRes.data || [];
@@ -237,6 +239,11 @@ export default function Principal_Dashboard() {
         )}
 
         <Navbar />
+        {summaryWarn && (
+          <div className="bg-yellow-50 text-yellow-800 border border-yellow-200 px-4 py-2 text-sm">
+            {summaryWarn}
+          </div>
+        )}
 
         {/* Hero */}
         <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] border-b border-white/20">

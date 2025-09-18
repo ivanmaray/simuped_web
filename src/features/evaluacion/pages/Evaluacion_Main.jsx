@@ -216,7 +216,8 @@ export default function Evaluacion_Main() {
         if (ids.length > 0) {
           const { data: crits, error: e3 } = await supabase
             .from("v_attempt_criticals")
-            .select("attempt_id, total_criticas, criticas_ok, criticas_failed")
+            // Pedimos todas para ser compatibles con nombres antiguos (criticas_*) y nuevos (criticals_*)
+            .select("*")
             .in("attempt_id", ids);
           if (e3) {
             console.warn("[Evaluacion] v_attempt_criticals error:", e3);
@@ -224,7 +225,19 @@ export default function Evaluacion_Main() {
             setCritFeatureAvailable(false);
           } else {
             const map = {};
-            for (const c of (crits || [])) map[c.attempt_id] = c;
+            for (const c of (crits || [])) {
+              const attempt_id = c.attempt_id;
+              const total_criticals = (
+                c.total_criticals ?? c.total_criticas ?? null
+              );
+              const criticals_ok = (
+                c.criticals_ok ?? c.criticas_ok ?? null
+              );
+              const criticals_failed = (
+                c.criticals_failed ?? c.criticas_failed ?? null
+              );
+              map[attempt_id] = { attempt_id, total_criticals, criticals_ok, criticals_failed };
+            }
             setCritMap(map);
             setCritFeatureAvailable(true);
           }
@@ -309,7 +322,16 @@ export default function Evaluacion_Main() {
             console.warn("[Evaluacion] cargar sesiones como instructor falló:", e);
           }
 
-          const items = Array.isArray(parts) ? parts.filter(x => !!x.presencial_sessions) : [];
+          let items = Array.isArray(parts) ? parts.filter(x => !!x.presencial_sessions) : [];
+          // Deduplicar por session_id para evitar filas repetidas y warnings de keys duplicadas
+          const seenItems = new Set();
+          items = items.filter((row) => {
+            const sid = row?.presencial_sessions?.id;
+            if (!sid) return false;
+            if (seenItems.has(sid)) return false;
+            seenItems.add(sid);
+            return true;
+          });
           // 2) Para cada sesión, traer su checklist y calcular resumen
           const results = [];
           for (const row of items) {

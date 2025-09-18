@@ -1,4 +1,5 @@
-// src/pages/SimulacionDetalle.jsx
+// src/pages/SimulacionDetalle.jsx antes
+// src/features/online/pages/OnlineDetalle.jsx ahora
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
@@ -66,6 +67,16 @@ function normalizeOptions(opts) {
     // si ya son objetos
     return opts.map((o, i) => ({ key: String(o.key ?? i), label: o.label ?? String(o) }));
   }
+  return [];
+}
+
+function toArray(v) {
+  if (Array.isArray(v)) return v;
+  if (v == null) return [];
+  if (typeof v === 'string') {
+    try { const parsed = JSON.parse(v); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+  }
+  if (typeof v === 'object') return Object.values(v);
   return [];
 }
 
@@ -867,7 +878,7 @@ export default function Online_Detalle() {
               </div>
               <div>
                 <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {(brief?.history || []).map((h, i) => (
+                  {toArray(brief?.history).map((h, i) => (
                     <li key={i}>{h}</li>
                   ))}
                   {!brief?.history?.length && <li className="text-slate-500">—</li>}
@@ -943,7 +954,7 @@ export default function Online_Detalle() {
               </div>
               <div className="rounded-xl border border-slate-200 p-4">
                 <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {(brief?.exam || []).map((e, i) => (
+                  {toArray(brief?.exam).map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}
                   {!brief?.exam?.length && <li className="text-slate-500">—</li>}
@@ -958,7 +969,7 @@ export default function Online_Detalle() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-600 mb-2">Analítica rápida</h4>
                 <ul className="text-sm text-slate-700">
-                  {(brief?.quick_labs || []).map((q, i) => (
+                  {toArray(brief?.quick_labs).map((q, i) => (
                     <li key={i} className="flex justify-between border-b py-1">
                       <span>{q.name}</span>
                       <span className="font-medium">{q.value}</span>
@@ -970,7 +981,7 @@ export default function Online_Detalle() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-600 mb-2">Imagen</h4>
                 <ul className="text-sm text-slate-700">
-                  {(brief?.imaging || []).map((im, i) => (
+                  {toArray(brief?.imaging).map((im, i) => (
                     <li key={i} className="flex justify-between border-b py-1">
                       <span>{im.name}</span>
                       <span className="font-medium">{im.status === "ordered" ? "Solicitada" : "Disponible"}</span>
@@ -985,7 +996,7 @@ export default function Online_Detalle() {
           {/* Timeline */}
           <CaseCard title="Timeline">
             <ol className="text-sm text-slate-700">
-              {(brief?.timeline || []).map((t, i) => (
+              {toArray(brief?.timeline).map((t, i) => (
                 <li key={i} className="py-1">{t.tmin}’ · {t.event}</li>
               ))}
               {!brief?.timeline?.length && <li className="text-slate-500">—</li>}
@@ -998,7 +1009,7 @@ export default function Online_Detalle() {
               Indicadores clínicos que sugieren gravedad y requieren atención inmediata.
             </p>
             <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
-              {(brief?.red_flags || []).map((r, i) => (
+              {toArray(brief?.red_flags).map((r, i) => (
                 <li key={i} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">{r}</li>
               ))}
               {!brief?.red_flags?.length && <li className="text-slate-500">—</li>}
@@ -1170,7 +1181,7 @@ export default function Online_Detalle() {
               </button>
               <button
                 onClick={() => navigate("/dashboard")}
-                lassName="px-4 py-2 rounded-lg text-slate-900 font-semibold transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
+                className="px-4 py-2 rounded-lg text-slate-900 font-semibold transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
                 style={{ background: '#4FA3E3' }}
               >
                 Volver al panel
@@ -1344,7 +1355,7 @@ export default function Online_Detalle() {
                 {/* Preguntas */}
                 <div className="mt-4 space-y-6">
                   {(currentStep?.questions || []).map((q) => {
-                    const opts = q._options;
+                    const opts = Array.isArray(q._options) ? q._options : [];
                     const saved = answers[q.id];
                     const selectedKey = saved?.selectedKey ?? null;
                     const isCorrect = saved?.isCorrect;
