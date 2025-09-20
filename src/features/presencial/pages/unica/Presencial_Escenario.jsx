@@ -688,6 +688,35 @@ useEffect(() => {
     }
   }
 
+  // Fallback tri-state (same UI as 2-pantallas) for hardcoded items (no DB)
+  function renderTriState(label, respKey, helpText) {
+    const val = responses[respKey];
+    const s = checklistStatusFromValue(val);
+    const setStatus = (next) => {
+      setResponses((r) => ({ ...r, [respKey]: next }));
+      // Ojo: estos ítems "fallback" no se guardan en DB (no hay item_id). Aparecerán en el informe local si se usa responses.
+    };
+    const btn = (code, text) => (
+      <button
+        type="button"
+        onClick={() => setStatus(code)}
+        className={`px-2.5 py-1 rounded-lg text-sm ring-1 transition ${s === code ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 bg-white hover:bg-slate-50'}`}
+      >{text}</button>
+    );
+    return (
+      <div className="mb-2">
+        <div className="text-slate-800 mb-1">{label}</div>
+        <div className="flex flex-wrap gap-2">
+          {btn('ok', 'Realizado')}
+          {btn('wrong', 'Realizado mal')}
+          {btn('missed', 'No realizado')}
+          {btn('na', 'N/A')}
+        </div>
+        {helpText ? <p className="text-xs text-slate-500 mt-1">{helpText}</p> : null}
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="min-h-screen grid place-items-center text-slate-600">Cargando…</div>;
   }
@@ -1066,20 +1095,13 @@ useEffect(() => {
             {/* Checklist ABCDE */}
             <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden">
               <h4 className="text-xl font-semibold text-slate-900 mb-3">Checklist rápida (ABCDE)</h4>
-              <ul className="space-y-2 text-slate-700">
-                {[
-                  "Vía aérea asegurada",
-                  "Ventilación/oxigenación",
-                  "Circulación (acceso/FC/TA)",
-                  "Neurológico (Glasgow, glucemia)",
-                  "Exposición (temperatura, lesiones)",
-                ].map((item) => (
-                  <li key={item} className="flex items-center gap-3">
-                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-[#1E6ACB] focus:ring-[#1E6ACB]" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-2">
+                {renderTriState('Vía aérea asegurada', 'fbk_abcde_airway')}
+                {renderTriState('Ventilación / oxigenación', 'fbk_abcde_breathing')}
+                {renderTriState('Circulación (acceso/FC/TA)', 'fbk_abcde_circulation')}
+                {renderTriState('Neurológico (Glasgow, glucemia)', 'fbk_abcde_disability')}
+                {renderTriState('Exposición (temperatura, lesiones)', 'fbk_abcde_exposure')}
+              </div>
             </div>
 
             {/* Cronómetro */}
@@ -1091,16 +1113,15 @@ useEffect(() => {
             {/* Uso seguro del medicamento */}
             <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm print:hidden">
               <h4 className="text-xl font-semibold text-slate-900 mb-2">Uso seguro del medicamento</h4>
-              <p className="text-slate-600 mb-3">Marca los 5 correctos y anota incidentes/near-miss.</p>
-              <div className="space-y-2 text-slate-700">
-                {["Paciente correcto","Medicamento correcto","Dosis correcta","Vía correcta","Hora correcta"].map((k) => (
-                  <label key={k} className="flex items-center gap-3">
-                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-[#1E6ACB] focus:ring-[#1E6ACB]" />
-                    <span>{k}</span>
-                  </label>
-                ))}
+              <p className="text-slate-600 mb-3">Marca los 5 correctos o documenta si no procede.</p>
+              <div className="space-y-2">
+                {renderTriState('Paciente correcto', 'fbk_5rights_patient')}
+                {renderTriState('Medicamento correcto', 'fbk_5rights_drug')}
+                {renderTriState('Dosis correcta', 'fbk_5rights_dose')}
+                {renderTriState('Vía correcta', 'fbk_5rights_route')}
+                {renderTriState('Hora correcta', 'fbk_5rights_time')}
               </div>
-              <textarea className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]" rows={3} placeholder="Incidentes / riesgos detectados..." />
+              <textarea className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]" rows={3} placeholder="Incidentes / riesgos detectados... (opcional)" />
             </div>
 
             {/* Debrief */}
