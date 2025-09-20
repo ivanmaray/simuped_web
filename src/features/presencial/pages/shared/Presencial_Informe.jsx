@@ -241,11 +241,14 @@ export default function Presencial_Informe() {
     return () => { mounted = false; };
   }, [resolvedSessionId]);
 
+  // Declarar vistas condicionales para loading y error
+  let loadingView = null;
+  let errorView = null;
   if (loading) {
-    return <div className="min-h-screen grid place-items-center text-slate-600">Generando informe…</div>;
+    loadingView = <div className="min-h-screen grid place-items-center text-slate-600">Generando informe…</div>;
   }
-  if (err || !session) {
-    return (
+  if ((err || !session) && !loading) {
+    errorView = (
       <div className="min-h-screen grid place-items-center">
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-800">
           <p className="mb-3">{err || "No se encontró la sesión."}</p>
@@ -273,6 +276,10 @@ export default function Presencial_Informe() {
     }
     return g;
   }, [checkRows]);
+
+  // Renderizado único al final
+  if (loadingView) return loadingView;
+  if (errorView) return errorView;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">

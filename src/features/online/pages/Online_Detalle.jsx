@@ -276,11 +276,19 @@ function defaultTepReason(kind, status) {
 
 
 export default function Online_Detalle() {
-  const { id } = useParams(); // id de scenarios (int)
+  const { id, attemptId: attemptParam } = useParams(); // id de escenario y (opcional) attemptId por ruta /resumen/:attemptId
+  const scenarioIdParam = String(id ?? "");
+  const scenarioIdNumeric = /^\d+$/.test(scenarioIdParam) ? Number(scenarioIdParam) : null;
   const navigate = useNavigate();
   const location = useLocation();
   const query = new URLSearchParams(location.search);
-  const initialAttemptId = query.get("attempt");
+  const initialAttemptId = query.get("attempt") || attemptParam || null;
+  const forceSummaryRoute = location.pathname.includes("/resumen/");
+
+  // Debug: trace route and mode
+  try {
+    console.debug("[Detalle] route=", location.pathname, "attempt=", initialAttemptId, "forceSummaryRoute=", forceSummaryRoute);
+  } catch {}
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -357,7 +365,7 @@ export default function Online_Detalle() {
           .update({
             started_at: now.toISOString(),
             expires_at: expISO,
-            status: "en_curso",
+            status: "en curso",
           })
           .eq("id", attemptId);
 
@@ -388,13 +396,14 @@ export default function Online_Detalle() {
   // Auto-iniciar el contador si no hay briefing (una vez que tenemos el intento)
   useEffect(() => {
     if (loading) return;
+    if (showSummary) return;            // si estamos en resumen, no arrancar
     if (showBriefing) return;           // mientras se muestra briefing, no arrancar
     if (!attemptId) return;
     if (expiresAt) return;              // ya arrancado
     if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
       startAttemptCountdown();
     }
-  }, [loading, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt]);
+  }, [loading, showSummary, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt]);
 
   const currentStep = steps[currentIdx] || null;
 
@@ -450,14 +459,49 @@ export default function Online_Detalle() {
       // Comprobar que el attempt existe y pertenece al usuario y al escenario
       const { data: att, error: attErr } = await supabase
         .from("attempts")
-        .select("id, user_id, scenario_id, expires_at, time_limit")
+        .select("id, user_id, scenario_id, status, started_at, expires_at, time_limit")
         .eq("id", initialAttemptId)
         .maybeSingle();
 
-      if (attErr || !att || att.user_id !== sess.user.id || Number(att.scenario_id) !== Number(id)) {
+      const sameScenario = String(att?.scenario_id ?? "") === scenarioIdParam;
+      const shouldRedirectToConfirm =
+        !forceSummaryRoute && (attErr || !att || att.user_id !== sess.user.id || !sameScenario);
+      if (shouldRedirectToConfirm) {
+        console.debug("[Detalle] Redirijo a confirm por validación:", {
+          attErr: !!attErr, hasAtt: !!att, sameUser: att?.user_id === sess.user.id, sameScenario, forceSummaryRoute
+        });
         navigate(`/simulacion/${id}/confirm`, { replace: true });
         return;
       }
+      // --- comprobación de expiración o estado cerrado ---
+      // Preferimos hora del servidor para evitar desajustes de reloj del cliente
+      let nowServer = null;
+      try {
+        const { data: nowData } = await supabase.rpc('now_utc');
+        nowServer = nowData ? new Date(nowData) : null;
+      } catch {}
+      const nowRef = nowServer || new Date();
+      const expiresAtRef = att.expires_at ? new Date(att.expires_at) : null;
+      const isExpiredByTime = !!(expiresAtRef && nowRef >= expiresAtRef);
+      const statusStr = String(att.status || '').toLowerCase();
+      const isClosedStatus = statusStr === 'finalizado' || !!att.finished_at;
+
+      // Si está expirado por tiempo y aún aparece como abierto, cerrarlo de forma idempotente
+      if (isExpiredByTime && !isClosedStatus) {
+        try {
+          await supabase
+            .from("attempts")
+            .update({
+              status: "finalizado",
+              finished_at: new Date().toISOString()
+            })
+            .eq("id", att.id)
+            .is("finished_at", null);
+        } catch { /* noop */ }
+      }
+      // si está expirado o ya cerrado, prepara vista de resumen (sin montar simulación)
+      const shouldShowSummary = isExpiredByTime || isClosedStatus;
+
       setAttemptId(att.id);
       // Guardamos info pero NO arrancamos el contador hasta que el usuario pulse "Comenzar simulación"
       setAttemptTimeLimit(typeof att.time_limit === "number" ? att.time_limit : null);
@@ -467,7 +511,15 @@ export default function Online_Detalle() {
       } else {
         setInitialExpiresAt(null);
       }
-      // Aún no seteamos expiresAt/remainingSecs aquí; se hará al salir del briefing
+
+      if (shouldShowSummary || forceSummaryRoute) {
+        // Activamos resumen, pero NO hacemos return: necesitamos cargar scenario, steps y respuestas
+        setShowBriefing(false);
+        setTimeUp(true);
+        setRemainingSecs(0);
+        setShowSummary(true);
+      }
+      // Aún no seteamos expiresAt/remainingSecs si no hay resumen; se hará al salir del briefing
 
       // Rol del usuario
       let userRole = "";
@@ -485,7 +537,7 @@ export default function Online_Detalle() {
       const { data: esc, error: e1 } = await supabase
         .from("scenarios")
         .select("id, title, summary, level, mode, estimated_minutes, created_at")
-        .eq("id", Number(id))
+        .eq("id", scenarioIdNumeric ?? scenarioIdParam)
         .maybeSingle();
 
       if (e1) {
@@ -503,7 +555,9 @@ export default function Online_Detalle() {
       try {
         const { data: b, error: bErr } = await supabase
           .from("case_briefs")
-          .select("*")
+          .select(
+            "id, scenario_id, title, context, chips, demographics, chief_complaint, history, triangle, vitals, exam, quick_labs, imaging, red_flags, estimated_minutes, level, critical_actions, learning_objective"
+          )
           .eq("scenario_id", esc.id)
           .maybeSingle();
         if (!bErr && b) {
@@ -581,6 +635,37 @@ export default function Online_Detalle() {
         });
 
       setSteps(stepsWithQs);
+      // Si estamos en resumen, cargar respuestas guardadas para pintar la corrección
+      if (attemptId && (shouldShowSummary || forceSummaryRoute)) {
+        try {
+          const { data: savedAns, error: ansErr } = await supabase
+            .from("attempt_answers")
+            .select("question_id, selected_option, is_correct")
+            .eq("attempt_id", attemptId);
+          if (!ansErr && Array.isArray(savedAns)) {
+            const map = {};
+            // Construimos un indice de preguntas por id para poder evaluar etiquetas
+            const qIndex = new Map(stepsWithQs.flatMap(s => s.questions || []).map(q => [q.id, q]));
+            for (const row of savedAns) {
+              const q = qIndex.get(row.question_id);
+              const idx = typeof row.selected_option === "number" ? row.selected_option : Number(row.selected_option);
+              const ok = typeof row.is_correct === "boolean"
+                ? row.is_correct
+                : (q ? Number(q.correct_option) === Number(idx) : false);
+              map[row.question_id] = {
+                selectedKey: idx,           // usamos el índice como key para mantener compatibilidad
+                selectedIndex: idx,
+                isCorrect: !!ok,
+              };
+            }
+            setAnswers(map);
+          } else if (ansErr) {
+            console.warn("[Detalle] cargar respuestas guardadas error:", ansErr);
+          }
+        } catch (e) {
+          console.warn("[Detalle] excepción cargando respuestas guardadas:", e);
+        }
+      }
       performance.mark('sim:data:end');
       try {
         performance.measure('sim:data:steps+questions', 'sim:data:start', 'sim:data:end');
@@ -591,10 +676,16 @@ export default function Online_Detalle() {
     }
 
     init();
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSess) => {
       if (!mounted) return;
-      setSession(sess ?? null);
-      if (!sess) navigate("/", { replace: true });
+      setSession(newSess ?? null);
+      // Solo redirigir a inicio si el usuario se desloguea realmente
+      if (event === "SIGNED_OUT" || event === "USER_DELETED") {
+        navigate("/", { replace: true });
+      } else {
+        // Evitar redirecciones en TOKEN_REFRESHED o INITIAL_SESSION
+        try { console.debug("[Detalle] auth state:", event, !!newSess); } catch {}
+      }
     });
     return () => {
       mounted = false;
@@ -673,6 +764,37 @@ export default function Online_Detalle() {
     handler();
   }, [timeUp, showSummary, allAnswered]);
 
+  // 🔒 Asegurar cierre en BD cuando estamos en resumen (evita reanudar en bucle)
+  useEffect(() => {
+    if (!showSummary || !attemptId) return;
+    (async () => {
+      try {
+        const { data: attRow, error: attErr } = await supabase
+          .from("attempts")
+          .select("id, status, finished_at")
+          .eq("id", attemptId)
+          .maybeSingle();
+        if (attErr) {
+          console.warn("[Resumen] no se pudo leer attempt para cierre:", attErr);
+          return;
+        }
+        if (attRow && String(attRow.status || "").toLowerCase() === "en curso") {
+          // si aún aparece abierto, cerramos con la mejor inferencia posible
+          await finishAttempt("finalizado");
+        } else if (attRow && !attRow.finished_at) {
+          // si no tiene finished_at, actualizamos mínimos para no dejarlo abierto
+          const { error: updErr } = await supabase
+            .from("attempts")
+            .update({ finished_at: new Date().toISOString() })
+            .eq("id", attemptId);
+          if (updErr) console.warn("[Resumen] fallo ajustando finished_at:", updErr);
+        }
+      } catch (e) {
+        console.warn("[Resumen] excepción al asegurar cierre:", e);
+      }
+    })();
+  }, [showSummary, attemptId, allAnswered]);
+
   async function selectAnswer(q, optKey, optIndex) {
     if (qTimers[q.id]?.expired) {
       console.warn("[SimulacionDetalle] Pregunta expirada: no se puede responder");
@@ -735,6 +857,7 @@ export default function Online_Detalle() {
     const score = Math.max(0, Math.round(base - penalty));
 
     try {
+      const safeStatus = statusOverride === "finalizado" ? "finalizado" : "finalizado";
       const { error: updErr } = await supabase
         .from("attempts")
         .update({
@@ -742,7 +865,7 @@ export default function Online_Detalle() {
           correct_count: correctCount,
           total_count: total,
           score,
-          ...(statusOverride ? { status: statusOverride } : { status: "finalizado" }),
+          status: safeStatus,
         })
         .eq("id", attemptId);
 
@@ -859,7 +982,7 @@ export default function Online_Detalle() {
             <h1 className="text-2xl font-semibold text-slate-900">{brief?.title || scenario?.title}</h1>
             {brief?.context && <p className="text-slate-600 mt-1">{brief.context}</p>}
             <div className="flex flex-wrap gap-2 mt-3">
-              {(Array.isArray(brief?.chips) ? brief.chips : []).map((c, i) => (
+              {toArray(brief?.chips).map((c, i) => (
                 <Chip key={i}>{c}</Chip>
               ))}
             </div>
@@ -867,22 +990,35 @@ export default function Online_Detalle() {
 
           {/* Datos del paciente */}
           <CaseCard title="Datos del paciente">
+            {/* Si demographics es texto plano, muéstralo arriba */}
+            {typeof brief?.demographics === "string" && brief.demographics && (
+              <p className="text-sm text-slate-800 mb-3">{brief.demographics}</p>
+            )}
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                {brief?.demographics?.age && <Row label="Edad" value={brief.demographics.age} />}
-                {brief?.demographics?.weightKg != null && (
-                  <Row label="Peso" value={`${brief.demographics.weightKg} kg`} />
+                {brief?.demographics && typeof brief.demographics === "object" && (
+                  <>
+                    {brief.demographics.age && <Row label="Edad" value={brief.demographics.age} />}
+                    {brief.demographics.weightKg != null && (
+                      <Row label="Peso" value={`${brief.demographics.weightKg} kg`} />
+                    )}
+                    {brief.demographics.sex && <Row label="Sexo" value={brief.demographics.sex} />}
+                  </>
                 )}
-                {brief?.demographics?.sex && <Row label="Sexo" value={brief.demographics.sex} />}
                 {brief?.chief_complaint && <Row label="Motivo" value={brief.chief_complaint} />}
               </div>
               <div>
-                <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {toArray(brief?.history).map((h, i) => (
-                    <li key={i}>{h}</li>
-                  ))}
-                  {!brief?.history?.length && <li className="text-slate-500">—</li>}
-                </ul>
+                {Array.isArray(toArray(brief?.history)) && toArray(brief?.history).length > 0 ? (
+                  <ul className="list-disc pl-5 text-sm text-slate-700">
+                    {toArray(brief?.history).map((h, i) => (
+                      <li key={i}>{h}</li>
+                    ))}
+                  </ul>
+                ) : brief?.history ? (
+                  <p className="text-sm text-slate-700">{String(brief.history)}</p>
+                ) : (
+                  <p className="text-slate-500 text-sm">—</p>
+                )}
               </div>
             </div>
           </CaseCard>
@@ -993,15 +1129,6 @@ export default function Online_Detalle() {
             </div>
           </CaseCard>
 
-          {/* Timeline */}
-          <CaseCard title="Timeline">
-            <ol className="text-sm text-slate-700">
-              {toArray(brief?.timeline).map((t, i) => (
-                <li key={i} className="py-1">{t.tmin}’ · {t.event}</li>
-              ))}
-              {!brief?.timeline?.length && <li className="text-slate-500">—</li>}
-            </ol>
-          </CaseCard>
 
           {/* Signos de alarma */}
           <CaseCard title="Signos de alarma">
@@ -1018,6 +1145,7 @@ export default function Online_Detalle() {
 
 
 
+
           {/* Barra de inicio */}
           <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">
             <div className="text-sm text-slate-600">
@@ -1027,12 +1155,14 @@ export default function Online_Detalle() {
               <span className="mx-2">·</span>
               <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
-            <button
-              onClick={startAttemptCountdown}
-              className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90"
-            >
-              Comenzar simulación
-            </button>
+          <button
+            onClick={() => { if (!showSummary) startAttemptCountdown(); }}
+            disabled={showSummary}
+            className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 disabled:opacity-50"
+            title={showSummary ? "El intento ya está finalizado o expirado" : (initialExpiresAt ? "Reanudar intento" : "Iniciar intento")}
+          >
+            {initialExpiresAt ? "Reanudar intento" : "Comenzar simulación"}
+          </button>
           </div>
         </main>
       </div>

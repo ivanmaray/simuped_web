@@ -20,11 +20,14 @@ export default function Presencial_Confirm() {
   const [submitting, setSubmitting] = useState(false);
   const [userId, setUserId] = useState(null);
   const [users, setUsers] = useState([]); // perfiles (profiles) de Supabase
+  const [existingSession, setExistingSession] = useState(null); // sesión abierta (no finalizada)
+  const lockActive = !!existingSession; // bloquear edición si hay sesión en curso
   const [roleToAdd, setRoleToAdd] = useState('medico');
   const [searchText, setSearchText] = useState('');
   const LS_FLOW_KEY = 'presencial:confirm:flow';
 
   function addParticipantFromSearch() {
+    if (lockActive) return; // bloqueado por sesión en curso
     const pool = usersForRole(roleToAdd);
     const found = pool.find(u => (u.label || '').toLowerCase() === searchText.toLowerCase());
     if (found) {
@@ -35,6 +38,26 @@ export default function Presencial_Confirm() {
       setSearchText('');
     }
   }
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!id || !userId) return; // necesitamos escenario y usuario
+      // Busca una sesión abierta (sin finalizar) creada por este usuario para este escenario
+      const { data: sess, error: sErr } = await supabase
+        .from('presencial_sessions')
+        .select('id, public_code')
+        .eq('scenario_id', id)
+        .eq('user_id', userId)
+        .is('ended_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!mounted) return;
+      if (!sErr && sess) setExistingSession(sess);
+      else setExistingSession(null);
+    })();
+    return () => { mounted = false; };
+  }, [id, userId]);
   const [searchParams] = useSearchParams();
   const location = useLocation();
   // Si vienes por la ruta de 1 pantalla (/presencial/..), el flujo por defecto es 'single'.
@@ -269,6 +292,9 @@ export default function Presencial_Confirm() {
             <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
               {flow === 'dual' ? 'Dual · 2 pantallas' : 'Clásico · 1 pantalla'}
             </span>
+            {lockActive && (
+              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 ring-1 ring-amber-300">Sesión en curso</span>
+            )}
           </div>
           <div className="mt-4 inline-flex rounded-lg ring-1 ring-white/30 overflow-hidden" role="tablist" aria-label="Selector de modo">
             <button
@@ -313,6 +339,30 @@ export default function Presencial_Confirm() {
           </span>
         </div>
 
+        {/* Banner de sesión en curso */}
+        {lockActive && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">Tienes una sesión en curso para este escenario.</p>
+                <p className="text-sm opacity-90">No puedes modificar el equipo mientras la sesión esté activa.</p>
+              </div>
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!existingSession) return;
+                    if (flow === 'single') navigate(`/presencial/${sc.id}/escenario?session=${existingSession.id}`);
+                    else navigate(`/presencial/instructor/${sc.id}/${existingSession.id}`);
+                  }}
+                  className="px-3 py-1.5 rounded-lg font-semibold text-white bg-[#1E6ACB] hover:opacity-90"
+                >
+                  Ir a la sesión en curso
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Participantes */}
         <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3 mb-3">
@@ -329,8 +379,12 @@ export default function Presencial_Confirm() {
                 <button
                   key={r}
                   type="button"
-                  onClick={() => setRoleToAdd(r)}
-                  className={`px-3 py-1 rounded-full text-sm ring-1 transition ${roleToAdd===r ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'}`}
+                  onClick={() => { if (!lockActive) setRoleToAdd(r); }}
+                  className={`px-3 py-1 rounded-full text-sm ring-1 transition ${
+                    lockActive
+                      ? 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed'
+                      : (roleToAdd===r ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50')
+                  }`}
                 >
                   {ROLE_BADGE[r]?.text || r}
                 </button>
@@ -344,7 +398,8 @@ export default function Presencial_Confirm() {
                   value={searchText}
                   onChange={e => setSearchText(e.target.value)}
                   placeholder={`Escribe un nombre o elige un usuario de ${ROLE_BADGE[roleToAdd]?.text.toLowerCase()}`}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB] disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={lockActive}
                 />
                 <datalist id={`users-${roleToAdd}`}>
                   {usersForRole(roleToAdd).map(u => (
@@ -355,7 +410,8 @@ export default function Presencial_Confirm() {
               <button
                 type="button"
                 onClick={addParticipantFromSearch}
-                className="px-3 py-2 rounded-lg font-semibold text-white bg-[#1E6ACB] hover:opacity-90"
+                disabled={lockActive}
+                className={`px-3 py-2 rounded-lg font-semibold text-white ${lockActive ? 'bg-slate-300 cursor-not-allowed' : 'bg-[#1E6ACB] hover:opacity-90'}`}
               >
                 Añadir
               </button>
@@ -393,7 +449,8 @@ export default function Presencial_Confirm() {
                         return { ...it, user_id: val, name: label || it.name };
                       }));
                     }}
-                    className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                    className="rounded-lg border border-slate-300 px-2 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={lockActive}
                   >
                     <option value="">(sin usuario)</option>
                     {usersForRole(p.role).map(u => (
@@ -403,7 +460,8 @@ export default function Presencial_Confirm() {
                   <button
                     type="button"
                     onClick={() => setParticipants(arr => arr.filter((_, i) => i !== idx))}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm"
+                    disabled={lockActive}
+                    className={`px-2.5 py-1.5 rounded-lg border text-slate-700 text-sm ${lockActive ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300 hover:bg-slate-50'}`}
                   >
                     Eliminar
                   </button>
@@ -442,12 +500,21 @@ export default function Presencial_Confirm() {
         {/* Acciones */}
         <div className="flex flex-col sm:flex-row gap-3">
           <button 
-            onClick={handleStart}
+            onClick={() => {
+              if (lockActive && existingSession) {
+                if (flow === 'single') navigate(`/presencial/${sc.id}/escenario?session=${existingSession.id}`);
+                else navigate(`/presencial/instructor/${sc.id}/${existingSession.id}`);
+              } else {
+                handleStart();
+              }
+            }}
             disabled={submitting}
-            className={`px-4 py-2 rounded-lg font-semibold transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB] ${submitting ? 'bg-slate-300 text-slate-600 cursor-not-allowed' : 'text-slate-900'}`}
-            style={submitting ? undefined : { background: '#4FA3E3' }}
+            className={`px-4 py-2 rounded-lg font-semibold transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB] ${
+              submitting ? 'bg-slate-300 text-slate-600 cursor-not-allowed' : 'text-slate-900'
+            }`}
+            style={submitting ? undefined : { background: lockActive ? '#0A3D91' : '#4FA3E3' }}
           >
-            {submitting ? 'Creando sesión…' : 'Comenzar'}
+            {submitting ? 'Creando sesión…' : (lockActive ? 'Ir a la sesión en curso' : 'Comenzar')}
           </button>
           <Link to={flow === 'dual' ? '/presencial/instructor' : '/presencial'} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white">
             Volver al listado

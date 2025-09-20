@@ -289,6 +289,8 @@ export default function Presencial_Instructor() {
           return;
         }
 
+        // Con params presentes, activamos loading hasta terminar la carga
+        setLoading(true);
         // 1) Escenario
         const { data: sc, error: scErr } = await supabase
           .from("scenarios")
@@ -468,26 +470,48 @@ export default function Presencial_Instructor() {
     }
   }
 
-  // Timer local en UI (solo corre tras pulsar Iniciar)
+  // Cronómetro de pantalla
+  // - Si el instructor pulsa "Iniciar", usamos `timerStartAt` (inicio local)
+  // - Si ya existe una sesión empezada (started_at en BD), mostramos el tiempo directamente
+  //   aunque la UI siga bloqueada (sin necesidad de pulsar "Iniciar").
   useEffect(() => {
-    if (!timerActive || !timerStartAt) {
-      if (!timerActive) {
-        // si está parado, no forzamos 0 para conservar el último valor mostrado
-      }
-      if (timerRef.current) clearInterval(timerRef.current);
+    // Limpia posibles intervals previos para evitar dobles actualizaciones
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Preferimos el inicio local si existe; si no, el inicio persistido de la sesión
+    const baseStartISO = timerStartAt || startedAt;
+    if (!baseStartISO) {
+      // No hay referencia temporal aún; no correr cronómetro
       return;
     }
-    const t0 = new Date(timerStartAt).getTime();
+
+    const t0 = new Date(baseStartISO).getTime();
+
     const compute = () => {
       const endMs = endedAt ? new Date(endedAt).getTime() : Date.now();
       const diff = Math.max(0, Math.floor((endMs - t0) / 1000));
       setElapsedSec(diff);
     };
+
+    // Cálculo inmediato al montar/cambiar dependencias
     compute();
-    if (endedAt) return; // si ya se marcó fin, no seguir
+
+    // Si ya hay ended_at, no hace falta interval; dejamos el valor fijo
+    if (endedAt) return;
+
+    // Interval de 1s para sesiones en curso
     timerRef.current = setInterval(compute, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [timerActive, timerStartAt, endedAt]);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [timerStartAt, startedAt, endedAt]);
 
   function fmtDuration(sec) {
     const s = Math.max(0, Number(sec) || 0);
@@ -501,34 +525,68 @@ export default function Presencial_Instructor() {
   // Controles inicio/fin (persistentes y tolerantes a columnas faltantes)
   async function startSession() {
     if (!sessionId) return;
-    const now = new Date().toISOString();
-    // Desbloquear controles y arrancar cronómetro locales
+
+    // 1) Lee el estado actual para saber si ya estaba iniciada/finalizada
+    const { data: s0 } = await supabase
+      .from('presencial_sessions')
+      .select('started_at, ended_at')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    let effectiveStarted = s0?.started_at || null;
+    let effectiveEnded = s0?.ended_at || null;
+
+    // 2) Si NO estaba iniciada, intenta iniciarla (idempotente: solo si started_at IS NULL)
+    if (!effectiveStarted) {
+      const nowIso = new Date().toISOString();
+      const { data: upd } = await supabase
+        .from('presencial_sessions')
+        .update({ started_at: nowIso, ended_at: null })
+        .eq('id', sessionId)
+        .is('started_at', null) // <-- clave: no reiniciar si ya existe
+        .select('started_at, ended_at')
+        .maybeSingle();
+
+      if (upd && upd.started_at) {
+        effectiveStarted = upd.started_at;
+        effectiveEnded = upd.ended_at || null;
+        try { logEvent('session.start', { started_at: effectiveStarted }); } catch {}
+      } else {
+        // Carrera: otro cliente pudo iniciarla. Relee el estado actual.
+        const { data: s1 } = await supabase
+          .from('presencial_sessions')
+          .select('started_at, ended_at')
+          .eq('id', sessionId)
+          .maybeSingle();
+        effectiveStarted = s1?.started_at || nowIso;
+        effectiveEnded = s1?.ended_at || null;
+      }
+    }
+
+    // 3) Ajusta estado local (sin reiniciar crono si ya existía)
+    setStartedAt(effectiveStarted || null);
+    setEndedAt(effectiveEnded || null);
+
+    // Desbloquea UI y arranca crono local desde started_at efectivo
     setUiUnlocked(true);
     setTimerActive(true);
-    setTimerStartAt(now);
+    setTimerStartAt(effectiveStarted || new Date().toISOString());
 
-    // Estado temporal informativo
-    setStartedAt(now);
-    setEndedAt(null);
-    setElapsedSec(0);
-    setSession(prev => (prev ? { ...prev, started_at: now, ended_at: null } : prev));
-    // Persistir sesión como actual en localStorage
+    // Calcula tiempo ya transcurrido (si procede)
     try {
-      if (sessionId && scenario?.id) {
+      if (effectiveStarted) {
+        const t0 = new Date(effectiveStarted).getTime();
+        const t1 = effectiveEnded ? new Date(effectiveEnded).getTime() : Date.now();
+        setElapsedSec(Math.max(0, Math.floor((t1 - t0) / 1000)));
+      }
+    } catch {}
+
+    // Persistir como "última sesión" solo si no está finalizada
+    try {
+      if (!effectiveEnded && sessionId && scenario?.id) {
         localStorage.setItem(LS_KEY, JSON.stringify({ id: sessionId, scenario_id: scenario.id }));
       }
     } catch {}
-    // Persistir si existen las columnas; si no, ignorar error
-    try {
-      await supabase
-        .from("presencial_sessions")
-        .update({ started_at: now, ended_at: null })
-        .eq("id", sessionId);
-    } catch (e) {
-      console.warn("[Instructor] startSession: no se pudo guardar started_at (columna puede no existir)", e);
-    }
-    // Log
-    try { logEvent('session.start', { started_at: now }); } catch {}
   }
 
   async function endSession() {
@@ -1037,8 +1095,17 @@ export default function Presencial_Instructor() {
     );
   }
 
-  // Con params pero algo falló
-  if (!scenario || !session) {
+  // Con params presentes, mientras carga, muestra spinner para evitar el flash de error
+  if (id && sessionId && loading) {
+    return (
+      <div className="min-h-screen grid place-items-center text-slate-600">
+        Cargando…
+      </div>
+    );
+  }
+
+  // Con params pero algo falló (solo si ya no está cargando)
+  if (!loading && (!scenario || !session)) {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
@@ -1122,7 +1189,7 @@ export default function Presencial_Instructor() {
                 Copiar enlace de alumnos
               </button>
             )}
-            {sessionId && (
+            {sessionId && !startedAt && !endedAt && (
               <Link
                 to={`/presencial/confirm/${id}/${sessionId}`}
                 className="ml-2 px-3 py-1.5 rounded-lg bg-white/15 ring-1 ring-white/30 hover:bg-white/20"
@@ -1176,14 +1243,14 @@ export default function Presencial_Instructor() {
               </div>
               <button
                 onClick={startSession}
-                disabled={isRunning}
+                disabled={isRunning || !!endedAt}
                 className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg font-semibold transition shadow-sm ${
-                  isRunning
+                  isRunning || !!endedAt
                     ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
                     : 'text-white hover:opacity-95 animate-pulse ring-2 ring-offset-2 ring-[#1E6ACB] shadow-md'
                 }`}
-                style={{ background: !isRunning ? colors.primary : undefined }}
-                title={!isRunning ? "Iniciar sesión" : "Ya iniciada"}
+                style={{ background: !isRunning && !endedAt ? colors.primary : undefined }}
+                title={!startedAt ? (endedAt ? 'Sesión finalizada' : 'Iniciar sesión') : 'Ya iniciada'}
               >
                 <span>▶</span> Iniciar
               </button>
@@ -1433,7 +1500,7 @@ export default function Presencial_Instructor() {
         </section>
 
         {/* Ayuda y enlace público */}
-        <aside className={`p-6 bg-white rounded-2xl border border-slate-200 shadow-sm ${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+        <aside className={`p-6 bg-white rounded-2xl border border-slate-200 shadow-sm ${!isRunning ? 'opacity-90' : ''}`}>
           <h3 className="text-lg font-semibold flex items-center gap-2">Pantalla del alumno <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">pública</span></h3>
           {publicUrl ? (
             <div className="mt-2 text-sm">
@@ -1479,6 +1546,15 @@ export default function Presencial_Instructor() {
             <div className="mt-8">
               <h3 className="text-lg font-semibold mb-2">Checklist (ABCDE / Patología / Medicación)</h3>
 
+              {/* Nota de estado cuando aún no se ha iniciado la sesión */}
+              {!isRunning && (
+                <div className="mb-2 inline-flex items-center gap-2 text-xs px-2 py-1 rounded bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+                  ⚠️ Inicia la sesión para editar el checklist
+                </div>
+              )}
+
+              {/* Contenido del checklist: se desactiva hasta iniciar */}
+              <div className={`${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''}`}>
               {(!checklist || checklist.length === 0) ? (
                 <div className="rounded-lg border border-dashed border-slate-300 p-4 bg-slate-50 text-slate-600">
                   <p>No hay ítems de checklist para este escenario.</p>
@@ -1601,6 +1677,7 @@ export default function Presencial_Instructor() {
                   </div>
                 </>
               )}
+              </div>
             </div>
           )}
         </aside>

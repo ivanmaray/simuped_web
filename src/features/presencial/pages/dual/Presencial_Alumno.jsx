@@ -193,6 +193,10 @@ export default function Presencial_Alumno() {
         }
         if (!mounted) return;
         setSession(s);
+        // Si el seed trae started_at sin ended_at, limpiar ended por si veníamos de una sesión previa
+        if (s?.started_at && !s?.ended_at) {
+          setEnded(false);
+        }
         // Inicializar fingerprint basada en estado + última acción
         try {
           const { data: lastAct } = await supabase
@@ -354,11 +358,18 @@ export default function Presencial_Alumno() {
 
               // Inicio/Fin: si cambian, sincroniza estados y cronómetro
               if (Object.prototype.hasOwnProperty.call(next, 'started_at')) {
-                if (!next.started_at) setElapsedMs(0);
+                if (next.started_at) {
+                  // al iniciar, aseguramos que no quede marcado como finalizada
+                  setEnded(false);
+                } else {
+                  // sin inicio => 0
+                  setElapsedMs(0);
+                }
               }
               if (Object.prototype.hasOwnProperty.call(next, 'ended_at')) {
-                setEnded(!!next.ended_at);
-                if (!next.ended_at && !next.started_at) setElapsedMs(0);
+                const finished = !!next.ended_at;
+                setEnded(finished);
+                if (!finished && !next.started_at) setElapsedMs(0);
               }
 
               // Escenario puede cambiar (raro, pero tolerante)
@@ -497,22 +508,32 @@ export default function Presencial_Alumno() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [public_code, codeParam]);
 
-  // Cronómetro: cuenta desde started_at hasta ahora (o hasta ended_at si finalizó)
+  // Cronómetro: vive solo de los timestamps del servidor
   useEffect(() => {
     let timerId;
     try {
-      if (session?.started_at) {
-        const startTs = new Date(session.started_at).getTime();
-        const endTs = ended && session?.ended_at ? new Date(session.ended_at).getTime() : null;
-        const tick = () => {
-          const now = endTs ?? Date.now();
-          setElapsedMs(Math.max(0, now - startTs));
-        };
-        tick();
-        timerId = setInterval(tick, 250);
-      } else {
+      const hasStart = !!session?.started_at;
+      const hasEnd   = !!session?.ended_at || ended;
+
+      if (!hasStart) {
+        // sin inicio: siempre 0
         setElapsedMs(0);
+        return () => {};
       }
+
+      const startTs = new Date(session.started_at).getTime();
+
+      // Si ya terminó, fija el tiempo y no abras intervalos
+      if (hasEnd) {
+        const endTs = new Date(session.ended_at).getTime();
+        setElapsedMs(Math.max(0, endTs - startTs));
+        return () => {};
+      }
+
+      // En curso: interval basado en hora local + timestamps del server
+      const tick = () => setElapsedMs(Math.max(0, Date.now() - startTs));
+      tick();
+      timerId = setInterval(tick, 500);
     } catch {}
     return () => { if (timerId) clearInterval(timerId); };
   }, [session?.started_at, session?.ended_at, ended]);

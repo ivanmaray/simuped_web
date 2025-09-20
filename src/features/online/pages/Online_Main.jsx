@@ -82,22 +82,31 @@ export default function Online_Main() {
       try {
         const { data, error } = await supabase
           .from("attempts")
-          .select("id, scenario_id, score")
-          .eq("user_id", userId);
+          .select("id, scenario_id, score, status, started_at, expires_at")
+          .eq("user_id", userId)
+          .order("started_at", { ascending: false });
         if (error) {
           console.error("[Simulacion] cargarIntentos error:", error);
           setAttemptStats({});
           return;
         }
+        const now = new Date();
         const by = {};
         for (const row of data || []) {
           const sid = row.scenario_id;
-          if (!by[sid]) by[sid] = { count: 0, scored: 0, sum: 0 };
+          if (!by[sid]) by[sid] = { count: 0, scored: 0, sum: 0, openAttemptId: null };
           by[sid].count += 1;
           const s = Number(row.score);
           if (!Number.isNaN(s)) {
             by[sid].scored += 1;
             by[sid].sum += s;
+          }
+          const status = String(row.status || "").toLowerCase();
+          const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
+          const notExpired = !expiresAt || now < expiresAt;
+          const isOpen = status === "en curso" && notExpired;
+          if (isOpen && !by[sid].openAttemptId) {
+            by[sid].openAttemptId = row.id; // first in order is the most recent
           }
         }
         const stats = {};
@@ -106,6 +115,7 @@ export default function Online_Main() {
             count: v.count,
             scored: v.scored,
             avg: v.scored > 0 ? v.sum / v.scored : null,
+            openAttemptId: v.openAttemptId,
           };
         }
         setAttemptStats(stats);
@@ -380,9 +390,21 @@ export default function Online_Main() {
                     {estadoStyle.label}
                   </span>
                 </div>
+                {/* CTA to reanudar open attempt */}
+                {attemptStats[esc.id]?.openAttemptId && (
+                  <div className="mt-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(`/simulacion/${esc.id}?attempt=${attemptStats[esc.id].openAttemptId}`); }}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs bg-slate-900 text-white hover:opacity-90"
+                      title="Reanudar tu intento activo"
+                    >
+                      ⏱️ Reanudar intento
+                    </button>
+                  </div>
+                )}
                 {attemptStats[esc.id] && (
                   <p className="mt-2 text-xs text-slate-500">
-                    Intentos usados: {attemptStats[esc.id].count}/{MAX_ATTEMPTS}
+                    Intentos usados: {attemptStats[esc.id].count}/{MAX_ATTEMPTS}{attemptStats[esc.id].openAttemptId ? " · intento activo" : ""}
                     {attemptStats[esc.id].scored > 0 && (
                       <>
                         {" · "}Nota media: {attemptStats[esc.id].avg.toFixed(1)}/100

@@ -1,4 +1,4 @@
-// src/pages/SimulacionConfirm.jsx
+// Este componente maneja creación/reanudación de intentos SIN RPC (opción B): validamos intento abierto, si no existe insertamos, y si hay 23505 recuperamos el existente.
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
@@ -185,14 +185,36 @@ export default function Online_Confirm() {
         setAttemptsCount(0);
       } else {
         setAttemptsCount(count ?? 0);
+
+        // 🔄 Reset por si venimos con estado previo en memoria
+        setOpenAttemptId(null);
+
+        // 🧹 Pre-clean: cerrar intentos "en curso" ya expirados (evita que aparezcan como activos)
+        try {
+          let nowRef = new Date();
+          try {
+            const { data: nowData } = await supabase.rpc("now_utc");
+            if (nowData) nowRef = new Date(nowData);
+          } catch { /* noop */ }
+          await supabase
+            .from("attempts")
+            .update({ status: "finalizado", finished_at: nowRef.toISOString() })
+            .eq("user_id", sess.user.id)
+            .eq("scenario_id", scenarioId)
+            .eq("status", "en curso")
+            .is("finished_at", null)
+            .not("expires_at", "is", null)
+            .lte("expires_at", nowRef.toISOString());
+        } catch { /* noop */ }
       }
 
-      // 5) Intento abierto (para reanudar)
+      // 5) Intento abierto (para reanudar) — solo si está realmente en curso y no expirado
       const { data: openAttempt, error: oaErr } = await supabase
         .from("attempts")
-        .select("id")
+        .select("id, status, started_at, expires_at, finished_at")
         .eq("user_id", sess.user.id)
         .eq("scenario_id", scenarioId)
+        .in("status", ["en_curso", "en curso"])
         .is("finished_at", null)
         .order("started_at", { ascending: false })
         .limit(1)
@@ -201,8 +223,30 @@ export default function Online_Confirm() {
       if (oaErr) {
         console.warn("[Confirm] open attempt check error:", oaErr);
         setOpenAttemptId(null);
+      } else if (openAttempt && openAttempt.id) {
+        // validar expiración con hora del servidor (si está disponible)
+        let nowRef = new Date();
+        try {
+          const { data: nowData } = await supabase.rpc("now_utc");
+          if (nowData) nowRef = new Date(nowData);
+        } catch { /* noop */ }
+
+        const exp = openAttempt.expires_at ? new Date(openAttempt.expires_at) : null;
+        const notExpired = !!(exp && nowRef < exp);
+        console.debug("[Confirm] openAttempt check:", {
+          id: openAttempt.id,
+          exp: openAttempt.expires_at,
+          now: nowRef.toISOString(),
+          notExpired
+        });
+
+        if (notExpired) {
+          setOpenAttemptId(openAttempt.id);   // reanudar solo si ya corría el tiempo
+        } else {
+          setOpenAttemptId(null);             // si expires_at es null o pasado, no mostrar reanudar
+        }
       } else {
-        setOpenAttemptId(openAttempt?.id ?? null);
+        setOpenAttemptId(null);
       }
 
       setLoading(false);
@@ -210,10 +254,14 @@ export default function Online_Confirm() {
 
     init();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_evt, sess) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSess) => {
       if (!mounted) return;
-      setSession(sess ?? null);
-      if (!sess) navigate("/", { replace: true });
+      setSession(newSess ?? null);
+      if (event === "SIGNED_OUT" || event === "USER_DELETED") {
+        navigate("/", { replace: true });
+      } else {
+        try { console.debug("[Confirm] auth state:", event, !!newSess); } catch {}
+      }
     });
 
     return () => {
@@ -253,52 +301,92 @@ export default function Online_Confirm() {
       return;
     }
 
-    // Si existe un intento abierto y NO forzamos nuevo, reanudar
-    if (openAttemptId && !forceNew) {
-      navigate(`/simulacion/${scenarioId}?attempt=${openAttemptId}`, { replace: true });
-      return;
-    }
-
     setCreating(true);
+    // 🔧 Pre-clean: cerrar "abiertos" ya expirados (evita conflictos con el índice único)
     try {
-      const now = new Date();
+      await supabase
+        .from("attempts")
+        .update({ status: "finalizado", finished_at: new Date().toISOString() })
+        .eq("user_id", session.user.id)
+        .eq("scenario_id", scenarioId)
+        .eq("status", "en curso")
+        .is("finished_at", null)
+        .not("expires_at", "is", null)
+        .lte("expires_at", new Date().toISOString());
+    } catch { /* noop */ }
+    try {
+      // 0) Parámetros de tiempo
       const baseMinutes = (esAdmin && Number(customMinutes)) ? Math.max(1, Number(customMinutes)) : estimatedMinutes;
       const limitSecs = Math.max(60, Math.floor(baseMinutes * 60));
-      const expires = new Date(now.getTime() + limitSecs * 1000);
 
-      const { data, error } = await supabase
+      // 1) Revalidar en servidor si hay un intento abierto (por seguridad frente a estados desfasados)
+      let nowRef = new Date();
+      try {
+        const { data: nowData } = await supabase.rpc("now_utc");
+        if (nowData) nowRef = new Date(nowData);
+      } catch { /* noop */ }
+
+      const { data: open, error: openErr } = await supabase
+        .from("attempts")
+        .select("id, expires_at, finished_at")
+        .eq("user_id", session.user.id)
+        .eq("scenario_id", scenarioId)
+        .in("status", ["en_curso", "en curso"])
+        .is("finished_at", null)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!openErr && open?.id) {
+        // Si ya existe un intento abierto (corriendo o pendiente), úsalo sin crear otro.
+        navigate(`/simulacion/${scenarioId}?attempt=${open.id}`, { replace: true });
+        return;
+      }
+
+      // 3) Crear intento nuevo
+      const { data: inserted, error } = await supabase
         .from("attempts")
         .insert({
           user_id: session.user.id,
           scenario_id: scenarioId,
-          started_at: now.toISOString(),
-          expires_at: expires.toISOString(),
           time_limit: limitSecs,
-          status: "en curso",
+          status: "en curso", // no fijamos started_at/expires_at aquí; el tiempo arranca en Online_Detalle
         })
         .select("id")
         .single();
 
       if (error) {
+        if (String(error.code) === "23505") {
+          console.debug("[Confirm] 23505: reuse existing open attempt (running or pending)");
+          const { data: existing } = await supabase
+            .from("attempts")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .eq("scenario_id", scenarioId)
+            .in("status", ["en_curso", "en curso"])
+            .is("finished_at", null)
+            .order("started_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existing?.id) {
+            navigate(`/simulacion/${scenarioId}?attempt=${existing.id}`, { replace: true });
+            return;
+          }
+        }
         console.error("[Confirm] insert attempt error:", error);
         setErrorMsg(error.message || "No se pudo crear el intento.");
         setCreating(false);
         return;
       }
 
-      const attemptId = data?.id;
-      if (!attemptId) {
-        setErrorMsg("No se pudo crear el intento (sin ID).");
-        setCreating(false);
-        return;
-      }
-
-      // Redirigir al detalle con el attempt en la URL
-      navigate(`/simulacion/${scenarioId}?attempt=${attemptId}`, { replace: true });
+      navigate(`/simulacion/${scenarioId}?attempt=${inserted.id}`, { replace: true });
+      return;
     } catch (e) {
       console.error("[Confirm] unexpected error:", e);
       setErrorMsg("Se produjo un error inesperado.");
       setCreating(false);
+      return;
     }
   }
 
@@ -543,7 +631,7 @@ export default function Online_Confirm() {
 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
             <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
-              Intentos usados: {attemptsCount}/{MAX_ATTEMPTS}{openAttemptId ? " · tienes un intento en curso" : ""}
+              Intentos usados: {attemptsCount}/{MAX_ATTEMPTS}{openAttemptId ? " · intento activo" : ""}
             </span>
             <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
               Tiempo estimado: ~{estimatedMinutes} min
