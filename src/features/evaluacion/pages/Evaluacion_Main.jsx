@@ -12,6 +12,37 @@ function formatRole(rol) {
   return k ? k[0].toUpperCase() + k.slice(1) : "";
 }
 
+// Chips homogéneos para roles y resultados
+function RoleChip({ role }) {
+  if (!role) return <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200 px-2 py-0.5 text-[12px]">—</span>;
+  return (
+    <span className="inline-flex items-center rounded-full bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200 px-2 py-0.5 text-[12px]">
+      {formatRole(role)}
+    </span>
+  );
+}
+
+function ScoreChip({ ok, total, pct }) {
+  const has = typeof total === 'number' && total > 0;
+  const percent = typeof pct === 'number' ? Math.round(pct) : (has ? Math.round((ok / total) * 100) : null);
+  let cls = 'bg-slate-100 text-slate-700 ring-slate-200';
+  if (typeof percent === 'number') {
+    if (percent >= 80) cls = 'bg-emerald-100 text-emerald-700 ring-emerald-200';
+    else if (percent >= 50) cls = 'bg-amber-100 text-amber-700 ring-amber-200';
+    else cls = 'bg-rose-100 text-rose-700 ring-rose-200';
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] ring-1 ${cls}`}>
+      {has ? (<>
+        <strong className="tabular-nums">{ok}</strong>
+        <span className="opacity-60">/</span>
+        <span className="tabular-nums">{total}</span>
+        {typeof percent === 'number' && <span className="ml-1 opacity-80">({percent}%)</span>}
+      </>) : '—'}
+    </span>
+  );
+}
+
 // Gráfico de barras simple con SVG (sin dependencias)
 function pct(ok, total) {
   const t = Number(total || 0);
@@ -481,7 +512,7 @@ export default function Evaluacion_Main() {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">
               {viewUserId && session?.user?.id && viewUserId !== session.user.id
-                ? "Intentos del usuario"
+                ? "Simulacros online del usuario"
                 : "Simulacros online"}
             </h3>
             <Link to="/dashboard" className="text-sm underline text-slate-700">Volver al panel</Link>
@@ -509,8 +540,11 @@ export default function Evaluacion_Main() {
                 <tbody>
                   {attempts.map((a) => {
                     const date = fmtDate(a.started_at);
-                    const estado = a.finished_at ? "Finalizado" : "En curso";
-                    const res = a.finished_at ? (typeof a.score === "number" ? `${a.correct_count}/${a.total_count} (${a.score}%)` : `${a.correct_count}/${a.total_count} (—)`) : "—";
+                    // Estado badge
+                    // const estado = a.finished_at ? "Finalizado" : "En curso";
+                    // Chip resultado
+                    // const res = a.finished_at ? (typeof a.score === "number" ? `${a.correct_count}/${a.total_count} (${a.score}%)` : `${a.correct_count}/${a.total_count} (—)`) : "—";
+                    const res = { ok: a.correct_count, total: a.total_count, pct: (typeof a.score === 'number' ? a.score : null) };
                     const title = a.scenarios?.title || `Escenario ${a.scenario_id}`;
                     const crit = critMap[a.id];
                     const critText = crit ? `${crit.criticals_ok}/${crit.total_criticals}` : "—";
@@ -518,8 +552,8 @@ export default function Evaluacion_Main() {
                       <tr key={a.id} className="border-t">
                         <td className="px-4 py-2">{date}</td>
                         <td className="px-4 py-2">{title}</td>
-                        <td className="px-4 py-2">{res}</td>
-                        <td className="px-4 py-2">{estado}</td>
+                        <td className="px-4 py-2"><ScoreChip ok={res.ok} total={res.total} pct={res.pct} /></td>
+                        <td className="px-4 py-2"><PresEstadoBadge endedFlag={!!a.finished_at} started_at={a.started_at} /></td>
                         {hasCritData ? <td className="px-4 py-2">{critText}</td> : null}
                         <td className="px-4 py-2">
                           <Link to={`/evaluacion/attempt/${a.id}`} className="text-[#0A3D91] underline">Revisar</Link>
@@ -564,13 +598,13 @@ export default function Evaluacion_Main() {
                       const dateStr = r.started_at
                         ? new Date(r.started_at).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })
                         : "—";
-                      const res = r.total ? `${r.ok}/${r.total} (${r.score}%)` : "—";
+                      // const res = r.total ? `${r.ok}/${r.total} (${r.score}%)` : "—";
                       return (
                         <tr key={r.session_id} className="border-t">
                           <td className="px-4 py-2">{dateStr}</td>
                           <td className="px-4 py-2">{r.scenario_title}</td>
-                          <td className="px-4 py-2">{formatRole(r.role)}</td>
-                          <td className="px-4 py-2">{res}</td>
+                          <td className="px-4 py-2"><RoleChip role={r.role} /></td>
+                          <td className="px-4 py-2"><ScoreChip ok={r.ok} total={r.total} pct={r.score} /></td>
                           <td className="px-4 py-2">
                             <PresEstadoBadge endedFlag={r.endedFlag} started_at={r.started_at} />
                           </td>
