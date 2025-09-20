@@ -455,6 +455,14 @@ export default function Online_Confirm() {
               <p className="text-sm text-slate-600 mt-1">
                 Este es un entorno seguro de aprendizaje. Puedes equivocarte: lo importante es el proceso y el razonamiento clínico.
               </p>
+              <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 text-sky-900 p-3 text-sm">
+                <div className="font-medium">¿Cómo funciona esta simulación?</div>
+                <ul className="mt-1 list-disc pl-5 space-y-1">
+                  <li>Primero verás el <b>briefing</b> del caso (evaluación inicial del paciente) con elementos interactivos.</li>
+                  <li>Desde el momento en que se abre el briefing, <b>empieza a contar el tiempo</b> del intento.</li>
+                  <li>Tras ese briefing, pasarás a las <b>preguntas por pasos</b> donde se evalúan tus decisiones.</li>
+                </ul>
+              </div>
               <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 <div>
                   <div className="text-xs font-semibold text-slate-500">Objetivo docente</div>
@@ -624,9 +632,7 @@ export default function Online_Confirm() {
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
           <h2 className="text-xl font-semibold mb-2">Antes de comenzar</h2>
           <p className="text-slate-700">
-            Al iniciar este escenario se consumirá <b>1 intento</b>. Dispones de un máximo de{" "}
-            <b>{MAX_ATTEMPTS}</b> intentos por escenario. Tus respuestas quedarán registradas
-            para consultar tu desempeño posteriormente.
+            Al iniciar este escenario se consumirá <b>1 intento</b> (el <b>tiempo comienza en el briefing</b> del caso). Dispones de un máximo de <b>{MAX_ATTEMPTS}</b> intentos por escenario. Primero realizarás la <b>evaluación inicial del paciente</b> en el briefing y, a continuación, responderás a <b>preguntas por pasos</b>. Tus respuestas quedarán registradas para consultar tu desempeño posteriormente.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">

@@ -1,11 +1,44 @@
 // src/pages/SimulacionDetalle.jsx antes
 // src/features/online/pages/OnlineDetalle.jsx ahora
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 
+
 const HINT_PENALTY_POINTS = 5; // puntos que se restan por cada pista usada (puedes ajustar)
+
+// Sync client with server time (drift correction)
+function useServerTime() {
+  const [driftMs, setDriftMs] = useState(0);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('now_utc');
+        if (!mounted) return;
+        if (data) {
+          const server = new Date(data).getTime();
+          const client = Date.now();
+          setDriftMs(server - client);
+        }
+      } catch {}
+    })();
+    const id = setInterval(async () => {
+      try {
+        const { data } = await supabase.rpc('now_utc');
+        if (data) {
+          const server = new Date(data).getTime();
+          const client = Date.now();
+          setDriftMs(server - client);
+        }
+      } catch {}
+    }, 120000); // cada 2 min
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+  const now = () => Date.now() + driftMs;
+  return { driftMs, now };
+}
 
 function formatLevel(level) {
   const key = String(level || "").toLowerCase();
@@ -120,12 +153,88 @@ function ScoreDonut({ score = 0, size = 84 }) {
   );
 }
 
+// Donut timer for time remaining (compact visual)
+function TimeDonut({ totalSecs = 0, remainSecs = 0, size = 72, title = "Tiempo restante" }) {
+  const total = Math.max(1, Number(totalSecs) || 0);
+  const remain = Math.max(0, Math.min(total, Number(remainSecs) || 0));
+  const pct = Math.round((remain / total) * 100);
+  const angle = pct * 3.6;
+  const ringStyle = {
+    width: `${size}px`,
+    height: `${size}px`,
+    background: `conic-gradient(#1E6ACB ${angle}deg, #e2e8f0 0)`, // brand blue + softer track
+    borderRadius: "9999px",
+    transition: "background 0.4s ease",
+    boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.7), 0 1px 2px rgba(0,0,0,0.06)",
+    border: "1px solid rgba(15, 23, 42, 0.06)",
+  };
+  const innerSize = size - 12;
+
+  function mmss(s) {
+    s = Math.max(0, Math.floor(s));
+    const mm = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+
+  return (
+    <div className="relative inline-grid place-items-center" style={{ width: size, height: size }} title={title}>
+      <div style={ringStyle} aria-hidden="true" />
+      <div
+        className="absolute rounded-full bg-white grid place-items-center text-slate-900 font-mono tabular-nums shadow-sm"
+        style={{ width: innerSize, height: innerSize, fontSize: Math.max(11, Math.floor(size / 4.6)) }}
+      >
+        {mmss(remain)}
+      </div>
+    </div>
+  );
+}
+
+
 function CaseCard({ title, children }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 mb-5 shadow-sm">
       {title && <h3 className="text-sm font-semibold text-slate-600 mb-3">{title}</h3>}
       {children}
     </section>
+  );
+}
+
+// AccordionSection: reusable accordion for interactive briefing
+function AccordionSection({ title, subtitle, open, onToggle, children }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white mb-4 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full flex items-center justify-between px-5 py-3 text-left ${open ? "bg-slate-50" : "hover:bg-slate-50"}`}
+      >
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+        </div>
+        <span className={`text-slate-100/90 text-sm inline-flex items-center gap-1`}>
+          <span className={`transition-transform ${open ? "rotate-180" : ""}`}>⌄</span>
+          {open ? "Ocultar" : "Ver"}
+        </span>
+      </button>
+      {open && <div className="px-5 pb-5">{children}</div>}
+    </section>
+  );
+}
+
+// ChipButton: interactive chip for selection
+function ChipButton({ active, children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center rounded-full border px-2 py-1 text-xs mr-2 mb-2 ${
+        active ? "border-[#1E6ACB] bg-[#4FA3E3]/10 text-slate-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -193,10 +302,11 @@ function TEPTriangle({ appearance, breathing, circulation }) {
   function dot({ x, y }, status) {
     const fill = colorMapFill[status ?? 'null'];
     const stroke = colorMapStroke[status ?? 'null'];
+    const tr = { transition: "fill .25s ease, stroke .25s ease" };
     return (
       <>
-        <circle cx={x} cy={y} r={NODE_R} fill={fill} stroke={stroke} strokeWidth="3" />
-        <circle cx={x} cy={y} r={NODE_DOT} fill={stroke} />
+        <circle cx={x} cy={y} r={NODE_R} fill={fill} stroke={stroke} strokeWidth="3" style={tr} />
+        <circle cx={x} cy={y} r={NODE_DOT} fill={stroke} style={tr} />
       </>
     );
   }
@@ -276,6 +386,7 @@ function defaultTepReason(kind, status) {
 
 
 export default function Online_Detalle() {
+  const { driftMs, now: nowDrifted } = useServerTime();
   const { id, attemptId: attemptParam } = useParams(); // id de escenario y (opcional) attemptId por ruta /resumen/:attemptId
   const scenarioIdParam = String(id ?? "");
   const scenarioIdNumeric = /^\d+$/.test(scenarioIdParam) ? Number(scenarioIdParam) : null;
@@ -305,7 +416,6 @@ export default function Online_Detalle() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [rol, setRol] = useState("");
 
-  // Respuestas marcadas (solo memoria local por ahora)
   // answers: { [questionId]: { selectedKey, isCorrect } }
   const [answers, setAnswers] = useState({});
   const [hintsUsed, setHintsUsed] = useState({}); // { [questionId]: number }
@@ -313,6 +423,11 @@ export default function Online_Detalle() {
   const [qTimers, setQTimers] = useState({}); // { [qid]: { start: number, remaining: number, expired: boolean } }
   const [qTick, setQTick] = useState(0);
   function requestHint(q) {
+    const t = Date.now();
+    if (!Number.isFinite(t)) return;
+    if (!requestHint.last) requestHint.last = 0;
+    if (t - requestHint.last < 600) return; // antirrebote 600ms
+    requestHint.last = t;
     if (qTimers[q.id]?.expired) return;
     if (!q?.hints) return;
     let list = q.hints;
@@ -335,6 +450,49 @@ export default function Online_Detalle() {
   }
   const [showSummary, setShowSummary] = useState(false);
 
+  // Briefing interactivo (accordion + quizzes)
+  const [accordionOpen, setAccordionOpen] = useState([true, false, false, false, false]);
+  const [tepAnswer, setTepAnswer] = useState({ appearance: null, breathing: null, circulation: null });
+  const [tepChecked, setTepChecked] = useState(false);
+  const tepOptions = [
+    { k: "green", label: "Normal" },
+    { k: "amber", label: "Sospechoso" },
+    { k: "red", label: "Anormal" },
+  ];
+  function normBrief(v) {
+    const k = String(v || '').toLowerCase();
+    if (["verde", "green", "normal"].includes(k)) return "green";
+    if (["amarillo", "ámbar", "ambar", "amber", "sospechoso"].includes(k)) return "amber";
+    if (["rojo", "red", "anormal", "alterado"].includes(k)) return "red";
+    return null;
+  }
+  const correctTep = useMemo(() => ({
+    appearance: normBrief(brief?.triangle?.appearance),
+    breathing:  normBrief(brief?.triangle?.breathing),
+    circulation: normBrief(brief?.triangle?.circulation),
+  }), [brief]);
+  const tepComplete = !!(tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation);
+
+  // Signos de alarma (multi-selección)
+  const [selectedRedFlags, setSelectedRedFlags] = useState([]);
+  const redFlagBase = useMemo(() => (Array.isArray(brief?.red_flags) ? brief.red_flags : []), [brief]);
+  const redFlagCandidates = useMemo(() => {
+    const distractors = [
+      "Fiebre aislada sin repercusión",
+      "Erupción leve autolimitada",
+      "Dolor leve bien localizado",
+    ];
+    const set = new Set([...(redFlagBase || []), ...distractors]);
+    return Array.from(set);
+  }, [redFlagBase]);
+  const redFlagsCorrect = useMemo(() => {
+    const base = new Set(redFlagBase || []);
+    if (!base.size) return null;
+    const sel = new Set(selectedRedFlags);
+    if (sel.size !== Array.from(sel).filter((v) => base.has(v)).length) return false; // hay seleccionados que no son correctos
+    return redFlagBase.every((r) => sel.has(r));
+  }, [selectedRedFlags, redFlagBase]);
+
   // Intento actual
   const [attemptId, setAttemptId] = useState(null);
   const [attemptTimeLimit, setAttemptTimeLimit] = useState(null); // segundos (global del intento)
@@ -346,8 +504,7 @@ export default function Online_Detalle() {
   // Arranca el contador del intento (y fija expires_at si no estaba)
   async function startAttemptCountdown() {
     if (!attemptId) {
-      setShowBriefing(false);
-      return;
+      return; // no ocultes el briefing por falta temporal de attemptId
     }
 
     try {
@@ -377,7 +534,7 @@ export default function Online_Detalle() {
       // Si ya existía expires_at (p.ej. porque el usuario ya había comenzado antes), usamos ese valor
       if (expISO) {
         setExpiresAt(expISO);
-        const diff = Math.max(0, Math.floor((new Date(expISO).getTime() - Date.now()) / 1000));
+        const diff = Math.max(0, Math.floor((new Date(expISO).getTime() - nowDrifted()) / 1000));
         setRemainingSecs(diff);
         setTimeUp(diff === 0);
       } else {
@@ -389,7 +546,7 @@ export default function Online_Detalle() {
     } catch (e) {
       console.error("[SimulacionDetalle] startAttemptCountdown error:", e);
     } finally {
-      setShowBriefing(false);
+      // no cerramos el briefing automáticamente; el usuario continúa con el botón
     }
   }
 
@@ -405,7 +562,27 @@ export default function Online_Detalle() {
     }
   }, [loading, showSummary, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt]);
 
+  // ⏱️ Nuevo: si el briefing está visible, cuenta como parte de la simulación.
+  // Arrancamos el contador al entrar al briefing si hay límite y aún no existe expires_at.
+  useEffect(() => {
+    if (loading) return;
+    if (!showBriefing) return;       // solo cuando se muestra el briefing
+    if (!attemptId) return;
+    if (expiresAt) return;           // ya había contador arrancado
+    // Si ya existía expires_at (intento reanudado), no hacemos nada: el otro efecto lo respetará.
+    if (initialExpiresAt) return;
+    if (attemptTimeLimit && Number(attemptTimeLimit) > 0) {
+      // inicia el contador ahora para que el pre-quiz cuente
+      startAttemptCountdown();
+      setRemainingSecs((prev) => (prev == null && Number(attemptTimeLimit) > 0 ? Number(attemptTimeLimit) : prev));
+    }
+  }, [loading, showBriefing, attemptId, attemptTimeLimit, expiresAt, initialExpiresAt]);
+
   const currentStep = steps[currentIdx] || null;
+
+  useEffect(() => {
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+  }, [currentIdx]);
 
   useEffect(() => {
     if (!currentStep) return;
@@ -459,7 +636,7 @@ export default function Online_Detalle() {
       // Comprobar que el attempt existe y pertenece al usuario y al escenario
       const { data: att, error: attErr } = await supabase
         .from("attempts")
-        .select("id, user_id, scenario_id, status, started_at, expires_at, time_limit")
+        .select("id, user_id, scenario_id, status, started_at, finished_at, expires_at, time_limit")
         .eq("id", initialAttemptId)
         .maybeSingle();
 
@@ -702,7 +879,7 @@ export default function Online_Detalle() {
 
     const expMs = new Date(expiresAt).getTime();
     const idInt = setInterval(() => {
-      const remain = Math.max(0, Math.floor((expMs - Date.now()) / 1000));
+      const remain = Math.max(0, Math.floor((expMs - nowDrifted()) / 1000));
       setRemainingSecs(remain);
       if (remain === 0) {
         setTimeUp(true);
@@ -710,7 +887,7 @@ export default function Online_Detalle() {
     }, 1000);
 
     return () => clearInterval(idInt);
-  }, [expiresAt, timeUp]);
+  }, [expiresAt, timeUp, nowDrifted]);
 
   useEffect(() => {
     if (!currentStep || showSummary || !isTimedStep(currentStep)) return;
@@ -718,7 +895,7 @@ export default function Online_Detalle() {
       setQTick((t) => t + 1);
       setQTimers((prev) => {
         const next = { ...prev };
-        const now = Date.now();
+        const now = nowDrifted();
         const newlyExpired = [];
         for (const q of (currentStep?.questions || [])) {
           const t = next[q.id];
@@ -745,7 +922,7 @@ export default function Online_Detalle() {
       });
     }, 1000);
     return () => clearInterval(int);
-  }, [currentStep, showSummary]);
+  }, [currentStep, showSummary, nowDrifted]);
 
   // Skeleton show delay effect
   useEffect(() => {
@@ -857,7 +1034,7 @@ export default function Online_Detalle() {
     const score = Math.max(0, Math.round(base - penalty));
 
     try {
-      const safeStatus = statusOverride === "finalizado" ? "finalizado" : "finalizado";
+      const safeStatus = "finalizado";
       const { error: updErr } = await supabase
         .from("attempts")
         .update({
@@ -972,25 +1149,55 @@ export default function Online_Detalle() {
     );
   }
 
-  // Early render: Briefing Pantalla 0
+  // Early render: Briefing Pantalla 0 (interactive accordion version)
   if (!showSummary && showBriefing) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900">
         <Navbar />
         <main className="max-w-6xl mx-auto px-5 py-6 mt-2">
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-slate-900">{brief?.title || scenario?.title}</h1>
-            {brief?.context && <p className="text-slate-600 mt-1">{brief.context}</p>}
-            <div className="flex flex-wrap gap-2 mt-3">
-              {toArray(brief?.chips).map((c, i) => (
-                <Chip key={i}>{c}</Chip>
-              ))}
+          {/* HERO */}
+          <div className="rounded-2xl bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] p-6 text-white shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-semibold tracking-tight">{brief?.title || scenario?.title}</h1>
+                {brief?.context && <p className="text-white/90 mt-1">{brief.context}</p>}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {toArray(brief?.chips).map((c, i) => (
+                    <span key={i} className="inline-flex items-center rounded-full bg-white/20 ring-1 ring-white/50 px-2 py-0.5 text-[11px] tracking-wide">{c}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-xs opacity-90">Nivel · Modo · Duración</div>
+                <div className="text-sm font-medium">
+                  {formatLevel(scenario?.level || brief?.level)} · {formatMode(scenario?.mode || "online")} · ~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min
+                </div>
+                {/* Cronómetro visible (cuenta durante briefing) */}
+                {Number(attemptTimeLimit) > 0 && (
+                  <div className="mt-3 flex items-center justify-end">
+                    <div className="text-right">
+                      <TimeDonut
+                        totalSecs={Number(attemptTimeLimit)}
+                        remainSecs={remainingSecs != null ? remainingSecs : Number(attemptTimeLimit)}
+                        size={64}
+                        title="Tiempo restante"
+                      />
+                      <div className="mt-1 text-[11px] opacity-90">Tiempo restante</div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Datos del paciente */}
-          <CaseCard title="Datos del paciente">
-            {/* Si demographics es texto plano, muéstralo arriba */}
+          {/* ACCORDION: 1. Datos del paciente */}
+          <AccordionSection
+            title="1) Datos del paciente"
+            subtitle="Lee con atención los datos clínicos iniciales."
+            open={accordionOpen[0]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 0 ? !v : v)))}
+          >
+            {/* Si demographics es texto plano */}
             {typeof brief?.demographics === "string" && brief.demographics && (
               <p className="text-sm text-slate-800 mb-3">{brief.demographics}</p>
             )}
@@ -1021,59 +1228,78 @@ export default function Online_Detalle() {
                 )}
               </div>
             </div>
-          </CaseCard>
+          </AccordionSection>
 
-          {/* Triángulo pediátrico */}
-          <CaseCard title="Triángulo de evaluación pediátrica (TEP)">
+          {/* ACCORDION: 2. Triángulo de evaluación pediátrica (interactivo) */}
+          <AccordionSection
+            title="2) Triángulo de evaluación pediátrica (TEP)"
+            subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
+            open={accordionOpen[1]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 1 ? !v : v)))}
+          >
             <div className="grid lg:grid-cols-2 gap-4 items-start">
               <div>
                 <TEPTriangle
-                  appearance={brief?.triangle?.appearance}
-                  breathing={brief?.triangle?.breathing}
-                  circulation={brief?.triangle?.circulation}
+                  appearance={tepAnswer.appearance}
+                  breathing={tepAnswer.breathing}
+                  circulation={tepAnswer.circulation}
                 />
               </div>
-
               <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-                <div className="font-semibold text-slate-700 mb-2">Resumen y motivos</div>
-                <ul className="space-y-2">
-                  <li className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-slate-500 text-xs">Apariencia</div>
-                      <div className="text-slate-800">{brief?.triangle_details?.appearance || defaultTepReason('appearance', brief?.triangle?.appearance)}</div>
+                <div className="font-semibold text-slate-700 mb-2">Selecciona tu valoración</div>
+                <div className="text-xs text-slate-500 mb-2">
+                  El triángulo se muestra en gris hasta que elijas una opción. Marca cada vértice (Apariencia, Respiración, Circulación) y luego pulsa <strong>Comprobar</strong>.
+                </div>
+                {(["appearance", "breathing", "circulation"]).map((k) => (
+                  <div key={k} className="mb-3">
+                    <div className="text-xs text-slate-500 mb-1">
+                      {k === "appearance" ? "Apariencia" : k === "breathing" ? "Respiración / Trabajo resp." : "Circulación cutánea"}
                     </div>
-                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs border"
-                          style={{background:'#f8fafc'}}>
-                      {humanizeTepStatus(brief?.triangle?.appearance)}
-                    </span>
-                  </li>
-                  <li className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-slate-500 text-xs">Respiración / Trabajo respiratorio</div>
-                      <div className="text-slate-800">{brief?.triangle_details?.breathing || defaultTepReason('breathing', brief?.triangle?.breathing)}</div>
+                      {tepOptions.map((op) => (
+                        <ChipButton key={op.k} active={tepAnswer[k] === op.k} onClick={() => { setTepAnswer((t) => ({ ...t, [k]: op.k })); setTepChecked(false); }}>
+                          {op.label}
+                        </ChipButton>
+                      ))}
                     </div>
-                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs border"
-                          style={{background:'#f8fafc'}}>
-                      {humanizeTepStatus(brief?.triangle?.breathing)}
+                    {tepChecked && tepAnswer[k] && (
+                      <div className={`inline-flex items-center text-xs px-2 py-0.5 rounded border mt-2 ${
+                        tepAnswer[k] === correctTep[k]
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border-rose-200 bg-rose-50 text-rose-800"
+                      }`}>
+                        {tepAnswer[k] === correctTep[k] ? "Correcto" : "Incorrecto"}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={() => setTepChecked(true)}
+                    disabled={!tepComplete}
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40"
+                  >
+                    Comprobar
+                  </button>
+                  {tepChecked && (
+                    <span className="text-xs text-slate-600">
+                      {tepAnswer.appearance === correctTep.appearance && tepAnswer.breathing === correctTep.breathing && tepAnswer.circulation === correctTep.circulation
+                        ? "Todas correctas"
+                        : "Revisa los apartados en rojo"}
                     </span>
-                  </li>
-                  <li className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-slate-500 text-xs">Circulación cutánea</div>
-                      <div className="text-slate-800">{brief?.triangle_details?.circulation || defaultTepReason('circulation', brief?.triangle?.circulation)}</div>
-                    </div>
-                    <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs border"
-                          style={{background:'#f8fafc'}}>
-                      {humanizeTepStatus(brief?.triangle?.circulation)}
-                    </span>
-                  </li>
-                </ul>
+                  )}
+                </div>
               </div>
             </div>
-          </CaseCard>
+          </AccordionSection>
 
-          {/* Constantes y Exploración */}
-          <CaseCard title="Constantes y exploración">
+          {/* ACCORDION: 3. Constantes y exploración (lectura rápida) */}
+          <AccordionSection
+            title="3) Constantes y exploración"
+            subtitle="Repasa constantes y hallazgos al examen físico."
+            open={accordionOpen[2]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 2 ? !v : v)))}
+          >
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="rounded-xl border border-slate-200 p-4">
                 <Row label="FC" value={brief?.vitals?.fc != null ? `${brief.vitals.fc} lpm` : "—"} alert={brief?.vitals?.fc > 170} />
@@ -1097,18 +1323,23 @@ export default function Online_Detalle() {
                 </ul>
               </div>
             </div>
-          </CaseCard>
+          </AccordionSection>
 
-          {/* Pruebas complementarias */}
-          <CaseCard title="Pruebas complementarias">
+          {/* ACCORDION: 4. Pruebas complementarias (señala indicadas) */}
+          <AccordionSection
+            title="4) Pruebas complementarias"
+            subtitle="Identifica qué está indicado ahora mismo."
+            open={accordionOpen[3]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
+          >
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <h4 className="text-sm font-semibold text-slate-600 mb-2">Analítica rápida</h4>
                 <ul className="text-sm text-slate-700">
                   {toArray(brief?.quick_labs).map((q, i) => (
-                    <li key={i} className="flex justify-between border-b py-1">
+                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
                       <span>{q.name}</span>
-                      <span className="font-medium">{q.value}</span>
+                      <span className="font-medium">{q.value ?? "—"}</span>
                     </li>
                   ))}
                   {!brief?.quick_labs?.length && <li className="text-slate-500">—</li>}
@@ -1118,7 +1349,7 @@ export default function Online_Detalle() {
                 <h4 className="text-sm font-semibold text-slate-600 mb-2">Imagen</h4>
                 <ul className="text-sm text-slate-700">
                   {toArray(brief?.imaging).map((im, i) => (
-                    <li key={i} className="flex justify-between border-b py-1">
+                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
                       <span>{im.name}</span>
                       <span className="font-medium">{im.status === "ordered" ? "Solicitada" : "Disponible"}</span>
                     </li>
@@ -1127,26 +1358,43 @@ export default function Online_Detalle() {
                 </ul>
               </div>
             </div>
-          </CaseCard>
+          </AccordionSection>
 
-
-          {/* Signos de alarma */}
-          <CaseCard title="Signos de alarma">
-            <p className="text-xs text-slate-500 mb-2">
-              Indicadores clínicos que sugieren gravedad y requieren atención inmediata.
-            </p>
+          {/* ACCORDION: 5. Signos de alarma (elige los preocupantes) */}
+          <AccordionSection
+            title="5) Signos de alarma"
+            subtitle="Selecciona los signos que realmente sugieren gravedad."
+            open={accordionOpen[4]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 4 ? !v : v)))}
+          >
             <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
-              {toArray(brief?.red_flags).map((r, i) => (
-                <li key={i} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">{r}</li>
-              ))}
-              {!brief?.red_flags?.length && <li className="text-slate-500">—</li>}
+              {redFlagCandidates.map((rf) => {
+                const checked = selectedRedFlags.includes(rf);
+                return (
+                  <label key={rf} className={`rounded-lg border px-3 py-2 flex items-center gap-2 cursor-pointer ${checked ? "border-[#1E6ACB] bg-[#4FA3E3]/10" : "border-slate-200 hover:bg-slate-50"}`}>
+                    <input
+                      type="checkbox"
+                      className="accent-[#1E6ACB]"
+                      checked={checked}
+                      onChange={(e) => setSelectedRedFlags((prev) => (
+                        e.target.checked ? [...prev, rf] : prev.filter((x) => x !== rf)
+                      ))}
+                    />
+                    <span>{rf}</span>
+                  </label>
+                );
+              })}
             </ul>
-          </CaseCard>
+            {redFlagsCorrect !== null && (
+              <div className={`mt-3 inline-flex items-center text-xs px-2 py-0.5 rounded border ${
+                redFlagsCorrect ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}>
+                {redFlagsCorrect ? "Selección correcta" : "Hay elementos incorrectos o faltan signos clave"}
+              </div>
+            )}
+          </AccordionSection>
 
-
-
-
-          {/* Barra de inicio */}
+          {/* BARRA inferior de acción */}
           <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">
             <div className="text-sm text-slate-600">
               <span className="font-medium text-slate-900">{scenario?.title}</span>
@@ -1155,14 +1403,17 @@ export default function Online_Detalle() {
               <span className="mx-2">·</span>
               <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
-          <button
-            onClick={() => { if (!showSummary) startAttemptCountdown(); }}
-            disabled={showSummary}
-            className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 disabled:opacity-50"
-            title={showSummary ? "El intento ya está finalizado o expirado" : (initialExpiresAt ? "Reanudar intento" : "Iniciar intento")}
-          >
-            {initialExpiresAt ? "Reanudar intento" : "Comenzar simulación"}
-          </button>
+            <button
+              onClick={() => { setShowBriefing(false); }}
+              disabled={showSummary || !tepComplete}
+              className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 disabled:opacity-50"
+              title={!tepComplete ? "Completa el TEP para continuar" : (showSummary ? "El intento ya está finalizado o expirado" : "Continuar a preguntas")}
+            >
+              Continuar
+            </button>
+            <p className="ml-3 text-xs text-slate-500">
+              ⏱️ El tiempo corre durante el briefing interactivo.
+            </p>
           </div>
         </main>
       </div>
@@ -1390,18 +1641,14 @@ export default function Online_Detalle() {
                 </h1>
 
                 {/* Tiempo */}
-                {remainingSecs !== null && (
-                  <div
-                    className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ring-1
-              ${remainingSecs <= 60
-                ? "bg-rose-500/90 ring-rose-400 text-white"
-                : "bg-white/15 ring-white/30 text-white"}`}
-                    title="Tiempo restante"
-                  >
-                    <span className="text-xs">Tiempo</span>
-                    <span className="font-mono text-sm tabular-nums">
-                      {formatMMSS(remainingSecs)}
-                    </span>
+                {remainingSecs !== null && Number(attemptTimeLimit) > 0 && (
+                  <div className="shrink-0" title="Tiempo restante">
+                    <TimeDonut
+                      totalSecs={Number(attemptTimeLimit)}
+                      remainSecs={remainingSecs}
+                      size={48}
+                      title="Tiempo restante"
+                    />
                   </div>
                 )}
               </div>
