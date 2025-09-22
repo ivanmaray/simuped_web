@@ -1,9 +1,10 @@
 // src/pages/SimulacionDetalle.jsx antes
 // src/features/online/pages/OnlineDetalle.jsx ahora
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
+import { reportWarning } from "../../../utils/reporting.js";
 
 
 const HINT_PENALTY_POINTS = 5; // puntos que se restan por cada pista usada (puedes ajustar)
@@ -22,7 +23,9 @@ function useServerTime() {
           const client = Date.now();
           setDriftMs(server - client);
         }
-      } catch {}
+      } catch (error) {
+        reportWarning('OnlineDetalle.nowUtc.initial', error);
+      }
     })();
     const id = setInterval(async () => {
       try {
@@ -32,7 +35,9 @@ function useServerTime() {
           const client = Date.now();
           setDriftMs(server - client);
         }
-      } catch {}
+      } catch (error) {
+        reportWarning('OnlineDetalle.nowUtc.interval', error);
+      }
     }, 120000); // cada 2 min
     return () => { mounted = false; clearInterval(id); };
   }, []);
@@ -364,29 +369,9 @@ function TEPTriangle({ appearance, breathing, circulation }) {
   );
 }
 
-// Traduce estado a etiqueta humana
-function humanizeTepStatus(v) {
-  const k = String(v || '').toLowerCase();
-  if (["verde","green","normal"].includes(k)) return "Normal";
-  if (["amarillo","ámbar","ambar","amber","sospechoso"].includes(k)) return "Sospechoso";
-  if (["rojo","red","anormal","alterado"].includes(k)) return "Anormal";
-  return "—";
-}
-
 // Mensaje por defecto si no hay motivo específico en el briefing
-function defaultTepReason(kind, status) {
-  const s = humanizeTepStatus(status);
-  if (s === "Normal") return "Sin hallazgos relevantes";
-  if (kind === "appearance") return s === "Sospechoso" ? "Irritabilidad o letargo leve" : "Aspecto tóxico o inconsciente";
-  if (kind === "breathing")  return s === "Sospechoso" ? "Aleteo nasal o tiraje leve" : "Apnea, tiraje severo o quejido";
-  if (kind === "circulation") return s === "Sospechoso" ? "Palidez o moteado" : "Cianosis o piel marmórea";
-  return "";
-}
-
-
-
 export default function Online_Detalle() {
-  const { driftMs, now: nowDrifted } = useServerTime();
+  const { now: nowDrifted } = useServerTime();
   const { id, attemptId: attemptParam } = useParams(); // id de escenario y (opcional) attemptId por ruta /resumen/:attemptId
   const scenarioIdParam = String(id ?? "");
   const scenarioIdNumeric = /^\d+$/.test(scenarioIdParam) ? Number(scenarioIdParam) : null;
@@ -403,14 +388,14 @@ export default function Online_Detalle() {
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [, setErr] = useState("");
   const [showSkeleton, setShowSkeleton] = useState(false);
 
   // Escenario + pasos + preguntas
   const [scenario, setScenario] = useState(null);
   const [brief, setBrief] = useState(null);
   const [resources, setResources] = useState([]);
-  const [loadingResources, setLoadingResources] = useState(false);
+  const [, setLoadingResources] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
   const [steps, setSteps] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -421,7 +406,7 @@ export default function Online_Detalle() {
   const [hintsUsed, setHintsUsed] = useState({}); // { [questionId]: number }
   const [revealedHints, setRevealedHints] = useState({}); // { [questionId]: string[] }
   const [qTimers, setQTimers] = useState({}); // { [qid]: { start: number, remaining: number, expired: boolean } }
-  const [qTick, setQTick] = useState(0);
+  const [, setQTick] = useState(0);
   function requestHint(q) {
     const t = Date.now();
     if (!Number.isFinite(t)) return;
@@ -502,7 +487,7 @@ export default function Online_Detalle() {
   const [timeUp, setTimeUp] = useState(false);
 
   // Arranca el contador del intento (y fija expires_at si no estaba)
-  async function startAttemptCountdown() {
+  const startAttemptCountdown = useCallback(async () => {
     if (!attemptId) {
       return; // no ocultes el briefing por falta temporal de attemptId
     }
@@ -548,7 +533,7 @@ export default function Online_Detalle() {
     } finally {
       // no cerramos el briefing automáticamente; el usuario continúa con el botón
     }
-  }
+  }, [attemptId, attemptTimeLimit, initialExpiresAt, nowDrifted]);
 
   // Auto-iniciar el contador si no hay briefing (una vez que tenemos el intento)
   useEffect(() => {
@@ -560,7 +545,7 @@ export default function Online_Detalle() {
     if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
       startAttemptCountdown();
     }
-  }, [loading, showSummary, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt]);
+  }, [loading, showSummary, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt, startAttemptCountdown]);
 
   // ⏱️ Nuevo: si el briefing está visible, cuenta como parte de la simulación.
   // Arrancamos el contador al entrar al briefing si hay límite y aún no existe expires_at.
@@ -576,7 +561,7 @@ export default function Online_Detalle() {
       startAttemptCountdown();
       setRemainingSecs((prev) => (prev == null && Number(attemptTimeLimit) > 0 ? Number(attemptTimeLimit) : prev));
     }
-  }, [loading, showBriefing, attemptId, attemptTimeLimit, expiresAt, initialExpiresAt]);
+  }, [loading, showBriefing, attemptId, attemptTimeLimit, expiresAt, initialExpiresAt, startAttemptCountdown]);
 
   const currentStep = steps[currentIdx] || null;
 
@@ -813,12 +798,12 @@ export default function Online_Detalle() {
 
       setSteps(stepsWithQs);
       // Si estamos en resumen, cargar respuestas guardadas para pintar la corrección
-      if (attemptId && (shouldShowSummary || forceSummaryRoute)) {
+      if (att?.id && (shouldShowSummary || forceSummaryRoute)) {
         try {
           const { data: savedAns, error: ansErr } = await supabase
             .from("attempt_answers")
             .select("question_id, selected_option, is_correct")
-            .eq("attempt_id", attemptId);
+            .eq("attempt_id", att.id);
           if (!ansErr && Array.isArray(savedAns)) {
             const map = {};
             // Construimos un indice de preguntas por id para poder evaluar etiquetas
@@ -870,7 +855,7 @@ export default function Online_Detalle() {
         sub?.subscription?.unsubscribe?.();
       } catch {}
     };
-  }, [id, navigate, initialAttemptId]);
+  }, [id, navigate, initialAttemptId, forceSummaryRoute, scenarioIdParam, scenarioIdNumeric]);
 
   // Ticker para countdown (moved to top-level)
   useEffect(() => {
@@ -939,7 +924,7 @@ export default function Online_Detalle() {
       await finishAttempt(allAnswered ? "finalizado" : "abandonado");
     };
     handler();
-  }, [timeUp, showSummary, allAnswered]);
+  }, [timeUp, showSummary, allAnswered, finishAttempt]);
 
   // 🔒 Asegurar cierre en BD cuando estamos en resumen (evita reanudar en bucle)
   useEffect(() => {
@@ -970,7 +955,7 @@ export default function Online_Detalle() {
         console.warn("[Resumen] excepción al asegurar cierre:", e);
       }
     })();
-  }, [showSummary, attemptId, allAnswered]);
+  }, [showSummary, attemptId, allAnswered, finishAttempt]);
 
   async function selectAnswer(q, optKey, optIndex) {
     if (qTimers[q.id]?.expired) {
@@ -1022,7 +1007,7 @@ export default function Online_Detalle() {
     }
   }
 
-  async function finishAttempt(statusOverride) {
+  const finishAttempt = useCallback(async (statusOverride) => {
     if (!attemptId) return;
 
     // calcula correctas desde memoria local
@@ -1034,7 +1019,7 @@ export default function Online_Detalle() {
     const score = Math.max(0, Math.round(base - penalty));
 
     try {
-      const safeStatus = "finalizado";
+      const safeStatus = typeof statusOverride === "string" && statusOverride.trim() ? statusOverride.trim() : "finalizado";
       const { error: updErr } = await supabase
         .from("attempts")
         .update({
@@ -1057,7 +1042,7 @@ export default function Online_Detalle() {
       console.error("[SimulacionDetalle] finishAttempt excepción:", e);
       alert(`Hubo un problema al finalizar el intento: ${e.message || e.toString()}`);
     }
-  }
+  }, [answers, attemptId, hintsUsed, totalQuestions]);
 
   function nextStep() {
     setCurrentIdx((i) => Math.min(i + 1, steps.length - 1));

@@ -38,58 +38,30 @@ import PresencialInforme from "./features/presencial/pages/shared/Presencial_Inf
 import Admin from "./features/admin/pages/Admin_Usuarios.jsx";
 
 import { useAuth } from "./auth";
-import { supabase } from "./supabaseClient";
 
 function DebugRouteLogger() {
   const location = useLocation();
-  console.debug("Montando ruta:", location.pathname + location.search);
+  const isDev = typeof import.meta !== "undefined" && import.meta.env?.DEV;
+  if (isDev) {
+    console.debug("Montando ruta:", location.pathname + location.search);
+  }
   return null;
 }
 
-// Guard Admin con tri-estado: mientras isAdmin === null no redirige
 function RequireAdmin({ children }) {
-  const { ready, session } = useAuth();
-  const [isAdmin, setIsAdmin] = React.useState(null);
+  const { ready, session, profile, isAdmin } = useAuth();
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function check() {
-      if (!ready) return;
-      if (!session) {
-        setIsAdmin(false);
-        return;
-      }
-
-      const metaAdmin = Boolean(
-        session?.user?.user_metadata?.is_admin ||
-          session?.user?.app_metadata?.is_admin
-      );
-      if (metaAdmin) {
-        if (!cancelled) setIsAdmin(true);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("is_admin")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        if (error) console.debug("[RequireAdmin] profiles error:", error);
-        if (!cancelled) setIsAdmin(Boolean(data?.is_admin));
-      } catch (e) {
-        console.debug("[RequireAdmin] profiles throw:", e);
-        if (!cancelled) setIsAdmin(false);
-      }
-    }
-    check();
-    return () => {
-      cancelled = true;
-    };
-  }, [ready, session]);
-
-  if (!ready || isAdmin === null) return null;
+  if (!ready) return null;
   if (!session) return <Navigate to="/" replace />;
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen grid place-items-center text-slate-600">
+        Cargando perfil…
+      </div>
+    );
+  }
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen grid place-items-center bg-slate-50 text-slate-700 p-6">

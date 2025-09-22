@@ -40,7 +40,6 @@ export default function Auth_Pendiente() {
   const [approved, setApproved] = useState(null); // true/false/null
   const [approvedAt, setApprovedAt] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const [emailConfirmedAtRaw, setEmailConfirmedAtRaw] = useState(null);
 
   // Timers y canales
   const pollTimer = useRef(null);
@@ -64,7 +63,7 @@ export default function Auth_Pendiente() {
       if (!mounted) return;
 
       // Suscripción a cambios de sesión (evita refrescos manuales continuos)
-      const { data: subAuth } = supabase.auth.onAuthStateChange((evt, sess) => {
+      const { data: subAuth } = supabase.auth.onAuthStateChange((evt) => {
         // Cuando cambie el token o se confirme email, volvemos a leer rápido
         if (evt === "SIGNED_IN" || evt === "USER_UPDATED" || evt === "TOKEN_REFRESHED") {
           safePrimeUserAndProfile();
@@ -110,8 +109,6 @@ export default function Auth_Pendiente() {
       console.warn("[Pendiente] getUser error:", uErr);
     }
     const user = userRes?.user || null;
-    setEmailConfirmedAtRaw(user?.email_confirmed_at || null);
-
     if (!user) {
       // Sin sesión: mostramos lo que sepamos y no seguimos tirando de perfil
       const pendingEmail = localStorage.getItem("pending_email") || "";

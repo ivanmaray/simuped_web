@@ -17,15 +17,6 @@ function checklistStatusFromValue(val) {
   return 'na';
 }
 
-function statusLabel(s) {
-  switch (s) {
-    case 'ok': return 'Realizado';
-    case 'wrong': return 'Realizado mal';
-    case 'missed': return 'No realizado';
-    default: return 'N/A';
-  }
-}
-
 export default function Presencial_Escenario() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -48,7 +39,6 @@ export default function Presencial_Escenario() {
   const [actionsTick, setActionsTick] = useState(0); // to refetch after actions
   const [sessionMeta, setSessionMeta] = useState({ started_at: null });
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [responsesLoaded, setResponsesLoaded] = useState(false);
   const [debriefMode, setDebriefMode] = useState(false);
   const [kpis, setKpis] = useState({ total_mlkg: 0, bolus_count: 0, time_to_abx_min: null });
   const noParticipants = !participants || participants.length === 0;
@@ -192,7 +182,9 @@ export default function Presencial_Escenario() {
             .order('order_index', { ascending: true });
           if (!sterr && st) {
             setSteps(st);
-            if (!currentStepId && st.length > 0) setCurrentStepId(st[0].id);
+            if (st.length > 0) {
+              setCurrentStepId((prev) => prev ?? st[0].id);
+            }
           }
         } catch {}
 
@@ -251,7 +243,6 @@ export default function Presencial_Escenario() {
               acc[r.item_id] = checklistStatusFromValue(r.status);
             });
             setResponses(acc);
-            setResponsesLoaded(true);
           }
         } catch {}
 
@@ -318,10 +309,6 @@ useEffect(() => {
     const ss = s % 60;
     const p2 = (n) => String(n).padStart(2, '0');
     return hh > 0 ? `${hh}:${p2(mm)}:${p2(ss)}` : `${p2(mm)}:${p2(ss)}`;
-  }
-
-  function isChecked(v) {
-    return v === true || v === 1 || v === '1' || v === 'true';
   }
 
   async function upsertSessionChecklistRows(rows) {

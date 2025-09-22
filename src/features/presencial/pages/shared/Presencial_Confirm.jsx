@@ -10,6 +10,38 @@ const estadoStyles = {
   "En construcción: sin iniciar": { label: "En construcción: sin iniciar", color: "bg-slate-200 text-slate-600 ring-slate-300" },
 };
 
+function HeroStat({ label, value, helper }) {
+  return (
+    <div className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 backdrop-blur-sm min-w-[12rem]">
+      <p className="text-xs uppercase tracking-wide text-white/70">{label}</p>
+      <p className="text-xl font-semibold text-white leading-tight">{value}</p>
+      {helper ? <p className="text-[11px] text-white/70 mt-1">{helper}</p> : null}
+    </div>
+  );
+}
+
+const ROLE_BADGE = {
+  medico: { text: 'Médico/a', color: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  enfermeria: { text: 'Enfermería', color: 'bg-sky-50 text-sky-700 ring-sky-200' },
+  farmacia: { text: 'Farmacia', color: 'bg-violet-50 text-violet-700 ring-violet-200' },
+  instructor: { text: 'Instructor/a', color: 'bg-amber-50 text-amber-700 ring-amber-200' },
+};
+
+const ROLE_ORDER = ['instructor', 'medico', 'enfermeria', 'farmacia'];
+
+function getRoleLabel(role) {
+  return ROLE_BADGE[role]?.text || role;
+}
+
+function formatLevelLabel(raw) {
+  const key = String(raw || '').toLowerCase();
+  if (!key) return '—';
+  if (key.includes('bas')) return 'Básico';
+  if (key.includes('med')) return 'Intermedio';
+  if (key.includes('avan')) return 'Avanzado';
+  return key[0].toUpperCase() + key.slice(1);
+}
+
 export default function Presencial_Confirm() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -140,6 +172,74 @@ export default function Presencial_Confirm() {
 
   const badge = estadoStyles[sc.status] || { label: sc.status || "Estado", color: "bg-slate-100 text-slate-700 ring-slate-200" };
 
+  const participantCounts = ROLE_ORDER.reduce((acc, role) => {
+    acc[role] = participants.filter((p) => p.role === role).length;
+    return acc;
+  }, {});
+
+  const totalParticipants = participants.length;
+  const missingRoles = ROLE_ORDER.filter((role) => role !== 'instructor' && participantCounts[role] === 0);
+  const instructorMissing = participantCounts['instructor'] === 0;
+  const estimatedLabel = typeof sc.estimated_minutes === 'number' ? `~${sc.estimated_minutes} min` : 'Variable';
+  const heroStats = [
+    {
+      key: 'mode',
+      label: 'Modo seleccionado',
+      value: flow === 'dual' ? 'Dual · 2 pantallas' : 'Clásico · 1 pantalla',
+      helper: lockActive ? 'Hay una sesión en curso' : 'Puedes cambiarlo en cualquier momento',
+    },
+    {
+      key: 'estado',
+      label: 'Estado del escenario',
+      value: badge.label,
+      helper: 'Disponibilidad actual del caso',
+    },
+    {
+      key: 'duracion',
+      label: 'Duración estimada',
+      value: estimatedLabel,
+      helper: 'Incluye briefing y checklist',
+    },
+    {
+      key: 'equipo',
+      label: 'Equipo preparado',
+      value: `${totalParticipants} participante${totalParticipants === 1 ? '' : 's'}`,
+      helper: missingRoles.length
+        ? `Pendiente: ${missingRoles.map((r) => getRoleLabel(r)).join(', ')}`
+        : instructorMissing
+        ? 'Añade quién actuará como instructor'
+        : 'Roles principales cubiertos',
+    },
+  ];
+
+  const participantSummaryChips = ROLE_ORDER.map((role) => (
+    <span
+      key={role}
+      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs ring-1 ${ROLE_BADGE[role]?.color || 'bg-slate-100 text-slate-700 ring-slate-200'}`}
+    >
+      {getRoleLabel(role)}: {participantCounts[role] || 0}
+    </span>
+  ));
+
+  const steps = [
+    {
+      title: '1) Configura el equipo',
+      body: 'Selecciona quién asumirá cada rol. Puedes escribir nombres manualmente o vincular perfiles existentes.',
+    },
+    {
+      title: '2) Revisa el escenario',
+      body: 'El instructor controla la consola: cronómetro, checklist, mensajes del guion y publicaciones en pantalla.',
+    },
+    {
+      title: '3) Ejecuta y registra',
+      body: 'Durante la simulación marca actuaciones ABCDE, intervenciones farmacológicas y seguridad del medicamento.',
+    },
+    {
+      title: '4) Obtén el informe',
+      body: 'Al finalizar se genera un informe con tiempos, checklist y participantes que puedes guardar o imprimir.',
+    },
+  ];
+
   // Normaliza textos de rol a valores canónicos sin tildes
   function normalizeRole(txt) {
     const s = String(txt || '')
@@ -165,13 +265,6 @@ export default function Presencial_Confirm() {
     // Filtro estricto: sólo usuarios cuyo rol coincide exactamente
     return list.filter(u => u.rol === r);
   }
-
-  const ROLE_BADGE = {
-    medico: { text: 'Médico/a', color: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-    enfermeria: { text: 'Enfermería', color: 'bg-sky-50 text-sky-700 ring-sky-200' },
-    farmacia: { text: 'Farmacia', color: 'bg-violet-50 text-violet-700 ring-violet-200' },
-    instructor: { text: 'Instructor/a', color: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  };
 
   const MIN_NAME = 2;
   const cleanParticipants = () => participants
@@ -278,25 +371,31 @@ export default function Presencial_Confirm() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
-      {/* Hero */}
-      <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white">
-        <div className="max-w-6xl mx-auto px-5 py-10">
-          <p className="opacity-95">Simulación presencial · Confirmación</p>
-          <h1 className="text-3xl md:text-4xl font-semibold">{sc.title}</h1>
-          <p className="opacity-90 mt-1 max-w-3xl">{sc.summary}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            {typeof sc.estimated_minutes === "number" && (
-              <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">~{sc.estimated_minutes} min</span>
-            )}
-            <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">Presencial</span>
-            <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-              {flow === 'dual' ? 'Dual · 2 pantallas' : 'Clásico · 1 pantalla'}
-            </span>
-            {lockActive && (
-              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 ring-1 ring-amber-300">Sesión en curso</span>
-            )}
+      <section className="relative overflow-hidden border-b border-white/10">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
+        <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_15%_15%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
+        <div className="max-w-6xl mx-auto px-5 py-12 text-white relative">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-3">
+              <p className="text-white/70 text-sm uppercase tracking-wide">Simulación presencial</p>
+              <h1 className="text-3xl md:text-4xl font-semibold leading-snug">{sc.title}</h1>
+              <p className="opacity-95 max-w-3xl text-lg">{sc.summary || 'Prepara tu equipo y confirma la sesión antes de comenzar.'}</p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-white/80">
+                <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">Escenario presencial</span>
+                <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">Nivel {formatLevelLabel(sc.level)}</span>
+                <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">{flow === 'dual' ? 'Dual · 2 pantallas' : 'Clásico · 1 pantalla'}</span>
+                {lockActive && (
+                  <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 ring-1 ring-amber-300">Sesión en curso</span>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm lg:max-w-md">
+              {heroStats.map((stat) => (
+                <HeroStat key={stat.key} label={stat.label} value={stat.value} helper={stat.helper} />
+              ))}
+            </div>
           </div>
-          <div className="mt-4 inline-flex rounded-lg ring-1 ring-white/30 overflow-hidden" role="tablist" aria-label="Selector de modo">
+          <div className="mt-6 inline-flex rounded-lg ring-1 ring-white/30 overflow-hidden" role="tablist" aria-label="Selector de modo">
             <button
               type="button"
               role="tab"
@@ -319,63 +418,94 @@ export default function Presencial_Confirm() {
         </div>
       </section>
 
-      <main className="max-w-6xl mx-auto px-5 py-8">
-        <div className="mb-6 rounded-lg bg-slate-100 p-3 text-sm text-slate-700">
-          {flow === 'dual' ? (
-            <p><span className="font-semibold">Modo dual:</span> se generará un <em>código</em> para la pantalla del alumnado. Esta pantalla (consola) queda sólo para el instructor.</p>
-          ) : (
-            <p><span className="font-semibold">Modo clásico:</span> instructor y caso comparten el mismo dispositivo. No se genera código de proyección.</p>
-          )}
-        </div>
+      <main className="max-w-6xl mx-auto px-5 py-8 space-y-8">
         {submitErr && (
-          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-2">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3">
             {submitErr}
           </div>
         )}
-        {/* Estado */}
-        <div className="mb-6">
-          <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ring-1 ${badge.color}`}>
-            {badge.label}
-          </span>
-        </div>
 
-        {/* Banner de sesión en curso */}
-        {lockActive && (
-          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold">Tienes una sesión en curso para este escenario.</p>
-                <p className="text-sm opacity-90">No puedes modificar el equipo mientras la sesión esté activa.</p>
-              </div>
-              <div className="shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!existingSession) return;
-                    if (flow === 'single') navigate(`/presencial/${sc.id}/escenario?session=${existingSession.id}`);
-                    else navigate(`/presencial/instructor/${sc.id}/${existingSession.id}`);
-                  }}
-                  className="px-3 py-1.5 rounded-lg font-semibold text-white bg-[#1E6ACB] hover:opacity-90"
-                >
-                  Ir a la sesión en curso
-                </button>
-              </div>
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <InfoCard title="Resumen del escenario">
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ring-1 ${badge.color}`}>
+                {badge.label}
+              </span>
             </div>
+            <ul className="space-y-2 text-sm text-slate-600 leading-relaxed">
+              <li><strong>Duración estimada:</strong> {estimatedLabel}</li>
+              <li><strong>Nivel:</strong> {formatLevelLabel(sc.level)}</li>
+              <li>
+                <strong>Modo actual:</strong> {flow === 'dual' ? 'Dual · 2 pantallas' : 'Clásico · 1 pantalla'}.
+                {flow === 'dual'
+                  ? ' Se generará un código para la pantalla del alumnado y esta consola quedará para la persona instructora.'
+                  : ' Instructor y caso comparten el mismo dispositivo, sin código adicional.'}
+              </li>
+              <li>Revisa el equipo y pulsa <em>Comenzar</em> para generar una nueva sesión.</li>
+            </ul>
+          </InfoCard>
+
+          <InfoCard title="Equipo planificado">
+            <div className="flex flex-wrap gap-2 mb-3">
+              {participantSummaryChips}
+            </div>
+            <p className="text-sm text-slate-600">
+              {totalParticipants === 0
+                ? 'Añade los roles que participarán en la simulación.'
+                : missingRoles.length
+                ? `Aún faltan: ${missingRoles.map((r) => getRoleLabel(r)).join(', ')}.`
+                : instructorMissing
+                ? 'Añade quién actuará como instructor.'
+                : 'Roles principales cubiertos.'}
+            </p>
+            {lockActive && (
+              <p className="text-sm text-amber-600 mt-2">
+                Tienes una sesión abierta para este escenario. Puedes retomarla o iniciar una nueva desde este panel.
+              </p>
+            )}
+          </InfoCard>
+        </section>
+
+        {lockActive && existingSession && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="font-semibold">Sesión en curso detectada</p>
+              <p className="text-sm opacity-90">Mientras esté activa no podrás editar el equipo. Puedes retomarla o crear una nueva si lo necesitas.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (flow === 'single') navigate(`/presencial/${sc.id}/escenario?session=${existingSession.id}`);
+                else navigate(`/presencial/instructor/${sc.id}/${existingSession.id}`);
+              }}
+              className="px-4 py-2 rounded-lg font-semibold text-white bg-[#1E6ACB] hover:opacity-90"
+            >
+              Ir a la sesión en curso
+            </button>
           </div>
         )}
-        {/* Participantes */}
-        <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <h2 className="text-lg font-semibold text-slate-900">Participantes</h2>
-          </div>
-          <p className="text-slate-600 text-sm leading-relaxed">
-            Añade a tu equipo. Puedes escribir nombres libres o vincular usuarios del centro por rol.
-          </p>
 
-          {/* Selector rápido */}
-          <div className="flex flex-col md:flex-row md:items-end gap-3">
-            <div className="flex items-center gap-2">
-              {(['medico','enfermeria','farmacia','instructor']).map(r => (
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.35)] px-6 py-6 space-y-5" aria-labelledby="titulo-participantes">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div>
+              <h2 id="titulo-participantes" className="text-xl font-semibold text-slate-900">Equipo participante</h2>
+              <p className="text-sm text-slate-600 mt-1">Asigna quién actuará en cada rol. Puedes vincular usuarios reales o escribir un nombre manualmente.</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+                {totalParticipants} participante{totalParticipants === 1 ? '' : 's'} en la lista
+              </span>
+              {missingRoles.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                  Faltan: {missingRoles.map((r) => getRoleLabel(r)).join(', ')}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-4">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Selecciona el rol a añadir">
+              {ROLE_ORDER.map((r) => (
                 <button
                   key={r}
                   type="button"
@@ -383,26 +513,26 @@ export default function Presencial_Confirm() {
                   className={`px-3 py-1 rounded-full text-sm ring-1 transition ${
                     lockActive
                       ? 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed'
-                      : (roleToAdd===r ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50')
+                      : (roleToAdd === r ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50')
                   }`}
                 >
-                  {ROLE_BADGE[r]?.text || r}
+                  {getRoleLabel(r)}
                 </button>
               ))}
             </div>
 
-            <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
-              <div>
+            <div className="flex flex-col md:flex-row md:items-end gap-3">
+              <div className="flex-1">
                 <input
                   list={`users-${roleToAdd}`}
                   value={searchText}
-                  onChange={e => setSearchText(e.target.value)}
-                  placeholder={`Escribe un nombre o elige un usuario de ${ROLE_BADGE[roleToAdd]?.text.toLowerCase()}`}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  placeholder={`Escribe un nombre o elige un usuario de ${getRoleLabel(roleToAdd).toLowerCase()}`}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB] disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={lockActive}
                 />
                 <datalist id={`users-${roleToAdd}`}>
-                  {usersForRole(roleToAdd).map(u => (
+                  {usersForRole(roleToAdd).map((u) => (
                     <option key={u.id} value={u.label} />
                   ))}
                 </datalist>
@@ -418,33 +548,32 @@ export default function Presencial_Confirm() {
             </div>
           </div>
 
-          {/* Lista actual con tarjetas compactas */}
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             {participants.length === 0 && (
-              <p className="text-sm text-slate-600">Aún no hay participantes. Añade al menos al instructor y, si lo deseas, al equipo clínico.</p>
+              <p className="text-sm text-slate-600">Aún no hay participantes. Añade al menos a la persona instructora y, si lo deseas, al equipo clínico.</p>
             )}
             {participants.map((p, idx) => (
               <div key={idx} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ring-1 ${ROLE_BADGE[p.role]?.color || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>{ROLE_BADGE[p.role]?.text || p.role}</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ring-1 ${ROLE_BADGE[p.role]?.color || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>{getRoleLabel(p.role)}</span>
                     <span className="font-medium text-slate-900 truncate">{p.name || '—'}</span>
                   </div>
                   {p.user_id && (
                     <div className="text-xs text-slate-500 truncate mt-0.5">
-                      {(users.find(u => u.id === p.user_id)?.email) || ''}
+                      {(users.find((u) => u.id === p.user_id)?.email) || ''}
                     </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
                   <select
                     value={p.user_id || ''}
-                    onChange={e => {
+                    onChange={(e) => {
                       const val = e.target.value;
-                      setParticipants(arr => arr.map((it, i) => {
+                      setParticipants((arr) => arr.map((it, i) => {
                         if (i !== idx) return it;
                         if (!val) return { ...it, user_id: undefined };
-                        const u = users.find(x => x.id === val);
+                        const u = users.find((x) => x.id === val);
                         const label = u?.nameLabel || u?.label || '';
                         return { ...it, user_id: val, name: label || it.name };
                       }));
@@ -453,13 +582,13 @@ export default function Presencial_Confirm() {
                     disabled={lockActive}
                   >
                     <option value="">(sin usuario)</option>
-                    {usersForRole(p.role).map(u => (
+                    {usersForRole(p.role).map((u) => (
                       <option key={u.id} value={u.id}>{u.label}</option>
                     ))}
                   </select>
                   <button
                     type="button"
-                    onClick={() => setParticipants(arr => arr.filter((_, i) => i !== idx))}
+                    onClick={() => setParticipants((arr) => arr.filter((_, i) => i !== idx))}
                     disabled={lockActive}
                     className={`px-2.5 py-1.5 rounded-lg border text-slate-700 text-sm ${lockActive ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300 hover:bg-slate-50'}`}
                   >
@@ -471,35 +600,20 @@ export default function Presencial_Confirm() {
           </div>
         </section>
 
-        {/* ¿Cómo funciona? */}
-        <h2 className="sr-only">Flujo de la sesión</h2>
-        <section className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
-          <Card title="1) Equipo y roles">
-            Define quién hará de <strong>médico</strong>, <strong>enfermería</strong> y de <strong>farmacéutico</strong>. 
-            Puedes escribir nombres o vincular usuarios del centro. Los participantes quedarán reflejados en el informe.
-          </Card>
-          <Card title="2) Ejecución">
-            Al comenzar irás a la consola del instructor: podrás <strong>iniciar/parar el cronómetro</strong>, 
-            <strong> publicar mensajes del guion</strong> y <strong>mostrar/ocultar</strong> constantes, analíticas e imágenes (con aviso sonoro).
-          </Card>
-          <Card title="3) Desarrollo y checklist">
-            Registra el circuito <strong>ABCDE</strong> (común a todos los casos), el <strong>paquete terapéutico específico</strong> de la patología y la 
-            <strong> seguridad de medicación</strong> (5 correctos, dilución, velocidad…). Todo queda guardado para el informe.
-          </Card>
-          <Card title="4) Informe final">
-            Al finalizar la sesión se genera un informe con <strong>participantes</strong>, <strong>cronometraje</strong>, 
-            <strong> línea temporal de eventos</strong> y los resultados del <strong>checklist</strong>. Podrás imprimirlo o guardarlo como PDF.
-          </Card>
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {steps.map((step, idx) => (
+            <StepCard key={step.title} title={step.title} number={idx + 1}>
+              {step.body}
+            </StepCard>
+          ))}
         </section>
 
-        <p className="mb-4 text-sm text-slate-600">
-          Al pulsar <strong>Comenzar</strong> se creará una nueva sesión. 
-          En modo <em>clásico</em> (1 pantalla) verás la consola y la pantalla del caso en el mismo dispositivo; 
-          en modo <em>dual</em> (2 pantallas) se generará un <strong>código</strong> para proyectar la vista del alumnado.
+        <p className="text-sm text-slate-600">
+          Al pulsar <strong>Comenzar</strong> se creará una nueva sesión. En modo <em>clásico</em> verás la consola y la pantalla del caso en el mismo dispositivo; en modo <em>dual</em> se generará un <strong>código</strong> para compartir la vista del alumnado.
         </p>
-        {/* Acciones */}
+
         <div className="flex flex-col sm:flex-row gap-3">
-          <button 
+          <button
             onClick={() => {
               if (lockActive && existingSession) {
                 if (flow === 'single') navigate(`/presencial/${sc.id}/escenario?session=${existingSession.id}`);
@@ -510,7 +624,7 @@ export default function Presencial_Confirm() {
             }}
             disabled={submitting}
             className={`px-4 py-2 rounded-lg font-semibold transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB] ${
-              submitting ? 'bg-slate-300 text-slate-600 cursor-not-allowed' : 'text-slate-900'
+              submitting ? 'bg-slate-300 text-slate-600 cursor-not-allowed' : 'text-white'
             }`}
             style={submitting ? undefined : { background: lockActive ? '#0A3D91' : '#4FA3E3' }}
           >
@@ -525,11 +639,23 @@ export default function Presencial_Confirm() {
   );
 }
 
-function Card({ title, children }) {
+function InfoCard({ title, children }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" role="region" aria-label={title}>
-      <h3 className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
-      <p className="text-slate-700 text-sm text-justify leading-relaxed">{children}</p>
+    <article className="rounded-3xl border border-slate-200 bg-white shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] px-6 py-5 space-y-3" role="region" aria-label={title}>
+      <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+      <div className="text-sm text-slate-700 leading-relaxed">{children}</div>
+    </article>
+  );
+}
+
+function StepCard({ title, number, children }) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm" role="region" aria-label={title}>
+      <h3 className="text-base font-semibold text-slate-900 mb-2 flex items-center gap-2">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#0A3D91]/10 text-[#0A3D91] text-xs font-bold">{number}</span>
+        {title}
+      </h3>
+      <p className="text-sm text-slate-600 leading-relaxed">{children}</p>
     </article>
   );
 }

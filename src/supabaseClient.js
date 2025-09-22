@@ -4,9 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (typeof window !== "undefined") {
-  console.log("🔍 Supabase URL:", url);
-  console.log("🔍 Supabase Anon Key exists:", !!key);
+const isBrowser = typeof window !== "undefined";
+const isDev = typeof import.meta !== "undefined" && import.meta.env?.DEV;
+
+if (isBrowser && isDev) {
+  console.debug("[supabase] URL:", url);
+  console.debug("[supabase] anon key presente:", Boolean(key));
 }
 
 export const supabase = createClient(url, key, {

@@ -2,12 +2,14 @@
 import { useState, useEffect } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import { useAuth } from "../auth.jsx";
+import { useOptionalAuth } from "../auth.jsx";
 import logo from "../assets/logo.png";
 
 export default function Navbar({ variant = "auto" }) {
-  const { session, profile } = useAuth?.() || { session: null, profile: null };
-  const isAdmin = !!profile?.is_admin;
+  const auth = useOptionalAuth();
+  const session = auth?.session ?? null;
+  const profile = auth?.profile ?? null;
+  const isAdmin = auth?.isAdmin ?? !!profile?.is_admin;
   const location = useLocation();
   const navigate = useNavigate();
 

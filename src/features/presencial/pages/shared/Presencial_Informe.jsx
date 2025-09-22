@@ -324,7 +324,7 @@ export default function Presencial_Informe() {
                 </Link>
               </div>
               <div className="flex flex-wrap gap-2 mt-2">
-                {indicators.map((ind, idx) => (
+                {indicators.map((ind) => (
                   <span key={ind.label} className="inline-block px-2 py-0.5 text-xs rounded-full bg-white/20 ring-1 ring-white/30 print:bg-slate-100 print:ring-slate-200 text-white print:text-slate-700 font-semibold">
                     {ind.label}: <span className="font-mono">{ind.value}</span>
                   </span>

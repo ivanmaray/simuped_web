@@ -4,10 +4,40 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 
 import Navbar from "../../../components/Navbar.jsx";
+import {
+  UserGroupIcon,
+  ClipboardDocumentCheckIcon,
+  CheckBadgeIcon,
+  EnvelopeOpenIcon,
+  AdjustmentsHorizontalIcon,
+  MagnifyingGlassIcon,
+} from "@heroicons/react/24/outline";
 
 function fmtDateShort(v) {
   if (!v) return "—";
   try { return new Date(v).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }); } catch { return "—"; }
+}
+
+function isApprovedUser(u) {
+  return Boolean(u?.approved || u?.approved_at);
+}
+
+function verifiedTimestamp(u) {
+  return u?.verified_at || u?.email_verified_at || u?.email_confirmed_at || null;
+}
+
+function isVerifiedUser(u) {
+  return Boolean(verifiedTimestamp(u));
+}
+
+function notifiedTimestamp(u, fallback = null) {
+  return u?.notified_at || u?.last_notified_at || fallback || null;
+}
+
+function getDni(u) {
+  const value = u?.dni ?? u?.documento ?? u?.document ?? u?.nif ?? u?.nie ?? null;
+  if (!value) return "";
+  return String(value).trim();
 }
 
 function StatusPills({ verified, approved, notifiedAt, verifiedAt }) {
@@ -32,16 +62,38 @@ function Badge({ ok, labelTrue = "Verificado", labelFalse = "No verificado" }) {
   );
 }
 
-function Card({ title, count, children }) {
+function HeroCard({ icon: Icon, label, value, helper }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">{title}</h2>
+    <div className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 backdrop-blur-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 h-10 w-10 rounded-xl bg-white/15 grid place-items-center">
+          {Icon ? <Icon className="h-5 w-5 text-white/90" /> : null}
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-white/70">{label}</p>
+          <p className="text-2xl font-semibold text-white leading-tight">{value}</p>
+          {helper ? <p className="text-[11px] text-white/70 mt-1">{helper}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Card({ title, count, icon: Icon, children, accent = "" }) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.35)]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <div className={`h-10 w-10 rounded-2xl grid place-items-center ${accent || 'bg-slate-900/5 text-slate-900'}`}>
+            {Icon ? <Icon className="h-5 w-5" /> : null}
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        </div>
         {typeof count === "number" && (
-          <span className="text-sm text-slate-500">{count} usuario(s)</span>
+          <span className="text-sm text-slate-500">{count} usuario{count === 1 ? '' : 's'}</span>
         )}
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="px-5 py-5">{children}</div>
     </section>
   );
 }
@@ -54,7 +106,6 @@ export default function Admin_Usuarios() {
     navigate(`/evaluacion?user=${encodeURIComponent(u.id)}`);
   }
   const [loading, setLoading] = useState(true);
-  const [yo, setYo] = useState(null);
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
@@ -62,8 +113,10 @@ export default function Admin_Usuarios() {
   const [dq, setDq] = useState(""); // debounced query
   const qTimerRef = useRef(null);
   const [processingIds, setProcessingIds] = useState({}); // { [userId]: true }
-  const [mailStatus, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
+  const [, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
   const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified via our API }
+  const [rolFilter, setRolFilter] = useState("");
+  const [verifiedFilter, setVerifiedFilter] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -97,8 +150,6 @@ export default function Admin_Usuarios() {
         setLoading(false);
         return;
       }
-      setYo(me);
-
       if (!me?.is_admin) {
         setErr("Acceso restringido: esta sección es solo para administradores.");
         setLoading(false);
@@ -106,23 +157,23 @@ export default function Admin_Usuarios() {
       }
 
       // 3) Usuarios (usar RPC admin_list_users para evitar RLS sobre profiles)
-      let cleaned = [];
       try {
-        const { data: rpcRows, error: rpcErr } = await supabase.rpc("admin_list_users");
-        if (rpcErr) {
-          throw rpcErr;
-        }
-        // rpcRows trae columnas de public.profiles: id, email, nombre, apellidos, dni, rol, unidad,
-        // approved, approved_at, is_admin, created_at, updated_at, verified_at, notified_at.
-        // No incluye campos de auth.users.
-        cleaned = (rpcRows || []).filter((r) => r?.id);
+        const { data, error: listErr } = await supabase
+          .from("profiles")
+          .select(`
+            id, email, nombre, apellidos, rol, unidad, dni, approved, approved_at,
+            is_admin, created_at, updated_at, verified_at, notified_at
+          `)
+          .order("created_at", { ascending: false });
+
+        if (listErr) throw listErr;
+
+        setRows((data || []).filter((r) => r?.id));
       } catch (e) {
-        setErr(e?.message || "Error cargando usuarios (admin_list_users).");
+        setErr(e?.message || "Error cargando usuarios (profiles).");
         setLoading(false);
         return;
       }
-
-      setRows(cleaned);
       setLoading(false);
     }
 
@@ -140,25 +191,85 @@ export default function Admin_Usuarios() {
     };
   }, [q]);
 
+  const rolesDisponibles = useMemo(() => {
+    const map = new Map();
+    for (const r of rows) {
+      const raw = (r?.rol || "").toString().trim();
+      if (!raw) continue;
+      const value = raw.toLowerCase();
+      if (!map.has(value)) {
+        map.set(value, { value, label: raw });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [rows]);
+
   const { pendientes, aprobados } = useMemo(() => {
     const norm = (s) => (s ?? "").toString().toLowerCase();
     const query = norm(dq);
     const filt = (arr) =>
       arr.filter((r) => {
-        if (!query) return true;
         const em = norm(r?.email);
         const nm = norm(r?.nombre);
         const ap = norm(r?.apellidos);
         const rl = norm(r?.rol);
         const un = norm(r?.unidad);
-        const dn = norm(r?.dni);
-        return em.includes(query) || nm.includes(query) || ap.includes(query) || rl.includes(query) || un.includes(query) || dn.includes(query);
+        const dn = norm(getDni(r));
+        const matchText = !query || em.includes(query) || nm.includes(query) || ap.includes(query) || rl.includes(query) || un.includes(query) || dn.includes(query);
+        if (!matchText) return false;
+        if (rolFilter) {
+          if (norm(r?.rol) !== rolFilter) return false;
+        }
+        if (verifiedFilter) {
+          const isVerified = isVerifiedUser(r);
+          if (verifiedFilter === 'verified' && !isVerified) return false;
+          if (verifiedFilter === 'unverified' && isVerified) return false;
+        }
+        return true;
       });
 
-    const pend = filt(rows.filter((r) => !r?.approved));
-    const apr = filt(rows.filter((r) => !!r?.approved));
+    const pend = filt(rows.filter((r) => !isApprovedUser(r)));
+    const apr = filt(rows.filter((r) => isApprovedUser(r)));
     return { pendientes: pend, aprobados: apr };
-  }, [rows, dq]);
+  }, [rows, dq, rolFilter, verifiedFilter]);
+
+  const heroMetrics = useMemo(() => {
+    const total = rows.length;
+    const pendingCount = pendientes.length;
+    const approvedCount = aprobados.length;
+    const verifiedCount = rows.filter((r) => isVerifiedUser(r)).length;
+    const notifiedCount = rows.filter((r) => notifiedTimestamp(r)).length;
+    return [
+      {
+        key: "total",
+        icon: UserGroupIcon,
+        label: "Usuarios totales",
+        value: total,
+        helper: pendingCount ? `${pendingCount} pendientes` : "Todo al día",
+      },
+      {
+        key: "approved",
+        icon: ClipboardDocumentCheckIcon,
+        label: "Aprobados",
+        value: approvedCount,
+        helper: total ? `${Math.round((approvedCount / total) * 100)}% del total` : "Sin registros",
+      },
+      {
+        key: "verified",
+        icon: CheckBadgeIcon,
+        label: "Verificados",
+        value: verifiedCount,
+        helper: total ? `${Math.round((verifiedCount / total) * 100)}% con email verificado` : "Pendiente",
+      },
+      {
+        key: "notified",
+        icon: EnvelopeOpenIcon,
+        label: "Notificados",
+        value: notifiedCount,
+        helper: total ? `${Math.round((notifiedCount / total) * 100)}% avisados por email` : "—",
+      },
+    ];
+  }, [rows, pendientes.length, aprobados.length]);
 
   async function aprobar(u) {
     if (!u?.id) return;
@@ -194,7 +305,7 @@ export default function Admin_Usuarios() {
           try {
             const j = await res.json();
             console.warn("[Admin] notify_user_approved response:", j);
-          } catch (_) {}
+          } catch {}
         }
       } catch (e) {
         console.error("[Admin] notify_user_approved fetch error:", e);
@@ -207,7 +318,7 @@ export default function Admin_Usuarios() {
             .from("profiles")
             .update({ notified_at: nowIso, updated_at: nowIso })
             .eq("id", u.id);
-        } catch (_) {
+        } catch {
           // si falla, lo reflejaremos al menos en el estado local más abajo
         }
       }
@@ -268,13 +379,27 @@ export default function Admin_Usuarios() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar isPrivate />
-      <header className="bg-gradient-to-r from-[#1a69b8] via-[#1d99bf] to-[#1fced1] text-white">
-        <div className="max-w-7xl mx-auto px-5 py-6">
-          <div className="text-xs opacity-90">Admin</div>
-          <h1 className="text-2xl font-bold">Panel de administración</h1>
-          <p className="opacity-90 mt-1">Aprobación de usuarios y notificaciones.</p>
+
+      <section className="relative overflow-hidden border-b border-white/10">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
+        <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_15%_15%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
+        <div className="max-w-[110rem] mx-auto px-5 py-12 text-white relative">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-3">
+              <p className="text-white/70 text-sm uppercase tracking-wide">Administración</p>
+              <h1 className="text-3xl md:text-4xl font-semibold">Gestión de usuarios</h1>
+              <p className="opacity-95 max-w-3xl text-lg">
+                Revisa solicitudes pendientes, aprueba perfiles verificados y controla el estado de notificaciones en un solo lugar.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
+              {heroMetrics.map((metric) => (
+                <HeroCard key={metric.key} icon={metric.icon} label={metric.label} value={metric.value} helper={metric.helper} />
+              ))}
+            </div>
+          </div>
         </div>
-      </header>
+      </section>
 
       <main className="max-w-[110rem] mx-auto px-5 py-8 space-y-6">
         {(err || ok) && (
@@ -289,21 +414,82 @@ export default function Admin_Usuarios() {
           </div>
         )}
 
-        {/* Buscador */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <label className="text-sm text-slate-700">Buscar por email, nombre o rol</label>
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="p. ej. ana@, ivan, farmacia…"
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
-          />
-          <p className="mt-1 text-xs text-slate-500">La búsqueda se aplica automáticamente.</p>
-        </div>
+        {/* Filtros */}
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_40px_-30px_rgba(15,23,42,0.35)]">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-slate-900/5 text-slate-900 grid place-items-center">
+                <AdjustmentsHorizontalIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">Filtrar usuarios</h2>
+                <p className="text-sm text-slate-500">Refina la búsqueda por rol y estado de verificación.</p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr_1fr] gap-4 px-5 py-5">
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Buscar</span>
+              <div className="mt-1 relative flex items-center">
+                <MagnifyingGlassIcon className="absolute left-3 h-5 w-5 text-slate-400" />
+                <input
+                  type="text"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Email, nombre, rol, unidad…"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+                />
+              </div>
+            </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Rol</span>
+              <select
+                value={rolFilter}
+                onChange={(e) => setRolFilter(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+              >
+                <option value="">Todos los roles</option>
+                {rolesDisponibles.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Verificación</span>
+              <select
+                value={verifiedFilter}
+                onChange={(e) => setVerifiedFilter(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+              >
+                <option value="">Todos</option>
+                <option value="verified">Verificados</option>
+                <option value="unverified">Sin verificar</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4 text-xs text-slate-500">
+            <span>Usuarios mostrados: {pendientes.length + aprobados.length}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                setRolFilter("");
+                setVerifiedFilter("");
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Restablecer filtros
+            </button>
+          </div>
+        </section>
 
         {/* Pendientes */}
-        <Card title="Solicitudes pendientes" count={pendientes.length}>
+        <Card
+          title="Solicitudes pendientes"
+          count={pendientes.length}
+          icon={ClipboardDocumentCheckIcon}
+          accent="bg-amber-100 text-amber-700"
+        >
           {pendientes.length === 0 ? (
             <div className="text-slate-500 text-sm">No hay solicitudes pendientes ahora mismo.</div>
           ) : (
@@ -318,7 +504,7 @@ export default function Admin_Usuarios() {
                   <col style={{ width: "8rem" }} />   {/* Estado */}
                   <col style={{ width: "10rem" }} />  {/* Acciones */}
                 </colgroup>
-                <thead className="bg-slate-50 sticky top-0 z-10">
+                <thead className="bg-slate-50/80 sticky top-0 z-10">
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
                     <th className="text-left px-3 py-2">Nombre</th>
@@ -331,10 +517,10 @@ export default function Admin_Usuarios() {
                 </thead>
                 <tbody>
                   {pendientes.map((u) => {
-                    const verif = !!u.verified_at;
+                    const verif = isVerifiedUser(u);
                     const fullName = [u.nombre, u.apellidos].filter(Boolean).join(" ") || "—";
                     return (
-                      <tr key={u.id} className="border-t align-top">
+                      <tr key={u.id} className="border-t align-top hover:bg-slate-50">
                         <td className="px-3 py-2">
                           <div className="truncate" title={u.email || "—"}>{u.email || "—"}</div>
                         </td>
@@ -346,14 +532,14 @@ export default function Admin_Usuarios() {
                             {(u.rol || "—")} / {(u.unidad || "—")}
                           </div>
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap">{u.dni || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{getDni(u) || "—"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtDateShort(u.created_at)}</td>
                         <td className="px-3 py-2">
                           <StatusPills
                             verified={verif}
                             approved={false}
                             notifiedAt={null}
-                            verifiedAt={u.verified_at || null}
+                            verifiedAt={verifiedTimestamp(u)}
                           />
                         </td>
                         <td className="px-3 py-2">
@@ -366,7 +552,7 @@ export default function Admin_Usuarios() {
                               {processingIds[u.id] ? "…" : "Aprobar"}
                             </button>
                             {(() => {
-                              const isVerified = !!u.verified_at;
+                              const isVerified = isVerifiedUser(u);
                               return (
                                 <button
                                   onClick={() => reenviarVerificacion(u)}
@@ -390,7 +576,12 @@ export default function Admin_Usuarios() {
         </Card>
 
         {/* Aprobados */}
-        <Card title="Usuarios aprobados" count={aprobados.length}>
+        <Card
+          title="Usuarios aprobados"
+          count={aprobados.length}
+          icon={UserGroupIcon}
+          accent="bg-emerald-100 text-emerald-700"
+        >
           {aprobados.length === 0 ? (
             <div className="text-slate-500 text-sm">Aún no hay usuarios aprobados.</div>
           ) : (
@@ -405,7 +596,7 @@ export default function Admin_Usuarios() {
                   <col style={{ width: "9rem" }} />   {/* Estado */}
                   <col style={{ width: "7.5rem" }} />   {/* Resultados */}
                 </colgroup>
-                <thead className="bg-slate-50 sticky top-0 z-10">
+                <thead className="bg-slate-50/80 sticky top-0 z-10">
                   <tr>
                     <th className="text-left px-3 py-2">Email</th>
                     <th className="text-left px-3 py-2">Nombre</th>
@@ -418,10 +609,10 @@ export default function Admin_Usuarios() {
                 </thead>
                 <tbody>
                   {aprobados.map((u) => {
-                    const verif = !!u.verified_at;
+                    const verif = isVerifiedUser(u);
                     const fullName = [u.nombre, u.apellidos].filter(Boolean).join(" ") || "—";
                     return (
-                      <tr key={u.id} className="border-t align-top">
+                      <tr key={u.id} className="border-t align-top hover:bg-slate-50">
                         <td className="px-3 py-2"><div className="truncate" title={u.email || "—"}>{u.email || "—"}</div></td>
                         <td className="px-3 py-2"><div className="truncate" title={fullName}>{fullName}</div></td>
                         <td className="px-3 py-2">
@@ -429,7 +620,7 @@ export default function Admin_Usuarios() {
                             {(u.rol || "—")} / {(u.unidad || "—")}
                           </div>
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap">{u.dni || "—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{getDni(u) || "—"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <div className="text-[11px] leading-tight">
                             <div>Aprob.: {fmtDateShort(u.approved_at || u.updated_at)}</div>
@@ -440,8 +631,8 @@ export default function Admin_Usuarios() {
                           <StatusPills
                             verified={verif}
                             approved={true}
-                            notifiedAt={u.notified_at || mailTime[u.id]}
-                            verifiedAt={u.verified_at || null}
+                            notifiedAt={notifiedTimestamp(u, mailTime[u.id])}
+                            verifiedAt={verifiedTimestamp(u)}
                           />
                         </td>
                         <td className="px-3 py-2">

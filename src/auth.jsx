@@ -1,5 +1,5 @@
 // src/auth.jsx
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
 
 const log = (...args) => { try { console.debug("[Auth]", ...args); } catch {} };
@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
   }
 
   // Helper to read the auth user and set email confirmation timestamp
-  async function readAuthUser() {
+  const readAuthUser = useCallback(async () => {
     // Do not call getUser if there's no active session to avoid AuthSessionMissingError
     const { data: sessData } = await supabase.auth.getSession();
     const hasSession = !!sessData?.session;
@@ -59,10 +59,10 @@ export function AuthProvider({ children }) {
     const u = data?.user ?? null;
     setEmailConfirmedAt(u?.email_confirmed_at ?? null);
     return u;
-  }
+  }, []);
 
   // Carga el perfil desde RLS; si no existe, lo crea (upsert) con id/email del auth user.
-  async function loadProfile(uid, email) {
+  const loadProfile = useCallback(async (uid, email) => {
     if (!uid || loadingProfileRef.current) return;
     loadingProfileRef.current = true;
     try {
@@ -105,7 +105,7 @@ export function AuthProvider({ children }) {
     } finally {
       loadingProfileRef.current = false;
     }
-  }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -196,24 +196,42 @@ export function AuthProvider({ children }) {
       mounted = false;
       try { unsubRef.current?.subscription?.unsubscribe?.(); } catch {}
     };
-  }, []);
+  }, [loadProfile, readAuthUser]);
+
+  const refreshProfile = useCallback(async () => {
+    const uid = session?.user?.id;
+    const email = session?.user?.email || null;
+    if (uid) await loadProfile(uid, email);
+  }, [session, loadProfile]);
+
+  const refreshAuthUser = useCallback(async () => {
+    await readAuthUser();
+  }, [readAuthUser]);
 
   const value = useMemo(() => {
     const emailConfirmed = !!emailConfirmedAt;
+    const user = session?.user ?? null;
+    const metaIsAdmin = Boolean(user?.user_metadata?.is_admin || user?.app_metadata?.is_admin);
+    const profileIsAdmin = profile?.is_admin === true;
+    const isAdmin = metaIsAdmin || profileIsAdmin;
+    const approved = profile?.approved === true;
+    const rawRole = profile?.rol ?? user?.user_metadata?.rol ?? user?.app_metadata?.rol ?? "";
+    const role = typeof rawRole === "string" ? rawRole : "";
+
     return {
       ready,
       session,
+      user,
       profile,
       emailConfirmedAt,
       emailConfirmed,
-      refreshProfile: async () => {
-        const uid = session?.user?.id;
-        const email = session?.user?.email || null;
-        if (uid) await loadProfile(uid, email);
-      },
-      refreshAuthUser: async () => { await readAuthUser(); },
+      isAdmin,
+      approved,
+      role,
+      refreshProfile,
+      refreshAuthUser,
     };
-  }, [ready, session, profile, emailConfirmedAt]);
+  }, [ready, session, profile, emailConfirmedAt, refreshProfile, refreshAuthUser]);
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
@@ -222,4 +240,8 @@ export function useAuth() {
   const ctx = useContext(AuthCtx);
   if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
   return ctx;
+}
+
+export function useOptionalAuth() {
+  return useContext(AuthCtx);
 }

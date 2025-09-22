@@ -4,20 +4,9 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 
-function normalizeOptions(opts) {
-  if (!opts) return [];
-  if (typeof opts === "string") { try { opts = JSON.parse(opts); } catch { return []; } }
-  if (Array.isArray(opts)) {
-    if (opts.every(o => typeof o === "string")) return opts.map((label, i) => ({ key: String(i), label }));
-    return opts.map((o, i) => ({ key: String(o.key ?? i), label: o.label ?? String(o) }));
-  }
-  return [];
-}
-
 export default function Online_AttemptReview() {
   const { attemptId } = useParams();
   const navigate = useNavigate();
-  const [session, setSession] = useState(null);
   const [rows, setRows] = useState([]);
   const [attemptOrdinal, setAttemptOrdinal] = useState(null); // 1-based position
   const [attemptTotal, setAttemptTotal] = useState(null);
@@ -30,7 +19,7 @@ export default function Online_AttemptReview() {
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       if (!data?.session) { navigate("/", { replace: true }); return; }
-      setSession(data.session);
+      const session = data.session;
 
       // Leer de la vista v_attempt_review (RLS te limita a tus intentos)
       const { data: rev, error } = await supabase
@@ -46,7 +35,7 @@ export default function Online_AttemptReview() {
         const headRow = (rev || [])[0];
         if (headRow) {
           const scenarioId = headRow.scenario_id;
-          const userId = data.session.user.id;
+          const userId = session.user.id;
 
           const { data: allAttempts, error: listErr } = await supabase
             .from("attempts")

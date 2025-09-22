@@ -3,6 +3,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
+import {
+  ChartBarIcon,
+  TrophyIcon,
+  ClockIcon,
+  SparklesIcon,
+  ClipboardDocumentListIcon,
+  AdjustmentsHorizontalIcon,
+  MagnifyingGlassIcon,
+  ArrowPathIcon,
+} from "@heroicons/react/24/outline";
 
 function formatRole(rol) {
   const k = String(rol || "").toLowerCase();
@@ -43,6 +53,23 @@ function ScoreChip({ ok, total, pct }) {
   );
 }
 
+function HeroCard({ icon: Icon, label, value, helper }) {
+  return (
+    <div className="rounded-2xl border border-white/30 bg-white/10 px-4 py-3 backdrop-blur-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 h-10 w-10 rounded-xl bg-white/15 grid place-items-center">
+          {Icon ? <Icon className="h-5 w-5 text-white/90" /> : null}
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-white/70">{label}</p>
+          <p className="text-2xl font-semibold text-white leading-tight">{value}</p>
+          {helper ? <p className="text-[11px] text-white/70 mt-1">{helper}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Gráfico de barras simple con SVG (sin dependencias)
 function pct(ok, total) {
   const t = Number(total || 0);
@@ -52,33 +79,45 @@ function pct(ok, total) {
 }
 
 function BarChart({ data, title = "Media por escenario" }) {
-  const max = Math.max(100, ...data.map(d => d.value || 0));
-  const barH = 28, gap = 10, padding = 20, width = 700;
-  const height = padding * 2 + data.length * (barH + gap) - gap;
+  const max = Math.max(100, ...data.map((d) => d.value || 0));
+  const barH = 28;
+  const gap = 12;
+  const padding = 24;
+  const width = 720;
+  const height = data.length > 0 ? padding * 2 + data.length * (barH + gap) - gap : padding * 2 + barH;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-lg font-semibold mb-3">{title}</h3>
+    <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)] px-6 py-6">
+      <header className="flex items-center justify-between gap-2">
+        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+        {data.length > 0 && (
+          <span className="text-xs uppercase tracking-wide text-slate-400">{data.length} escenario{data.length !== 1 ? 's' : ''}</span>
+        )}
+      </header>
       {data.length === 0 ? (
-        <p className="text-slate-600">Aún no hay datos suficientes.</p>
+        <p className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Aún no hay datos suficientes. Completa algunos simulacros para ver tu comparativa.
+        </p>
       ) : (
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-          {data.map((d, i) => {
-            const y = padding + i * (barH + gap);
-            const w = (d.value / max) * (width - padding * 2 - 80);
-            return (
-              <g key={d.label}>
-                <text x={0} y={y + barH * 0.7} fontSize="12" fill="#334155">{d.label}</text>
-                <rect x={150} y={y} width={Math.max(2, w)} height={barH} rx="6" fill="#4FA3E3" opacity="0.9" />
-                <text x={150 + Math.max(2, w) + 8} y={y + barH * 0.7} fontSize="12" fill="#0f172a">
-                  {Math.round(d.value)}%
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+        <div className="mt-5 overflow-x-auto">
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[480px] h-auto">
+            {data.map((d, i) => {
+              const y = padding + i * (barH + gap);
+              const w = (d.value / max) * (width - padding * 2 - 120);
+              return (
+                <g key={d.label}>
+                  <text x={0} y={y + barH * 0.7} fontSize="12" fill="#334155">{d.label}</text>
+                  <rect x={180} y={y} width={Math.max(6, w)} height={barH} rx="8" fill="#4FA3E3" opacity="0.9" />
+                  <text x={180 + Math.max(6, w) + 8} y={y + barH * 0.7} fontSize="12" fill="#0f172a">
+                    {Math.round(d.value)}%
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -104,6 +143,11 @@ export default function Evaluacion_Main() {
   const [presErr, setPresErr] = useState("");
   const [presFeatureAvailable, setPresFeatureAvailable] = useState(true);
 
+  const [attemptSearch, setAttemptSearch] = useState("");
+  const [scenarioFilter, setScenarioFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [scoreFilter, setScoreFilter] = useState("");
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -120,7 +164,7 @@ export default function Evaluacion_Main() {
       if (!sess) { setLoading(false); navigate("/", { replace: true }); return; }
 
       // Perfil del usuario actual (para saber si es admin)
-      const { data: myProf, error: myErr } = await supabase
+      const { data: myProf, error: _myErr } = await supabase
         .from("profiles")
         .select("rol, is_admin")
         .eq("id", sess.user.id)
@@ -426,7 +470,7 @@ export default function Evaluacion_Main() {
       if (!sess) navigate("/", { replace: true });
     });
     return () => { mounted = false; try { sub?.subscription?.unsubscribe?.(); } catch {} };
-  }, [navigate, location.search, searchParams]);
+  }, [navigate, location.search, location.state, searchParams]);
 
   function fmtDate(d) {
     try {
@@ -451,6 +495,97 @@ export default function Evaluacion_Main() {
     })).sort((a, b) => a.label.localeCompare(b.label, "es"));
   }, [attempts]);
 
+  const heroMetrics = useMemo(() => {
+    const total = attempts.length;
+    const finished = attempts.filter((a) => !!a.finished_at).length;
+    const avgScoreRaw = total ? attempts.reduce((acc, a) => acc + Number(a.score || 0), 0) / total : 0;
+    const avgScore = total ? Math.round(avgScoreRaw * 10) / 10 : null;
+    const sortedScenarios = summaryByScenario.slice().sort((a, b) => b.value - a.value);
+    const bestScenario = sortedScenarios[0] ?? null;
+    const worstScenario = sortedScenarios.length > 1 ? sortedScenarios[sortedScenarios.length - 1] : sortedScenarios[0] ?? null;
+    const completionPct = total ? Math.round((finished / total) * 100) : null;
+    const scenariosCompleted = new Set(attempts.map((a) => a.scenario_id)).size;
+
+    return [
+      {
+        key: 'avg',
+        label: 'Media global',
+        value: total ? `${avgScore}` : '—',
+        helper: total ? 'Sobre 100 puntos' : 'Sin intentos aún',
+        icon: TrophyIcon,
+      },
+      {
+        key: 'scenarios-completed',
+        label: 'Escenarios realizados',
+        value: `${scenariosCompleted}`,
+        helper: total ? `Intentos realizados: ${total}${completionPct != null ? ` · ${completionPct}% completados` : ''}` : 'Aún no hay intentos registrados',
+        icon: ClockIcon,
+      },
+      {
+        key: 'worst',
+        label: 'Peor escenario',
+        value: worstScenario ? worstScenario.label : '—',
+        helper: worstScenario ? `${Math.round(worstScenario.value)}% de media (${worstScenario.n} intento${worstScenario.n !== 1 ? 's' : ''})` : 'Aún sin intentos comparables',
+        icon: ClipboardDocumentListIcon,
+      },
+      {
+        key: 'best',
+        label: 'Mejor escenario',
+        value: bestScenario ? bestScenario.label : '—',
+        helper: bestScenario ? `${Math.round(bestScenario.value)}% de media (${bestScenario.n} intento${bestScenario.n !== 1 ? 's' : ''})` : 'Practica para desbloquear',
+        icon: SparklesIcon,
+      },
+    ];
+  }, [attempts, summaryByScenario]);
+
+  const scenarioOptions = useMemo(() => {
+    const seen = new Map();
+    for (const a of attempts) {
+      const label = a.scenarios?.title || `Escenario ${a.scenario_id}`;
+      if (!seen.has(label) && label) {
+        seen.set(label, { label, value: String(a.scenario_id ?? label) });
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [attempts]);
+
+  const filteredAttempts = useMemo(() => {
+    const query = attemptSearch.trim().toLowerCase();
+    return attempts.filter((a) => {
+      const title = (a.scenarios?.title || `Escenario ${a.scenario_id}`).toLowerCase();
+      const summaryMatch = !query || title.includes(query);
+
+      const scenarioMatch = !scenarioFilter || String(a.scenario_id ?? '') === scenarioFilter || (a.scenarios?.title === scenarioFilter);
+
+      let statusMatch = true;
+      if (statusFilter === 'completed') statusMatch = !!a.finished_at;
+      else if (statusFilter === 'pending') statusMatch = !a.finished_at && !a.started_at;
+      else if (statusFilter === 'in-progress') statusMatch = !!a.started_at && !a.finished_at;
+
+      let scoreMatch = true;
+      const score = Number(a.score || 0);
+      if (scoreFilter === '80+') scoreMatch = score >= 80;
+      else if (scoreFilter === '50-79') scoreMatch = score >= 50 && score < 80;
+      else if (scoreFilter === '<50') scoreMatch = score < 50;
+
+      return summaryMatch && scenarioMatch && statusMatch && scoreMatch;
+    });
+  }, [attempts, attemptSearch, scenarioFilter, statusFilter, scoreFilter]);
+
+  const resetAttemptFilters = () => {
+    setAttemptSearch("");
+    setScenarioFilter("");
+    setStatusFilter("");
+    setScoreFilter("");
+  };
+
+  const presSummary = useMemo(() => {
+    const total = presRows.length;
+    const finalizados = presRows.filter((r) => r.endedFlag).length;
+    const avgScore = total ? Math.round((presRows.reduce((sum, r) => sum + (Number(r.score || 0)), 0) / total)) : null;
+    return { total, finalizados, avgScore };
+  }, [presRows]);
+
   function PresEstadoBadge({ endedFlag, started_at }) {
     const estado = endedFlag ? 'Finalizada' : (started_at ? 'En curso' : 'Pendiente');
     const cls = endedFlag
@@ -469,36 +604,50 @@ export default function Evaluacion_Main() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
-      <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white">
-        <div className="max-w-6xl mx-auto px-5 py-8">
-          <p className="text-white/80 text-sm">
-            Evaluación del desempeño{formatRole(role) ? " • " + formatRole(role) : ""}
-          </p>
-          <h1 className="text-2xl md:text-3xl font-semibold">
-            {viewUserId && session?.user?.id && viewUserId !== session.user.id
-              ? `Resultados de ${viewUserEmail || viewUserId}`
-              : "Tus resultados"}{attempts?.length ? ` · ${attempts.length} intento${attempts.length !== 1 ? "s" : ""}` : ""}
-          </h1>
-          <p className="opacity-95">
-            Medias de los simulacros online, resultados de simulacros online,  y resultados de simulacros presenciales.
-          </p>
-          {isAdmin && viewUserId && session?.user?.id && viewUserId !== session.user.id && (
-            <div className="mt-2">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-sm">
-                Filtrando por usuario: {viewUserEmail || viewUserId}
-                <button
-                  className="underline decoration-white/70 hover:decoration-white"
-                  aria-label="Quitar filtro de usuario"
-                  onClick={() => {
-                    try { sessionStorage.removeItem("eval_last_user_id"); } catch {}
-                    navigate("/evaluacion", { replace: true });
-                  }}
-                >
-                  Quitar filtro
-                </button>
-              </span>
+      <section className="relative overflow-hidden border-b border-white/10">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
+        <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_15%_15%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
+        <div className="max-w-6xl mx-auto px-5 py-12 text-white relative">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-3">
+              <p className="text-white/70 text-sm uppercase tracking-wide">Evaluación del desempeño</p>
+              <h1 className="text-3xl md:text-4xl font-semibold">
+                {viewUserId && session?.user?.id && viewUserId !== session.user.id
+                  ? `Resultados de ${viewUserEmail || viewUserId}`
+                  : "Tus resultados"}
+              </h1>
+              <p className="opacity-95 max-w-2xl text-lg">
+                Analiza tus simulacros online y presenciales, identifica puntos críticos y vuelve a intentarlo con recursos seleccionados.
+              </p>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-white/80">
+                {formatRole(role) && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1">
+                    Rol: {formatRole(role)}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1">
+                  Intentos registrados: {attempts.length}
+                </span>
+                {isAdmin && viewUserId && session?.user?.id && viewUserId !== session.user.id && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 underline decoration-white/60 hover:decoration-white"
+                    onClick={() => {
+                      try { sessionStorage.removeItem("eval_last_user_id"); } catch {}
+                      navigate("/evaluacion", { replace: true });
+                    }}
+                  >
+                    Quitar filtro de {viewUserEmail || viewUserId}
+                  </button>
+                )}
+              </div>
             </div>
-          )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              {heroMetrics.map((m) => (
+                <HeroCard key={m.key} icon={m.icon} label={m.label} value={m.value} helper={m.helper} />
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -508,152 +657,328 @@ export default function Evaluacion_Main() {
           title="Media de puntuación por escenario"
         />
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">
-              {viewUserId && session?.user?.id && viewUserId !== session.user.id
-                ? "Simulacros online del usuario"
-                : "Simulacros online"}
-            </h3>
-            <Link to="/dashboard" className="text-sm underline text-slate-700">Volver al panel</Link>
-          </div>
-          {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)]">
+          <header className="flex flex-col gap-2 px-6 pt-6 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <ChartBarIcon className="h-5 w-5 text-[#0A3D91]" />
+                {viewUserId && session?.user?.id && viewUserId !== session.user.id
+                  ? "Simulacros online del usuario"
+                  : "Simulacros online"}
+              </h3>
+              <p className="text-sm text-slate-600 mt-1">Explora tus intentos, revisa críticos y vuelve a practicar.</p>
+            </div>
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-2 text-sm font-medium text-[#0A3D91] hover:underline"
+            >
+              Volver al panel
+            </Link>
+          </header>
+
+          {err && <div className="mx-6 mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{err}</div>}
+
           {attempts.length === 0 ? (
-            <p className="text-slate-600 mt-2">
-              {viewUserId && session?.user?.id && viewUserId !== session.user.id
-                ? "Este usuario no tiene intentos registrados."
-                : "Aún no has realizado ningún intento."}
-            </p>
+            <div className="px-6 pb-6">
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-6 text-slate-600 text-sm">
+                {viewUserId && session?.user?.id && viewUserId !== session.user.id
+                  ? "Este usuario no tiene intentos registrados."
+                  : "Aún no has realizado ningún intento. Vuelve a Simulación para iniciar tu primer escenario."}
+              </div>
+            </div>
           ) : (
-            <div className="overflow-x-auto mt-3">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left px-4 py-2">Fecha</th>
-                    <th className="text-left px-4 py-2">Escenario</th>
-                    <th className="text-left px-4 py-2">Resultado</th>
-                    <th className="text-left px-4 py-2">Estado</th>
-                    {hasCritData ? <th className="text-left px-4 py-2">Críticas</th> : null}
-                    <th className="text-left px-4 py-2">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attempts.map((a) => {
-                    const date = fmtDate(a.started_at);
-                    // Estado badge
-                    // const estado = a.finished_at ? "Finalizado" : "En curso";
-                    // Chip resultado
-                    // const res = a.finished_at ? (typeof a.score === "number" ? `${a.correct_count}/${a.total_count} (${a.score}%)` : `${a.correct_count}/${a.total_count} (—)`) : "—";
-                    const res = { ok: a.correct_count, total: a.total_count, pct: (typeof a.score === 'number' ? a.score : null) };
-                    const title = a.scenarios?.title || `Escenario ${a.scenario_id}`;
-                    const crit = critMap[a.id];
-                    const critText = crit ? `${crit.criticals_ok}/${crit.total_criticals}` : "—";
+            <div className="px-6 pb-6 flex flex-col gap-6">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-10 w-10 rounded-xl bg-[#0A3D91]/10 text-[#0A3D91] grid place-items-center">
+                    <AdjustmentsHorizontalIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-semibold text-slate-900">Filtrar intentos</h4>
+                    <p className="text-xs text-slate-500">Combina búsqueda, estado y notas para centrarte en lo importante.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_1fr] gap-4">
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Buscar</span>
+                    <div className="mt-1 relative flex items-center">
+                      <MagnifyingGlassIcon className="absolute left-3 h-5 w-5 text-slate-400" />
+                      <input
+                        type="search"
+                        value={attemptSearch}
+                        onChange={(e) => setAttemptSearch(e.target.value)}
+                        placeholder="Escenario, fecha, nota…"
+                        className="w-full rounded-xl border border-slate-200 bg-white pl-11 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/60"
+                      />
+                    </div>
+                  </label>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Escenario</span>
+                    <select
+                      value={scenarioFilter}
+                      onChange={(e) => setScenarioFilter(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/60"
+                    >
+                      <option value="">Todos</option>
+                      {scenarioOptions.map((opt) => (
+                        <option key={opt.value} value={String(opt.value)}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Estado</span>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/60"
+                    >
+                      <option value="">Todos</option>
+                      <option value="completed">Completados</option>
+                      <option value="in-progress">En curso</option>
+                      <option value="pending">Pendientes</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Nota</span>
+                    <select
+                      value={scoreFilter}
+                      onChange={(e) => setScoreFilter(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/60"
+                    >
+                      <option value="">Todas</option>
+                      <option value="80+">≥ 80%</option>
+                      <option value="50-79">50% – 79%</option>
+                      <option value="<50">&lt; 50%</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={resetAttemptFilters}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-white"
+                  >
+                    <ArrowPathIcon className="h-4 w-4" />
+                    Limpiar filtros
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white/80">
+                {filteredAttempts.length === 0 ? (
+                  <div className="px-5 py-6 text-sm text-slate-600">
+                    No hay intentos que coincidan con los filtros activos.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-200">
+                    {filteredAttempts.map((a) => {
+                      const title = a.scenarios?.title || `Escenario ${a.scenario_id}`;
+                      const date = a.started_at ? fmtDate(a.started_at) : '—';
+                      const scoreValue = Number(a.score || 0);
+                      const crit = critMap[a.id];
+                      const totalCrit = crit?.total_criticals ?? 0;
+                      const critOk = crit?.criticals_ok ?? 0;
+                      const critFailed = crit?.criticals_failed ?? 0;
+                      const statusLabel = a.finished_at ? 'Completado' : (a.started_at ? 'En curso' : 'Pendiente');
+                      const statusClass = a.finished_at
+                        ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+                        : (a.started_at ? 'bg-amber-100 text-amber-700 ring-amber-200' : 'bg-slate-100 text-slate-700 ring-slate-200');
+                      const highlight = scoreValue < 60 || (totalCrit > 0 && critFailed > 0);
                     return (
-                      <tr key={a.id} className="border-t">
-                        <td className="px-4 py-2">{date}</td>
-                        <td className="px-4 py-2">{title}</td>
-                        <td className="px-4 py-2"><ScoreChip ok={res.ok} total={res.total} pct={res.pct} /></td>
-                        <td className="px-4 py-2"><PresEstadoBadge endedFlag={!!a.finished_at} started_at={a.started_at} /></td>
-                        {hasCritData ? <td className="px-4 py-2">{critText}</td> : null}
-                        <td className="px-4 py-2">
-                          <Link to={`/evaluacion/attempt/${a.id}`} className="text-[#0A3D91] underline">Revisar</Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      <div
+                        key={a.id}
+                        className={`flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between ${highlight ? 'bg-amber-50/40' : ''}`}
+                      >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                              <span className="font-medium text-slate-600">{date}</span>
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${statusClass}`}>
+                                {statusLabel}
+                              </span>
+                              {hasCritData && totalCrit > 0 && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                                  Críticas {critOk}/{totalCrit}
+                                </span>
+                              )}
+                              {highlight && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">
+                                  Reforzar
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="mt-1 text-base font-semibold text-slate-900 truncate">{title}</h4>
+                            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                              <span>Inicio: {a.started_at ? fmtDate(a.started_at) : '—'}</span>
+                              <span>Fin: {a.finished_at ? fmtDate(a.finished_at) : 'Pendiente'}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <ScoreChip ok={a.correct_count} total={a.total_count} pct={a.score} />
+                            <div className="flex items-center gap-2">
+                              <Link
+                                to={`/evaluacion/attempt/${a.id}`}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              >
+                                Revisar
+                              </Link>
+                              <Link
+                                to={a.finished_at ? `/simulacion/${a.scenario_id}/confirm` : `/simulacion/${a.scenario_id}?attempt=${a.id}`}
+                                className="inline-flex items-center gap-1 rounded-lg bg-[#0A3D91] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0A3D91]/90"
+                              >
+                                Practicar
+                              </Link>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
-        </div>
+        </section>
         {/* Simulacros presenciales (dual) */}
         {presFeatureAvailable && (
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Simulacros presenciales</h3>
-              {presLoading && <span className="text-xs text-slate-500">Cargando…</span>}
-            </div>
-            {presErr && <div className="mt-2 text-sm text-red-600">{presErr}</div>}
-            {(!presRows || presRows.length === 0) ? (
-              <p className="text-slate-600 mt-2">
+          <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)] px-6 py-6">
+            <header className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <ClipboardDocumentListIcon className="h-5 w-5 text-[#0A3D91]" />
+                  Simulacros presenciales
+                </h3>
+                <p className="text-sm text-slate-600">Checklist y resultados del equipo en sesiones duales o clásicas.</p>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-slate-500">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                  Total: {presSummary.total}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1">
+                  Finalizados: {presSummary.finalizados}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                  Nota media: {presSummary.avgScore != null ? `${presSummary.avgScore}%` : '—'}
+                </span>
+              </div>
+            </header>
+            {presErr && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{presErr}</div>}
+            {presLoading && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Array.from({ length: 2 }).map((_, idx) => (
+                  <div key={`pres-skeleton-${idx}`} className="h-40 rounded-2xl border border-slate-200 bg-slate-50 animate-pulse" />
+                ))}
+              </div>
+            )}
+            {!presLoading && (!presRows || presRows.length === 0) ? (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-600">
                 {viewUserId && session?.user?.id && viewUserId !== session.user.id
                   ? "Este usuario no tiene simulacros presenciales registrados."
                   : "Aún no figuran simulacros presenciales."}
-              </p>
-            ) : (
-              <div className="overflow-x-auto mt-3">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="text-left px-4 py-2">Fecha</th>
-                      <th className="text-left px-4 py-2">Escenario</th>
-                      <th className="text-left px-4 py-2">Rol</th>
-                      <th className="text-left px-4 py-2">Resultado</th>
-                      <th className="text-left px-4 py-2">Estado</th>
-                      <th className="text-left px-4 py-2">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {presRows.map((r) => {
-                      const dateStr = r.started_at
-                        ? new Date(r.started_at).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })
-                        : "—";
-                      // const res = r.total ? `${r.ok}/${r.total} (${r.score}%)` : "—";
-                      return (
-                        <tr key={r.session_id} className="border-t">
-                          <td className="px-4 py-2">{dateStr}</td>
-                          <td className="px-4 py-2">{r.scenario_title}</td>
-                          <td className="px-4 py-2"><RoleChip role={r.role} /></td>
-                          <td className="px-4 py-2"><ScoreChip ok={r.ok} total={r.total} pct={r.score} /></td>
-                          <td className="px-4 py-2">
-                            <PresEstadoBadge endedFlag={r.endedFlag} started_at={r.started_at} />
-                          </td>
-                          <td className="px-4 py-2">
-                            {r.endedFlag ? (
-                              <Link to={`/evaluacion/informe/${r.session_id}`} className="text-[#0A3D91] underline">
-                                Ver informe
-                              </Link>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              </div>
+            ) : null}
+
+            {!presLoading && presRows.length > 0 && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                {presRows.map((r) => {
+                  const dateStr = r.started_at ? fmtDate(r.started_at) : '—';
+                  return (
+                    <article
+                      key={r.session_id}
+                      className="relative overflow-hidden rounded-3xl border border-white/80 bg-white px-5 py-5 shadow-[0_18px_42px_-30px_rgba(15,23,42,0.45)]"
+                    >
+                      <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-r from-[#0A3D91]/10 via-transparent to-transparent" aria-hidden="true" />
+                      <div className="relative z-10 flex flex-col gap-4">
+                        <header className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-400">{dateStr}</p>
+                            <h4 className="mt-1 text-lg font-semibold text-slate-900 line-clamp-2">{r.scenario_title}</h4>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                              <RoleChip role={r.role} />
+                              <PresEstadoBadge endedFlag={r.endedFlag} started_at={r.started_at} />
+                            </div>
+                          </div>
+                          <ScoreChip ok={r.ok} total={r.total} pct={r.score} />
+                        </header>
+
+                        <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">
+                          <div>
+                            <p className="font-medium text-slate-500">Checklist</p>
+                            <p>OK: {r.ok ?? 0}</p>
+                            <p>Errores: {r.wrong ?? 0}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-500">Pendientes</p>
+                            <p>Missed: {r.missed ?? 0}</p>
+                            <p>N/A: {r.na ?? 0}</p>
+                          </div>
+                        </div>
+
+                        <footer className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-slate-500">Sesión {r.endedFlag ? 'finalizada' : 'en curso'}</span>
+                          {r.endedFlag ? (
+                            <Link
+                              to={`/evaluacion/informe/${r.session_id}`}
+                              className="inline-flex items-center gap-1 rounded-lg bg-[#0A3D91] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0A3D91]/90"
+                            >
+                              Ver informe
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-slate-400">Informe disponible al finalizar</span>
+                          )}
+                        </footer>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
-            <p className="mt-2 text-xs text-slate-500">
+
+            <p className="mt-6 text-xs text-slate-500">
               Nota: el resultado resume la checklist del equipo (ok/wrong/missed). Los ítems "N/A" no puntúan.
             </p>
           </section>
         )}
         {/* Lecturas recomendadas por escenario (a partir de escenarios con intentos) */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-lg font-semibold">Lecturas recomendadas</h3>
-            {resourcesLoading && <span className="text-xs text-slate-500">Cargando…</span>}
-          </div>
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)] px-6 py-6">
+          <header className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Lecturas recomendadas</h3>
+              <p className="text-sm text-slate-600">Refuerza tus decisiones con bibliografía asociada a cada escenario.</p>
+            </div>
+            {resourcesLoading && <span className="text-xs uppercase tracking-wide text-slate-400">Cargando…</span>}
+          </header>
           {Object.keys(resourcesByScenario).length === 0 ? (
-            <p className="text-slate-600 mt-2">De momento no hay bibliografía asociada a tus escenarios.</p>
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-600">
+              De momento no hay bibliografía asociada a tus escenarios. Cuando completes más simulacros aparecerán aquí las lecturas clave.
+            </div>
           ) : (
-            <div className="mt-3 space-y-6">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
               {Object.entries(resourcesByScenario).map(([sid, group]) => (
-                <div key={sid}>
-                  <h4 className="font-medium text-slate-800 mb-2">{group.title}</h4>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {group.items.map(item => (
-                      <li key={item.id} className="text-sm">
-                        <a href={item.url || "#"} target="_blank" rel="noreferrer" className="text-[#0A3D91] hover:underline">
-                          {item.source}
+                <article key={sid} className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+                  <h4 className="text-base font-semibold text-slate-900 mb-2">{group.title}</h4>
+                  <ul className="space-y-2 text-sm">
+                    {group.items.map((item) => (
+                      <li key={item.id} className="flex flex-col">
+                        <a
+                          href={item.url || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#0A3D91] hover:underline font-medium"
+                        >
+                          {item.source || 'Recurso'}
                         </a>
-                        {item.year ? <span className="text-slate-500"> · {item.year}</span> : null}
-                        {item.access ? <span className="ml-1 inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">{item.access}</span> : null}
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1">
+                          {item.year ? <span>Año: {item.year}</span> : null}
+                          {item.access ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5">
+                              {item.access}
+                            </span>
+                          ) : null}
+                        </div>
                       </li>
                     ))}
                   </ul>
-                </div>
+                </article>
               ))}
             </div>
           )}

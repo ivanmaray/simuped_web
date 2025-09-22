@@ -57,11 +57,9 @@ export default function Online_Confirm() {
   const [scenario, setScenario] = useState(null);
   const [attemptsCount, setAttemptsCount] = useState(0);
   const [openAttemptId, setOpenAttemptId] = useState(null);
-  const [forceNew, setForceNew] = useState(false);
-  const [customMinutes, setCustomMinutes] = useState(15); // solo para admins
+  const customMinutes = 15; // minutos configurables para admins (placeholder)
 
   const [brief, setBrief] = useState(null);
-  const [loadingBrief, setLoadingBrief] = useState(true);
   const [resources, setResources] = useState([]);
   const [loadingResources, setLoadingResources] = useState(true);
 
@@ -134,21 +132,16 @@ export default function Online_Confirm() {
       setScenario(esc);
 
       // 3b) Cargar case brief (pre-brief general)
-      try {
-        setLoadingBrief(true);
-        const { data: b, error: bErr } = await supabase
-          .from("case_briefs")
-          .select("*")
-          .eq("scenario_id", scenarioId)
-          .maybeSingle();
-        if (bErr) {
-          console.warn("[Confirm] brief error (no bloqueante):", bErr);
-          setBrief(null);
-        } else {
-          setBrief(b || null);
-        }
-      } finally {
-        setLoadingBrief(false);
+      const { data: b, error: bErr } = await supabase
+        .from("case_briefs")
+        .select("*")
+        .eq("scenario_id", scenarioId)
+        .maybeSingle();
+      if (bErr) {
+        console.warn("[Confirm] brief error (no bloqueante):", bErr);
+        setBrief(null);
+      } else {
+        setBrief(b || null);
       }
 
       // 3c) Cargar lecturas / bibliografía recomendada
@@ -320,12 +313,6 @@ export default function Online_Confirm() {
       const limitSecs = Math.max(60, Math.floor(baseMinutes * 60));
 
       // 1) Revalidar en servidor si hay un intento abierto (por seguridad frente a estados desfasados)
-      let nowRef = new Date();
-      try {
-        const { data: nowData } = await supabase.rpc("now_utc");
-        if (nowData) nowRef = new Date(nowData);
-      } catch { /* noop */ }
-
       const { data: open, error: openErr } = await supabase
         .from("attempts")
         .select("id, expires_at, finished_at")

@@ -2,9 +2,11 @@
 // Ruta esperada: /presencial/instructor/:id/:sessionId  (id = escenario)
 // También soporta: /presencial/instructor
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "../../../../supabaseClient";
 import Navbar from "../../../../components/Navbar.jsx";
+import { reportWarning } from "../../../../utils/reporting.js";
+import { chestXrayLibraryByCategory } from "../../../../utils/chestXrayLibrary.js";
 
 
 const CHECK_STATUSES = [
@@ -13,6 +15,68 @@ const CHECK_STATUSES = [
   { key: 'missed', label: 'No hecho', icon: '⬜' },
   { key: 'na', label: 'N/A', icon: '∅' },
 ];
+
+function parseChestXrayValue(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.kind === 'image' && parsed.src) {
+      return {
+        ...parsed,
+        alt: parsed.alt || parsed.label || 'Radiografía de tórax'
+      };
+    }
+  } catch {}
+  return null;
+}
+
+function parsePatientDemographics(overview) {
+  const info = { chips: [], weightKg: null };
+  if (!overview || typeof overview !== 'string') return info;
+  let rest = overview.trim();
+
+  const pushChip = (key, label) => {
+    if (!label) return;
+    info.chips.push({ key, label: String(label) });
+  };
+
+  try {
+    const m = rest.match(/^\s*\{[\s\S]*?\}\s*(?:\n+|$)/);
+    if (m && m[0]) {
+      const jsonTxt = m[0].trim().replace(/,+\s*$/, '');
+      const demo = JSON.parse(jsonTxt);
+      const age = demo.age || demo.edad;
+      const sex = demo.sex || demo.sexo;
+      const weight = demo.weightKg ?? demo.weight_kg ?? demo.peso ?? demo.weight;
+      if (age) pushChip('age', age);
+      if (sex) pushChip('sex', sex);
+      if (weight) {
+        const numeric = Number(String(weight).toString().replace(',', '.'));
+        if (Number.isFinite(numeric) && numeric > 0) info.weightKg = Number(numeric.toFixed(2));
+        pushChip('weight', info.weightKg ? `${info.weightKg} kg` : `${weight}`);
+      }
+      rest = rest.slice(m[0].length).trim();
+    }
+  } catch (error) {
+    reportWarning('PresencialInstructor.parseDemographics', error);
+  }
+
+  if (info.weightKg == null) {
+    const weightPattern = /(?:peso|weight)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i;
+    const mm = rest.match(weightPattern);
+    if (mm && mm[1]) {
+      const numeric = Number(mm[1].replace(',', '.'));
+      if (Number.isFinite(numeric) && numeric > 0) {
+        info.weightKg = Number(numeric.toFixed(2));
+        pushChip('weight', `${info.weightKg} kg`);
+      }
+    }
+  }
+
+  return info;
+}
 
 // --- Checklist categorías ABCDE/Patología/Medicación/Otros ---
 const CATEGORY_ORDER = ['A', 'B', 'C', 'D', 'E', 'Diagnóstico', 'Tratamiento', 'Otros'];
@@ -36,6 +100,39 @@ const WEIGHT_BADGE = {
   3: { label: 'Crítico', cls: 'bg-red-50 text-red-700 ring-red-200' },
   2: { label: 'Importante', cls: 'bg-amber-50 text-amber-800 ring-amber-200' },
   1: { label: 'Deseable', cls: 'bg-slate-100 text-slate-700 ring-slate-300' },
+};
+const DEMO_CHIP_ICONS = { age: '🧒', sex: '⚧', weight: '⚖️' };
+const VARIABLE_GROUP_CONFIG = {
+  vital: {
+    title: 'Constantes',
+    description: 'Modifica signos vitales y publícalos cuando proceda.',
+    grid: 'grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    maxHeight: 'max-h-[22rem]'
+  },
+  lab: {
+    title: 'Analíticas',
+    description: 'Resultados de laboratorio disponibles para el caso.',
+    grid: 'grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    maxHeight: 'max-h-[22rem]'
+  },
+  imagen: {
+    title: 'Imágenes',
+    description: 'Selecciona radiografías o imágenes para el alumnado.',
+    grid: 'grid gap-3 text-sm sm:grid-cols-2',
+    maxHeight: 'max-h-[20rem]'
+  },
+  texto: {
+    title: 'Notas',
+    description: 'Observaciones y textos breves para contextualizar.',
+    grid: 'grid gap-3 text-sm',
+    maxHeight: 'max-h-[18rem]'
+  },
+  otros: {
+    title: 'Otros datos',
+    description: 'Cualquier dato adicional compartido con los alumnos.',
+    grid: 'grid gap-3 text-sm sm:grid-cols-2',
+    maxHeight: 'max-h-[18rem]'
+  }
 };
 function normalizeCategory(category) {
   if (!category) return 'Otros';
@@ -119,6 +216,320 @@ const DEFAULT_SCRIPT = [
   'Desaturación progresiva: valorar ventilación no invasiva y monitorización continua.'
 ];
 
+const DEFAULT_VENT_FORM = {
+  mode: 'VC',
+  parameters: {
+    tidalVolume: 70, // ml/kg aproximados
+    rate: 24,       // rpm
+    peep: 5,
+    fio2: 0.4,
+    inspiratoryTime: 0.6,
+    pressureControl: 18,
+    pressureSupport: 12
+  },
+  patient: {
+    compliance: 0.7,  // 0-1 (1 = buena)
+    resistance: 0.5,  // 0-1 (1 = alta resistencia)
+    shunt: 0.15,
+    deadspace: 0.18
+  }
+};
+
+const VENTILATION_TEMPLATES = [
+  {
+    key: 'vc-estable',
+    name: 'Soporte básico',
+    description: 'Paciente estable con control por volumen.',
+    mode: 'VC',
+    tidalVolumePerKg: 7,
+    parameters: {
+      rate: 24,
+      peep: 5,
+      fio2: 0.4,
+      inspiratoryTime: 0.6,
+      pressureControl: 18,
+      pressureSupport: 12
+    },
+    patient: {
+      compliance: 0.7,
+      resistance: 0.4,
+      shunt: 0.12,
+      deadspace: 0.18
+    }
+  },
+  {
+    key: 'vc-distrés',
+    name: 'Distrés moderado',
+    description: 'Volumen bajo, PEEP más alta y FiO₂ intermedia.',
+    mode: 'VC',
+    tidalVolumePerKg: 6,
+    parameters: {
+      rate: 28,
+      peep: 7,
+      fio2: 0.5,
+      inspiratoryTime: 0.55,
+      pressureControl: 20,
+      pressureSupport: 14
+    },
+    patient: {
+      compliance: 0.45,
+      resistance: 0.5,
+      shunt: 0.2,
+      deadspace: 0.22
+    }
+  },
+  {
+    key: 'pc-bronco',
+    name: 'Broncoespasmo severo',
+    description: 'Control por presión con resistencia elevada.',
+    mode: 'PC',
+    tidalVolumePerKg: 7,
+    parameters: {
+      rate: 26,
+      peep: 6,
+      fio2: 0.45,
+      inspiratoryTime: 0.5,
+      pressureControl: 22,
+      pressureSupport: 16
+    },
+    patient: {
+      compliance: 0.55,
+      resistance: 0.85,
+      shunt: 0.16,
+      deadspace: 0.24
+    }
+  },
+  {
+    key: 'vc-neumonia',
+    name: 'Neumonía hipoxémica',
+    description: 'Control por volumen con PEEP alta y FiO₂ moderada-alta.',
+    mode: 'VC',
+    tidalVolumePerKg: 6,
+    parameters: {
+      rate: 26,
+      peep: 8,
+      fio2: 0.6,
+      inspiratoryTime: 0.65,
+      pressureControl: 22,
+      pressureSupport: 14
+    },
+    patient: {
+      compliance: 0.42,
+      resistance: 0.45,
+      shunt: 0.26,
+      deadspace: 0.2
+    }
+  },
+  {
+    key: 'vc-sepsis-protect',
+    name: 'Sepsis ventilación protectora',
+    description: 'Volumen bajo y frecuencia alta para estrategia protectora.',
+    mode: 'VC',
+    tidalVolumePerKg: 5,
+    parameters: {
+      rate: 30,
+      peep: 7,
+      fio2: 0.5,
+      inspiratoryTime: 0.7,
+      pressureControl: 20,
+      pressureSupport: 13
+    },
+    patient: {
+      compliance: 0.5,
+      resistance: 0.5,
+      shunt: 0.2,
+      deadspace: 0.25
+    }
+  },
+  {
+    key: 'psv-destete',
+    name: 'Weaning / soporte ligero',
+    description: 'Presión soporte baja para transición a extubación.',
+    mode: 'PSV',
+    tidalVolumePerKg: 7,
+    parameters: {
+      rate: 22,
+      peep: 5,
+      fio2: 0.35,
+      inspiratoryTime: 0.6,
+      pressureControl: 18,
+      pressureSupport: 10
+    },
+    patient: {
+      compliance: 0.75,
+      resistance: 0.35,
+      shunt: 0.1,
+      deadspace: 0.16
+    }
+  },
+  {
+    key: 'pc-asmatico',
+    name: 'Crisis asmática',
+    description: 'Control por presión con resistencia muy elevada y Ti corto.',
+    mode: 'PC',
+    tidalVolumePerKg: 7,
+    parameters: {
+      rate: 20,
+      peep: 4,
+      fio2: 0.45,
+      inspiratoryTime: 0.45,
+      pressureControl: 24,
+      pressureSupport: 18
+    },
+    patient: {
+      compliance: 0.6,
+      resistance: 0.95,
+      shunt: 0.14,
+      deadspace: 0.3
+    }
+  },
+  {
+    key: 'vc-sdra-grave',
+    name: 'SDRA grave',
+    description: 'Estrategia muy protectora con volumen muy bajo y PEEP alta.',
+    mode: 'VC',
+    tidalVolumePerKg: 4.5,
+    parameters: {
+      rate: 28,
+      peep: 10,
+      fio2: 0.8,
+      inspiratoryTime: 0.65,
+      pressureControl: 24,
+      pressureSupport: 16
+    },
+    patient: {
+      compliance: 0.32,
+      resistance: 0.55,
+      shunt: 0.32,
+      deadspace: 0.22
+    }
+  }
+];
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildFormFromTemplate(template, weightKg) {
+  if (!template) return DEFAULT_VENT_FORM;
+  const base = {
+    mode: template.mode || DEFAULT_VENT_FORM.mode,
+    parameters: { ...DEFAULT_VENT_FORM.parameters, ...template.parameters },
+    patient: { ...DEFAULT_VENT_FORM.patient, ...template.patient }
+  };
+  if (weightKg && template.tidalVolumePerKg) {
+    const vt = clamp(Math.round(weightKg * template.tidalVolumePerKg), 10, 200);
+    base.parameters.tidalVolume = vt;
+  }
+  base.parameters = { ...base.parameters };
+  base.patient = { ...base.patient };
+  return base;
+}
+
+function buildCycleWaveforms({ mode, parameters, patient }) {
+  const samples = 60;
+  const vtLiters = clamp(parameters.tidalVolume, 10, 200) / 1000; // 0.01-0.2 L
+  const rate = clamp(parameters.rate, 8, 40);
+  const cycle = 60 / rate;
+  const inspTime = clamp(parameters.inspiratoryTime, 0.3, cycle * 0.75);
+  const expTime = cycle - inspTime;
+
+  const compliance = 0.02 + clamp(patient.compliance, 0.1, 1) * 0.08; // L/cmH2O
+  const resistance = 5 + clamp(patient.resistance, 0, 1) * 25; // cmH2O/L/s
+
+  const time = Array.from({ length: samples }, (_, i) => (i / (samples - 1)) * cycle);
+  const pressure = [];
+  const volume = [];
+  const flow = [];
+
+  const peep = clamp(parameters.peep, 0, 12);
+  const targetPressure = mode === 'PC'
+    ? peep + clamp(parameters.pressureControl, 10, 35)
+    : peep + vtLiters / compliance;
+
+  const inspFlow = mode === 'VC'
+    ? vtLiters / inspTime
+    : (targetPressure - peep) / Math.max(1, resistance);
+
+  time.forEach((t) => {
+    if (t <= inspTime) {
+      const inspRatio = t / inspTime;
+      const vol = vtLiters * (mode === 'PSV' ? Math.pow(inspRatio, 0.7) : inspRatio);
+      const pres = mode === 'PC'
+        ? peep + (targetPressure - peep) * (0.6 + 0.4 * inspRatio)
+        : peep + vol / compliance + patient.resistance * 4 * inspRatio;
+      pressure.push(pres);
+      volume.push(vol);
+      flow.push(mode === 'PC' ? inspFlow * (1 - 0.3 * (1 - inspRatio)) : inspFlow);
+    } else {
+      const expRatio = (t - inspTime) / Math.max(expTime, 0.1);
+      const decay = Math.exp(-expRatio * (2 + resistance / 20));
+      const vol = vtLiters * decay;
+      const pres = peep + (targetPressure - peep) * 0.3 * decay;
+      pressure.push(pres);
+      volume.push(vol);
+      flow.push(-Math.max(0, vtLiters / expTime) * decay);
+    }
+  });
+
+  return { time, pressure, volume, flow };
+}
+
+function buildVentilationState(form, context = {}) {
+  const { mode, parameters, patient } = form;
+  const rawWeight = context?.weightKg;
+  const weightKg = typeof rawWeight === 'number' && Number.isFinite(rawWeight) && rawWeight > 0
+    ? Number(rawWeight)
+    : null;
+  const waveforms = buildCycleWaveforms(form);
+  const compliance = 0.02 + clamp(patient.compliance, 0.1, 1) * 0.08;
+  const vtMl = clamp(parameters.tidalVolume, 10, 200);
+  const vtLiters = vtMl / 1000;
+  const plateau = parameters.peep + vtLiters / compliance;
+  const peak = plateau + clamp(patient.resistance, 0, 1) * 4;
+  const fio2 = clamp(parameters.fio2, 0.21, 1);
+  const shunt = clamp(patient.shunt, 0, 0.4);
+  const deadspace = clamp(patient.deadspace, 0.05, 0.4);
+  const complianceIndex = clamp(patient.compliance, 0, 1);
+
+  const spo2 = clamp(0.91 + (fio2 - 0.21) * 0.12 - shunt * 0.25, 0.75, 0.99);
+  const etco2 = clamp(38 + (deadspace - 0.2) * 60 + (0.5 - complianceIndex) * 12, 25, 70);
+  const driving = plateau - parameters.peep;
+  const tidalPerKg = weightKg ? vtMl / weightKg : null;
+  const recommended = weightKg
+    ? {
+        minMl: Number((weightKg * 6).toFixed(0)),
+        maxMl: Number((weightKg * 8).toFixed(0)),
+        minMlPerKg: 6,
+        maxMlPerKg: 8
+      }
+    : null;
+  const meta = {};
+  if (weightKg) meta.weightKg = Number(weightKg.toFixed(1));
+  if (tidalPerKg) meta.tidalPerKg = Number(tidalPerKg.toFixed(2));
+  if (recommended) meta.recommendedTidal = recommended;
+  if (context.template && context.template.name) meta.template = context.template;
+
+  return {
+    active: true,
+    mode,
+    parameters,
+    patient,
+    generated: {
+      metrics: {
+        plateauPressure: Number(plateau.toFixed(1)),
+        peakPressure: Number(peak.toFixed(1)),
+        drivingPressure: Number(driving.toFixed(1)),
+        etco2: Number(etco2.toFixed(1)),
+        spo2: Number((spo2 * 100).toFixed(1))
+      },
+      waveforms
+    },
+    meta: Object.keys(meta).length > 0 ? meta : undefined,
+    timestamp: new Date().toISOString()
+  };
+}
+
 // --- Persistencia local del guion por sesión/escenario ---
 function makeScriptKey(sessionId, scenarioId){
   return `presencial:script:${sessionId||'no-session'}:${scenarioId||'no-id'}`;
@@ -155,7 +566,7 @@ export default function Presencial_Instructor() {
         payload
       });
     } catch (e) {
-      console.debug('[Instructor] logEvent skipped:', kind);
+      console.debug('[Instructor] logEvent skipped:', kind, e);
     }
   };
 
@@ -169,12 +580,19 @@ export default function Presencial_Instructor() {
   const [session, setSession] = useState(null); // presencial_sessions row
   const [elapsedSec, setElapsedSec] = useState(0);
   const timerRef = useRef(null);
+  const scriptRef = useRef(null);
+  const bannerRef = useRef(null);
+  const variablesRef = useRef(null);
+  const phasesRef = useRef(null);
+  const checklistRef = useRef(null);
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
+  const [fullscreenMode, setFullscreenMode] = useState(false);
+  const xrayLibraryCategories = useMemo(() => Object.entries(chestXrayLibraryByCategory || {}), []);
 
   // Control de desbloqueo manual y cronómetro locales (solo al pulsar Iniciar)
   const [uiUnlocked, setUiUnlocked] = useState(false);
-  const [timerActive, setTimerActive] = useState(false);
+  const [, setTimerActive] = useState(false);
   const [timerStartAt, setTimerStartAt] = useState(null);
 
   const isRunning = uiUnlocked; // sombreado/control habilitado solo tras Iniciar
@@ -186,12 +604,288 @@ export default function Presencial_Instructor() {
   // Valores actuales de variables de la sesión y edición rápida
   const [sessionVarValues, setSessionVarValues] = useState({}); // {variable_id: value}
   const [pendingValues, setPendingValues] = useState({}); // inputs locales
+  const [xrayCategorySelection, setXrayCategorySelection] = useState({});
+  const [xrayAssignedByCategory, setXrayAssignedByCategory] = useState({});
+  const initialTemplate = VENTILATION_TEMPLATES[0] || null;
+  const [ventModalOpen, setVentModalOpen] = useState(false);
+  const [ventForm, setVentForm] = useState(initialTemplate ? buildFormFromTemplate(initialTemplate, null) : DEFAULT_VENT_FORM);
+  const [ventState, setVentState] = useState(null);
+  const [isPublishingVent, setIsPublishingVent] = useState(false);
+  const [patientInfo, setPatientInfo] = useState({ chips: [], weightKg: null });
+  const weightKg = patientInfo.weightKg;
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState(initialTemplate?.key || null);
+  const recommendedTidalRange = useMemo(() => {
+    if (!weightKg) return null;
+    return {
+      minMl: Math.round(weightKg * 6),
+      maxMl: Math.round(weightKg * 8),
+      minMlPerKg: 6,
+      maxMlPerKg: 8
+    };
+  }, [weightKg]);
+  const tidalPerKg = useMemo(() => {
+    if (!weightKg) return null;
+    const tv = Number(ventForm.parameters.tidalVolume);
+    if (!Number.isFinite(tv) || tv <= 0) return null;
+    return Number((tv / weightKg).toFixed(2));
+  }, [ventForm.parameters.tidalVolume, weightKg]);
+  const tidalVolumeOutOfRange = useMemo(() => {
+    if (!recommendedTidalRange || tidalPerKg == null) return false;
+    return tidalPerKg < recommendedTidalRange.minMlPerKg || tidalPerKg > recommendedTidalRange.maxMlPerKg;
+  }, [recommendedTidalRange, tidalPerKg]);
+
+  const variablesGrouped = useMemo(() => {
+    const groups = {
+      vital: [],
+      lab: [],
+      imagen: [],
+      texto: [],
+      otros: [],
+    };
+    for (const item of variables) {
+      const type = item?.type;
+      if (type === 'vital') groups.vital.push(item);
+      else if (type === 'lab') groups.lab.push(item);
+      else if (type === 'imagen') groups.imagen.push(item);
+      else if (type === 'texto') groups.texto.push(item);
+      else groups.otros.push(item);
+    }
+    return groups;
+  }, [variables]);
+
+  const renderVariableCard = (v) => {
+    const isOn = revealed.has(v.id);
+    const current = sessionVarValues[v.id];
+    const label = String(v.label || '');
+    const keyName = String(v.key || '');
+    const isChestXray = /rx|radiograf[ií]a|t[óo]rax|torax/i.test(label) || /rx|radiograf[ií]a|thorax|torax/i.test(keyName);
+    const pendingRaw = pendingValues[v.id];
+    const hasPendingOverride = Object.prototype.hasOwnProperty.call(pendingValues, v.id);
+    const xrayPending = isChestXray ? parseChestXrayValue(pendingRaw) : null;
+    const xrayCurrent = isChestXray ? parseChestXrayValue(current) : null;
+    const xrayValue = hasPendingOverride ? xrayPending : (xrayPending || xrayCurrent || null);
+    const currentDisplay = isChestXray
+      ? (xrayCurrent && xrayCurrent.src ? xrayCurrent.label : (typeof current === 'string' ? current : ''))
+      : current;
+
+    const categories = xrayLibraryCategories;
+    const hasLibrary = isChestXray && categories.length > 0;
+    const defaultCategory = hasLibrary ? categories[0][0] : null;
+    const selectedCategory = hasLibrary ? (xrayCategorySelection[v.id] || defaultCategory) : null;
+
+    const applyEntry = (entry, { publish = false, categoryKey = selectedCategory } = {}) => {
+      if (!entry) return;
+      const payloadObj = {
+        kind: 'image',
+        src: entry.src,
+        label: entry.label,
+        alt: entry.alt || entry.label,
+      };
+      const payload = JSON.stringify(payloadObj);
+      setPending(v.id, payload);
+      setXrayAssignedByCategory((prev) => ({
+        ...prev,
+        [categoryKey || 'default']: entry,
+      }));
+      if (publish) publishValue(v.id, payload);
+    };
+
+    const handleSelectCategory = (categoryName) => {
+      setXrayCategorySelection((prev) => ({ ...prev, [v.id]: categoryName }));
+      const assigned = xrayAssignedByCategory[categoryName];
+      if (assigned) {
+        applyEntry(assigned, { publish: true, categoryKey: categoryName });
+        return;
+      }
+      const entries = categories.find(([name]) => name === categoryName)?.[1] || [];
+      if (entries.length > 0) {
+        const chosen = entries[Math.floor(Math.random() * entries.length)];
+        applyEntry(chosen, { publish: true, categoryKey: categoryName });
+      }
+    };
+
+    return (
+      <div
+        key={v.id}
+        className={`rounded-2xl border px-4 py-3 transition ${
+          isOn ? 'border-[#1E6ACB] bg-[#1E6ACB]/5 shadow-sm' : 'border-slate-200 bg-white'
+        }`}
+      >
+        <div className="flex items-center justify-between text-xs text-slate-500">
+          <span>{v.type}</span>
+          {isOn && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#1E6ACB]/10 px-2 py-0.5 text-[11px] text-[#0A3D91]">
+              ● visible
+            </span>
+          )}
+        </div>
+        <div className="mt-1 text-sm font-medium text-slate-800">{v.label}</div>
+        {typeof sessionVarValues[v.id] !== 'undefined' && sessionVarValues[v.id] !== null ? (
+          <div className="text-xs text-slate-500">
+            Actual: <span className="font-medium text-slate-700">{currentDisplay}</span>
+          </div>
+        ) : null}
+        <div className="mt-3">
+          {isChestXray ? (
+            <div className="space-y-3">
+              {hasLibrary ? (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categories.map(([name]) => {
+                      const active = name === selectedCategory;
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => handleSelectCategory(name)}
+                          className={`rounded-full px-3 py-1 text-xs transition ${
+                            active
+                              ? 'bg-[#1E6ACB]/10 text-[#0A3D91] border border-[#1E6ACB]'
+                              : 'border border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
+                          }`}
+                          title={`Publicar Rx de ${name}`}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {xrayValue?.label ? (
+                      <>Mostrando: <span className="font-medium text-slate-700">{xrayValue.label}</span></>
+                    ) : (
+                      <>Selecciona una categoría para enviar la Rx al alumnado.</>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => publishValue(v.id)}
+                      className={`h-9 rounded-full px-3 text-sm transition ${
+                        isOn ? 'bg-[#1E6ACB]/10 text-[#0A3D91]' : 'bg-[#1E6ACB] text-white hover:opacity-90'
+                      }`}
+                      title="Volver a publicar la Rx seleccionada"
+                    >
+                      Re-publicar
+                    </button>
+                    <button
+                      onClick={() => hideVariable(v.id)}
+                      className="h-9 rounded-full border border-slate-200 px-3 text-sm text-slate-600 transition hover:border-slate-400"
+                      title="Ocultar la radiografía al alumnado"
+                    >
+                      Ocultar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
+                  Añade radiografías en <code>/public/simuped_cxr_jpg_por_clase</code> para usarlas aquí.
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex h-9 items-stretch overflow-hidden rounded-lg border border-slate-200 focus-within:ring-2 focus-within:ring-[#1E6ACB]">
+                <input
+                  value={pendingValues[v.id] ?? ''}
+                  onChange={(e) => setPending(v.id, e.target.value)}
+                  placeholder={current ? `Actual: ${current}` : v.initial_value ?? ''}
+                  className="h-full flex-1 px-3 text-sm outline-none"
+                />
+                {v.unit && (
+                  <span className="grid h-full min-w-[3rem] place-items-center border-l border-slate-200 bg-slate-50 px-2 text-xs text-slate-500">
+                    {v.unit}
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => publishValue(v.id)}
+                  className={`h-9 rounded-full px-3 text-sm transition ${
+                    isOn ? 'bg-[#1E6ACB]/10 text-[#0A3D91]' : 'border border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
+                  }`}
+                  title="Publicar ahora al alumnado"
+                >
+                  Mostrar
+                </button>
+                <button
+                  onClick={() => hideVariable(v.id)}
+                  className="h-9 rounded-full border border-slate-200 px-3 text-sm text-slate-600 transition hover:border-slate-400"
+                  title="Ocultar al alumnado"
+                >
+                  Ocultar
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const clearTemplateMeta = useCallback(() => {
+    setSelectedTemplateKey(null);
+    setVentState((prev) => {
+      if (!prev?.meta?.template) return prev;
+      if (prev.active === true) return prev;
+      const nextMeta = { ...(prev.meta || {}) };
+      delete nextMeta.template;
+      const next = { ...prev };
+      if (Object.keys(nextMeta).length > 0) next.meta = nextMeta;
+      else delete next.meta;
+      return next;
+    });
+  }, []);
+
+  const handleSelectTemplate = useCallback((templateKey) => {
+    const tpl = VENTILATION_TEMPLATES.find(t => t.key === templateKey);
+    if (!tpl) return;
+    const nextForm = buildFormFromTemplate(tpl, weightKg);
+    setSelectedTemplateKey(templateKey);
+    setVentForm(nextForm);
+    setVentState(prev => {
+      if (!prev) return prev;
+      const nextMeta = { ...(prev.meta || {}), template: { key: tpl.key, name: tpl.name } };
+      const nextState = { ...prev, meta: nextMeta };
+      if (prev.active === 'pending') {
+        nextState.mode = nextForm.mode;
+        nextState.draft = {
+          mode: nextForm.mode,
+          parameters: { ...nextForm.parameters },
+          patient: { ...nextForm.patient }
+        };
+      }
+      return nextState;
+    });
+  }, [weightKg]);
 
   // Guion del caso (intro narrativa por pasos que se publica como banner)
   const [scriptTexts, setScriptTexts] = useState(DEFAULT_SCRIPT);
   const [scriptIndex, setScriptIndex] = useState(0);
 
   // Cargar guion guardado localmente si existe
+  const refreshRevealed = useCallback(async (sid) => {
+    const theId = sid || sessionId;
+    if (!theId) return;
+    try {
+      const { data, error } = await supabase
+        .from('session_variables')
+        .select('variable_id, value, is_revealed')
+        .eq('session_id', theId);
+      if (!error) {
+        const onSet = new Set();
+        const values = {};
+        (data || []).forEach(r => {
+          if (r.is_revealed) onSet.add(r.variable_id);
+          if (r.value !== undefined && r.value !== null) values[r.variable_id] = r.value;
+        });
+        setRevealed(onSet);
+        setSessionVarValues(values);
+      }
+    } catch (error) {
+      reportWarning('PresencialInstructor.refreshRevealed', error, { sessionId: theId });
+    }
+  }, [sessionId]);
+
   useEffect(() => {
     if (!id) return;
     const saved = loadScriptLocal(sessionId, id);
@@ -209,6 +903,14 @@ export default function Presencial_Instructor() {
     if (!id) return;
     saveScriptLocal(sessionId, id, scriptTexts, scriptIndex);
   }, [scriptTexts, scriptIndex, id, sessionId]);
+
+  useEffect(() => {
+    if (scenario?.patient_overview) {
+      setPatientInfo(parsePatientDemographics(scenario.patient_overview));
+    } else {
+      setPatientInfo({ chips: [], weightKg: null });
+    }
+  }, [scenario?.patient_overview]);
 
   // Variables reveladas (para marcar botones activos)
   const [revealed, setRevealed] = useState(new Set());
@@ -237,12 +939,52 @@ export default function Presencial_Instructor() {
   const [creatingFor, setCreatingFor] = useState(null);
   const [listError, setListError] = useState("");
 
+  const publicCode = session?.public_code || '';
+  const publicPath = useMemo(() => {
+    if (!publicCode) return null;
+    return `/presencial-alumno/${publicCode}`;
+  }, [publicCode]);
+
   const publicUrl = useMemo(() => {
-    if (!session?.public_code) return null;
-    return `${window.location.origin}/presencial-alumno/${session.public_code}`;
-    // Si tu ruta de alumnos fuera /presencial/a/:code, usa esto:
-    // return `${window.location.origin}/presencial/a/${session.public_code}`;
-  }, [session?.public_code]);
+    if (!publicPath) return null;
+    return `${window.location.origin}${publicPath}`;
+  }, [publicPath]);
+
+  const prettyPublicCode = useMemo(() => {
+    if (!publicCode) return '';
+    const raw = String(publicCode).trim();
+    if (!raw) return '';
+    if (/[\s-]/.test(raw)) return raw.toUpperCase();
+    if (raw.length <= 4) return raw.toUpperCase();
+    const segments = raw.match(/.{1,3}/g);
+    return (segments || [raw]).join(' ').toUpperCase();
+  }, [publicCode]);
+
+  const copyPublicCode = useCallback(() => {
+    if (!publicCode) return;
+    try { navigator.clipboard.writeText(publicCode); } catch {}
+  }, [publicCode]);
+
+  const copyPublicUrl = useCallback(() => {
+    if (!publicUrl) return;
+    try { navigator.clipboard.writeText(publicUrl); } catch {}
+  }, [publicUrl]);
+
+  const scrollToSection = useCallback((ref) => {
+    if (!ref || !ref.current) return;
+    try {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+    } catch {
+      ref.current.scrollIntoView();
+    }
+  }, []);
+
+  useEffect(() => {
+    setXrayCategorySelection({});
+    setXrayAssignedByCategory({});
+    setVentState(null);
+    setVentForm(DEFAULT_VENT_FORM);
+  }, [sessionId]);
 
   useEffect(() => {
     let mounted = true;
@@ -269,7 +1011,9 @@ export default function Presencial_Instructor() {
               }
             }
           }
-        } catch {}
+        } catch (error) {
+          reportWarning('PresencialInstructor.restoreSession', error);
+        }
         // Si faltan parámetros, mostrar selector de escenarios
         if (!id || !sessionId) {
           setLoading(true);
@@ -307,46 +1051,83 @@ export default function Presencial_Instructor() {
             const { data: ov } = await supabase.rpc('get_patient_overview', { p_scenario_id: pid });
             if (typeof ov === 'string') overview = ov;
           }
-        } catch {}
+        } catch (error) {
+          reportWarning('PresencialInstructor.patientOverview', error, { scenarioId: id });
+        }
 
         if (mounted) setScenario(sc ? { ...sc, patient_overview: overview || "" } : null);
 
         // 2) Sesión (ahora también banner_text y current_step_id)
-        const { data: s, error: sErr } = await supabase
-          .from("presencial_sessions")
-          .select("*")
-          .eq("id", sessionId)
-          .maybeSingle();
-        if (sErr) throw sErr;
+        const loadSessionWithRetry = async () => {
+          let attempt = 0;
+          let lastError = null;
+          while (attempt < 3) {
+            const { data: sessionRow, error: sessionError } = await supabase
+              .from("presencial_sessions")
+              .select("*")
+              .eq("id", sessionId)
+              .maybeSingle();
+            if (!sessionError && sessionRow) {
+              return sessionRow;
+            }
+            lastError = sessionError;
+            attempt += 1;
+            await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+          }
+          if (lastError) throw lastError;
+          throw new Error('No se encontró la sesión');
+        };
+
+        const s = await loadSessionWithRetry();
+
         if (mounted && s) {
           setSession(s);
           setBannerText(s.banner_text || "");
           setCurrentStepId(s.current_step_id || null);
-          // si existen columnas de tiempo, úsalas; si no, ignora
-          // Mostrar marcas temporales (informativas), pero NO activar UI ni cronómetro
-          if (Object.prototype.hasOwnProperty.call(s, "started_at")) {
-            setStartedAt(s.started_at || null);
-          }
-          if (Object.prototype.hasOwnProperty.call(s, "ended_at")) {
-            setEndedAt(s.ended_at || null);
-          }
-          if (s && s.started_at && s.ended_at) {
+
+          const startedAtDb = s.started_at ? new Date(s.started_at) : null;
+          const createdAtDb = s.created_at ? new Date(s.created_at) : null;
+          const endedAtDb = s.ended_at ? new Date(s.ended_at) : null;
+          const startedDiffMs = startedAtDb && createdAtDb ? Math.abs(startedAtDb.getTime() - createdAtDb.getTime()) : null;
+          const considerStarted = Boolean(startedAtDb && !endedAtDb && (startedDiffMs == null || startedDiffMs > 5000));
+
+          setStartedAt(considerStarted || endedAtDb ? s.started_at : null);
+          setEndedAt(s.ended_at || null);
+
+          if (endedAtDb) {
             try {
-              const t0 = new Date(s.started_at).getTime();
-              const t1 = new Date(s.ended_at).getTime();
+              const t0 = startedAtDb ? startedAtDb.getTime() : createdAtDb ? createdAtDb.getTime() : Date.now();
+              const t1 = endedAtDb.getTime();
               setElapsedSec(Math.max(0, Math.floor((t1 - t0) / 1000)));
-            } catch {}
+            } catch (error) {
+              reportWarning('PresencialInstructor.elapsedSecInit', error);
+            }
+          } else if (considerStarted) {
+            try {
+              const t0 = startedAtDb.getTime();
+              const t1 = Date.now();
+              setElapsedSec(Math.max(0, Math.floor((t1 - t0) / 1000)));
+            } catch (error) {
+              reportWarning('PresencialInstructor.elapsedSecInit', error);
+            }
+          } else {
+            setElapsedSec(0);
           }
-          // Al cargar, la UI permanece bloqueada hasta pulsar Iniciar
-          setUiUnlocked(false);
-          setTimerActive(false);
-          setTimerStartAt(null);
-          // Guardar como última sesión (para recuperación) si no está finalizada
+
+          const shouldUnlock = considerStarted && !endedAtDb;
+          setUiUnlocked(shouldUnlock);
+          setTimerActive(shouldUnlock);
+          setTimerStartAt(shouldUnlock ? s.started_at : null);
+
           try {
             if (!s.ended_at) {
               localStorage.setItem(LS_KEY, JSON.stringify({ id: s.id, scenario_id: s.scenario_id }));
+            } else {
+              localStorage.removeItem(LS_KEY);
             }
-          } catch {}
+          } catch (error) {
+            reportWarning('PresencialInstructor.persistSession', error);
+          }
         }
 
         // 3) Pasos
@@ -397,12 +1178,12 @@ export default function Presencial_Instructor() {
               setCheckNotes(nt);
             }
           }
-        } catch (e) {
+        } catch {
           console.debug('[Instructor] checklist no disponible (ok)');
         }
       } catch (e) {
         console.error("[Instructor] init error:", e);
-        setErrorMsg(e?.message || "No se pudo cargar la sesión");
+        setErrorMsg(e?.message || "No se pudo cargar la sesión (reintentar)");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -411,32 +1192,9 @@ export default function Presencial_Instructor() {
     return () => {
       mounted = false;
     };
-  }, [id, sessionId]);
+  }, [id, sessionId, navigate, refreshRevealed]);
 
   // Refrescar variables reveladas desde BD
-  async function refreshRevealed(sid) {
-    const theId = sid || sessionId;
-    if (!theId) return;
-    try {
-      const { data, error } = await supabase
-        .from('session_variables')
-        .select('variable_id, value, is_revealed')
-        .eq('session_id', theId);
-      if (!error) {
-        const onSet = new Set();
-        const values = {};
-        (data || []).forEach(r => {
-          if (r.is_revealed) onSet.add(r.variable_id);
-          if (r.value !== undefined && r.value !== null) values[r.variable_id] = r.value;
-        });
-        setRevealed(onSet);
-        setSessionVarValues(values);
-      }
-    } catch (e) {
-      // silencioso
-    }
-  }
-
   // Suscripción realtime a session_variables para marcar/desmarcar en UI
   useEffect(() => {
     if (!sessionId) return;
@@ -452,7 +1210,7 @@ export default function Presencial_Instructor() {
     return () => {
       try { supabase.removeChannel(ch); } catch {}
     };
-  }, [sessionId]);
+  }, [sessionId, refreshRevealed]);
 
   // Crear sesión
   async function createSessionForScenario(scenarioId) {
@@ -627,71 +1385,6 @@ export default function Presencial_Instructor() {
       } catch (e2) {
         console.error("[Instructor] endSession fallback error:", e2);
       }
-    }
-  }
-
-  // Mostrar/ocultar variables - toggle helper
-  async function setVariableReveal(variableId, reveal) {
-    if (!sessionId) return;
-    const v = variables.find((x) => x.id === variableId);
-    try {
-      if (reveal) {
-        const currentVal = (pendingValues[variableId] ?? sessionVarValues[variableId] ?? v?.initial_value ?? null);
-        await supabase.from('session_variables').upsert(
-          {
-            session_id: sessionId,
-            variable_id: variableId,
-            is_revealed: true,
-            value: currentVal,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'session_id,variable_id' }
-        );
-        // Además: broadcast explícito para listeners
-        try {
-          await supabase.from('session_actions').insert({
-            session_id: sessionId,
-            step_id: currentStepId || null,
-            action_key: 'variable.show',
-            payload: { variable_id: variableId, value: currentVal }
-          });
-        } catch {}
-        setRevealed((prev) => { const s = new Set(prev); s.add(variableId); return s; });
-        setSessionVarValues(prev => ({ ...prev, [variableId]: currentVal }));
-        try { logEvent('variable.show', { variable_id: variableId, label: v?.label, value: currentVal, unit: v?.unit }); } catch {}
-        playBeep({ freq: 880 });
-      } else {
-        setRevealed(prev => { const s = new Set(prev); s.delete(variableId); return s; });
-        setPendingValues(prev => ({ ...prev, [variableId]: '' }));
-        await supabase
-          .from('session_variables')
-          .upsert(
-            {
-              session_id: sessionId,
-              variable_id: variableId,
-              is_revealed: false,
-              // mantenemos el valor previo si existía; si no, null
-              value: v?.initial_value ?? null,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'session_id,variable_id' }
-          );
-        // Además: broadcast explícito para listeners
-        try {
-          await supabase.from('session_actions').insert({
-            session_id: sessionId,
-            step_id: currentStepId || null,
-            action_key: 'variable.hide',
-            payload: { variable_id: variableId }
-          });
-        } catch {}
-        setSessionVarValues(prev => ({ ...prev, [variableId]: (v?.initial_value ?? prev[variableId] ?? null) }));
-        try { logEvent('variable.hide', { variable_id: variableId, label: v?.label }); } catch {}
-        playBeep({ freq: 620 });
-      }
-    } catch (e) {
-      console.error('[Instructor] setVariableReveal error:', e);
-      setErrorMsg(reveal ? 'No se pudo mostrar la variable.' : 'No se pudo ocultar la variable.');
     }
   }
 
@@ -950,6 +1643,121 @@ export default function Presencial_Instructor() {
     }
   }
 
+  const handleVentFieldChange = useCallback((section, key, value) => {
+    clearTemplateMeta();
+    setVentForm(prev => {
+      const nextSection = { ...prev[section], [key]: value };
+      const nextForm = { ...prev, [section]: nextSection };
+      setVentState(prevState => {
+        if (!prevState || prevState.active !== 'pending') return prevState;
+        const nextDraft = {
+          mode: nextForm.mode,
+          parameters: { ...nextForm.parameters },
+          patient: { ...nextForm.patient }
+        };
+        const next = { ...prevState, draft: nextDraft, mode: nextForm.mode };
+        return next;
+      });
+      return nextForm;
+    });
+  }, [clearTemplateMeta]);
+
+  const publishVentilationUpdate = useCallback(async (payload) => {
+    if (!sessionId) return;
+    try {
+      await supabase.from('session_actions').insert({
+        session_id: sessionId,
+        step_id: currentStepId || null,
+        action_key: 'ventilation.update',
+        payload
+      });
+      try { logEvent('ventilation.update', payload); } catch {}
+    } catch (error) {
+      console.error('[Instructor] ventilation.update error', error);
+      setErrorMsg('No se pudo publicar el estado del ventilador.');
+    }
+  }, [sessionId, currentStepId, logEvent]);
+
+  const handleVentApply = useCallback(async () => {
+    if (!sessionId) return;
+    setIsPublishingVent(true);
+    try {
+      const tpl = VENTILATION_TEMPLATES.find(t => t.key === selectedTemplateKey) || null;
+      const context = {
+        weightKg: patientInfo.weightKg,
+        template: tpl ? { key: tpl.key, name: tpl.name } : undefined
+      };
+      const nextState = buildVentilationState(ventForm, context);
+      setVentState(nextState);
+      await publishVentilationUpdate(nextState);
+      setVentModalOpen(false);
+    } finally {
+      setIsPublishingVent(false);
+    }
+  }, [sessionId, ventForm, publishVentilationUpdate, patientInfo.weightKg, selectedTemplateKey]);
+
+  const buildMetaPayload = useCallback(() => {
+    const meta = {};
+    if (patientInfo.weightKg) meta.weightKg = patientInfo.weightKg;
+    const tpl = VENTILATION_TEMPLATES.find((t) => t.key === selectedTemplateKey) || null;
+    if (tpl) meta.template = { key: tpl.key, name: tpl.name };
+    return meta;
+  }, [patientInfo.weightKg, selectedTemplateKey]);
+
+  const handleVentStop = useCallback(async () => {
+    if (!sessionId) return;
+    const basePayload = { active: false, timestamp: new Date().toISOString() };
+    const meta = buildMetaPayload();
+    const payload = Object.keys(meta).length > 0
+      ? { ...basePayload, meta }
+      : basePayload;
+    setVentState(null);
+    setVentForm(DEFAULT_VENT_FORM);
+    await publishVentilationUpdate(payload);
+  }, [sessionId, publishVentilationUpdate, buildMetaPayload]);
+
+  const handleVentHide = useCallback(async () => {
+    if (!sessionId) return;
+    const basePayload = { active: 'hidden', timestamp: new Date().toISOString() };
+    const meta = buildMetaPayload();
+    const payload = Object.keys(meta).length > 0
+      ? { ...basePayload, meta }
+      : basePayload;
+    setVentState(null);
+    await publishVentilationUpdate(payload);
+  }, [sessionId, publishVentilationUpdate, buildMetaPayload]);
+
+  const broadcastVentPending = useCallback(async () => {
+    if (!sessionId) return;
+    const timestamp = new Date().toISOString();
+    const tpl = VENTILATION_TEMPLATES.find(t => t.key === selectedTemplateKey) || null;
+    const meta = buildMetaPayload();
+    const metaPayload = Object.keys(meta).length > 0 ? meta : undefined;
+    const draft = {
+      mode: ventForm.mode,
+      parameters: { ...ventForm.parameters },
+      patient: { ...ventForm.patient }
+    };
+    const pendingPayload = metaPayload
+      ? { active: 'pending', timestamp, meta: metaPayload, mode: draft.mode, draft }
+      : { active: 'pending', timestamp, mode: draft.mode, draft };
+    setVentState(metaPayload
+      ? { active: 'pending', timestamp, meta: metaPayload, mode: draft.mode, draft }
+      : { active: 'pending', timestamp, mode: draft.mode, draft });
+    try {
+      await publishVentilationUpdate(pendingPayload);
+    } catch (error) {
+      console.error('[Instructor] ventilation.pending error', error);
+    }
+  }, [sessionId, publishVentilationUpdate, patientInfo.weightKg, selectedTemplateKey, ventForm]);
+
+  const handleOpenVentModal = useCallback(() => {
+    setVentModalOpen(true);
+    if (!ventState) {
+      void broadcastVentPending();
+    }
+  }, [ventState, broadcastVentPending]);
+
   async function upsertChecklist(itemId, status) {
     if (!sessionId) return;
     try {
@@ -1127,85 +1935,126 @@ export default function Presencial_Instructor() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Navbar />
+      {!fullscreenMode && <Navbar />}
 
-      {/* Hero */}
-      <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white">
-        <div className="max-w-6xl mx-auto px-5 py-8">
-          <p className="opacity-95">Instructor · Sesión {sessionId}</p>
-          <h1 className="text-2xl md:text-3xl font-semibold mt-1">
-            {scenario.title}
-          </h1>
-          {scenario.summary && <p className="opacity-90 mt-1">{scenario.summary}</p>}
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            {/* Estado */}
-            {!startedAt && (
-              <span className="px-2.5 py-1 rounded-full bg-white/10 ring-1 ring-white/30">
-                ● No iniciada
-              </span>
-            )}
-            {startedAt && !endedAt && (
-              <span className="px-2.5 py-1 rounded-full bg-green-500/20 ring-1 ring-green-300/40">
-                ● En curso
-              </span>
-            )}
-            {startedAt && endedAt && (
-              <span className="px-2.5 py-1 rounded-full bg-slate-200/30 ring-1 ring-white/30">
-                ● Finalizada
-              </span>
-            )}
-
-            {/* Fase actual */}
-            {currentStepId && steps.length > 0 ? (
-              <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                Fase: {steps.find((s) => s.id === currentStepId)?.name || "—"}
-              </span>
-            ) : null}
-
-            {/* Duración */}
-            {startedAt && (
-              <span className="ml-1 px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                Tiempo: {fmtDuration(elapsedSec)}
-              </span>
-            )}
-
-            {/* Marcas */}
-            {startedAt ? (
-              <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                Iniciada: {new Date(startedAt).toLocaleString()}
-              </span>
-            ) : null}
-            {endedAt ? (
-              <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                Finalizada: {new Date(endedAt).toLocaleString()}
-              </span>
-            ) : null}
-
-            {publicUrl && (
-              <button
-                onClick={() => navigator.clipboard.writeText(publicUrl)}
-                className="ml-2 px-3 py-1.5 rounded-lg bg-white/15 ring-1 ring-white/30 hover:bg-white/20"
-              >
-                Copiar enlace de alumnos
-              </button>
-            )}
-            {sessionId && !startedAt && !endedAt && (
-              <Link
-                to={`/presencial/confirm/${id}/${sessionId}`}
-                className="ml-2 px-3 py-1.5 rounded-lg bg-white/15 ring-1 ring-white/30 hover:bg-white/20"
-                title="Pasar lista / confirmar alumnos"
-              >
-                Confirmar alumnos
-              </Link>
-            )}
+      {/* Hero / encabezado */}
+      {fullscreenMode ? (
+        <section className="sticky top-0 z-30 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white shadow-sm">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="min-w-[12rem]">
+              <p className="text-xs uppercase tracking-wide opacity-80">Sesión {sessionId}</p>
+              <h1 className="text-lg font-semibold leading-snug">{scenario.title}</h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs md:text-sm">
+              {publicCode && (
+                <span className="rounded-full bg-white/15 px-3 py-1 font-mono text-xs tracking-[0.2em] ring-1 ring-white/30 md:text-sm">
+                  Código: {prettyPublicCode}
+                </span>
+              )}
+              {!startedAt && <span className="rounded-full bg-white/10 px-2.5 py-1 ring-1 ring-white/30">● No iniciada</span>}
+              {startedAt && !endedAt && <span className="rounded-full bg-green-500/20 px-2.5 py-1 ring-1 ring-green-300/40">● En curso</span>}
+              {startedAt && endedAt && <span className="rounded-full bg-slate-200/30 px-2.5 py-1 ring-1 ring-white/30">● Finalizada</span>}
+              {currentStepId && steps.length > 0 && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 ring-1 ring-white/30">
+                  Fase: {steps.find((s) => s.id === currentStepId)?.name || '—'}
+                </span>
+              )}
+              {startedAt && (
+                <span className="rounded-full bg-white/15 px-2.5 py-1 ring-1 ring-white/30">
+                  Tiempo: {fmtDuration(elapsedSec)}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white">
+          <div className="mx-auto max-w-6xl px-5 py-8 xl:max-w-7xl">
+            <p className="opacity-95">Instructor · Sesión {sessionId}</p>
+            <h1 className="text-2xl md:text-3xl font-semibold mt-1">
+              {scenario.title}
+            </h1>
+            {scenario.summary && <p className="opacity-90 mt-1">{scenario.summary}</p>}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              {publicCode && (
+                <span className="px-3 py-1 rounded-full bg-white/15 font-mono tracking-[0.25em] ring-1 ring-white/30">
+                  Código: {prettyPublicCode}
+                </span>
+              )}
+              {!startedAt && (
+                <span className="px-2.5 py-1 rounded-full bg-white/10 ring-1 ring-white/30">
+                  ● No iniciada
+                </span>
+              )}
+              {startedAt && !endedAt && (
+                <span className="px-2.5 py-1 rounded-full bg-green-500/20 ring-1 ring-green-300/40">
+                  ● En curso
+                </span>
+              )}
+              {startedAt && endedAt && (
+                <span className="px-2.5 py-1 rounded-full bg-slate-200/30 ring-1 ring-white/30">
+                  ● Finalizada
+                </span>
+              )}
+              {currentStepId && steps.length > 0 ? (
+                <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+                  Fase: {steps.find((s) => s.id === currentStepId)?.name || "—"}
+                </span>
+              ) : null}
+              {startedAt && (
+                <span className="ml-1 px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+                  Tiempo: {fmtDuration(elapsedSec)}
+                </span>
+              )}
+              {startedAt && (
+                <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+                  Iniciada: {new Date(startedAt).toLocaleString()}
+                </span>
+              )}
+              {endedAt && (
+                <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+                  Finalizada: {new Date(endedAt).toLocaleString()}
+                </span>
+              )}
+              {publicUrl && (
+                <button
+                  onClick={copyPublicUrl}
+                  className="ml-2 px-3 py-1.5 rounded-lg bg-white/15 ring-1 ring-white/30 hover:bg-white/20"
+                >
+                  Copiar enlace de alumnos
+                </button>
+              )}
+              {sessionId && !startedAt && !endedAt && (
+                <Link
+                  to={`/presencial/confirm/${id}/${sessionId}`}
+                  className="ml-2 px-3 py-1.5 rounded-lg bg-white/15 ring-1 ring-white/30 hover:bg-white/20"
+                  title="Pasar lista / confirmar alumnos"
+                >
+                  Confirmar alumnos
+                </Link>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {scenario?.patient_overview && (
-        <section className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-slate-200">
+        <section className="bg-white/80 backdrop-blur border-b border-slate-200">
           <div className="max-w-6xl mx-auto px-5 py-3">
             <h3 className="text-sm font-semibold text-slate-800 mb-1">Ficha inicial del paciente</h3>
+            {patientInfo.chips.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2 text-xs">
+                {patientInfo.chips.map((chip) => (
+                  <span
+                    key={`${chip.key}-${chip.label}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700 ring-1 ring-slate-200"
+                  >
+                    <span aria-hidden>{DEMO_CHIP_ICONS[chip.key] || '•'}</span>
+                    {chip.label}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="text-sm text-slate-700 leading-relaxed">
               {scenario.patient_overview.split(/\n+/).map((line, i) => (
                 <div key={i} className="flex items-start gap-2">
@@ -1218,15 +2067,67 @@ export default function Presencial_Instructor() {
         </section>
       )}
 
-      <main className="max-w-6xl mx-auto px-5 py-8 grid grid-cols-1 lg:grid-cols-3 gap-7">
+      <main
+        className={`${fullscreenMode ? 'max-w-7xl xl:max-w-[96rem]' : 'max-w-6xl xl:max-w-7xl'} mx-auto px-5 py-8 grid grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1.2fr)] gap-7`}
+      >
         {errorMsg && (
           <div className="lg:col-span-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-2">
             {errorMsg}
           </div>
         )}
 
+        <div className="xl:col-span-2">
+          <nav className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 shadow-sm ring-1 ring-slate-200/60">
+            <span className="text-sm font-semibold text-slate-700">Accesos rápidos</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => scrollToSection(scriptRef)}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+              >
+                📝 Guion
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection(bannerRef)}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+              >
+                📢 Banner
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection(variablesRef)}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+              >
+                📊 Constantes
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection(phasesRef)}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+              >
+                🔁 Fases
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToSection(checklistRef)}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+              >
+                ✅ Checklist
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFullscreenMode((prev) => !prev)}
+              className="ml-auto inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+            >
+              {fullscreenMode ? '↙ Salir de pantalla completa' : '⤢ Pantalla completa'}
+            </button>
+          </nav>
+        </div>
+
         {/* Panel de control */}
-        <section className="lg:col-span-2 p-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <section className="p-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Sticky header bar for quick actions */}
           <div className="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/95 border-b border-slate-200">
             <div className="px-6 py-4 flex flex-wrap items-center gap-3">
@@ -1280,6 +2181,35 @@ export default function Presencial_Instructor() {
               >
                 ⚡ Refrescar pantallas
               </button>
+              <button
+                onClick={handleOpenVentModal}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 shadow-sm"
+                title="Configurar ventilación mecánica"
+              >
+                🫁 Ventilación mecánica
+              </button>
+              <button
+                onClick={handleVentHide}
+                disabled={!ventState}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition shadow-sm ${
+                  ventState
+                    ? 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                    : 'border-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+                title="Ocultar la ventilación en la vista del alumno"
+              >
+                ⛔ Ocultar ventilación
+              </button>
+              {ventState?.active === true && (
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  ● Ventilación activa ({ventState.mode})
+                  {ventState?.meta?.template?.name ? (
+                    <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                      ⚙️ {ventState.meta.template.name}
+                    </span>
+                  ) : null}
+                </span>
+              )}
               {endedAt && (
                 <Link
                   to={`/presencial/${id}/informe?session=${sessionId}`}
@@ -1298,231 +2228,249 @@ export default function Presencial_Instructor() {
             </div>
           </div>
           <div className={`p-6 ${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''}`}>
-
-          {/* Guion del caso (publica como banner por pasos) */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">Guion del caso</h3>
-            <p className="text-sm text-slate-600 mb-2">Define una introducción y eventos que se irán publicando al alumnado como texto en pantalla.</p>
-            <div className="space-y-2 mb-3">
-              {scriptTexts.map((t, idx) => (
-                <div key={idx} className={`flex items-center gap-2 ${idx === scriptIndex ? 'ring-1 ring-[#1E6ACB] rounded-lg p-2 bg-[#4FA3E3]/5' : ''}`}>
-                  <span className="text-xs text-slate-500 w-10">Paso {idx+1}</span>
-                  <input
-                    value={t}
-                    onChange={(e)=> setScriptTexts(arr => arr.map((x,i)=> i===idx? e.target.value : x))}
-                    placeholder={idx===0? 'Llegada a urgencias...' : 'Texto del evento...'}
-                    className="flex-1 rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-                  />
-                  <button
-                    onClick={() => { setScriptIndex(idx); publishScript(idx); }}
-                    className="px-2 py-1 rounded border border-slate-300 text-sm hover:bg-slate-50"
-                    title="Seleccionar este paso"
-                  >
-                    Usar
-                  </button>
+            <div className="space-y-8">
+              <section
+                ref={scriptRef}
+                className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold text-slate-900">Guion del caso</h3>
+                    <p className="text-sm text-slate-600 max-w-xl">Define la narración que verán los alumnos durante la sesión. Puedes preparar tantos hitos como necesites y publicarlos de forma secuencial.</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={addScriptLine} className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">+ Añadir</button>
+                    <button onClick={prevScript} className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">← Anterior</button>
+                    <button onClick={nextScript} className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">Siguiente →</button>
+                    <button onClick={() => { ensureCtx(); publishScript(); }} className="rounded-full px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90" style={{ background: colors.primary }}>Publicar actual</button>
+                  </div>
                 </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={addScriptLine} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">+ Añadir paso</button>
-              <button onClick={prevScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">← Anterior</button>
-              <button onClick={nextScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">Siguiente →</button>
-              <button onClick={() => { ensureCtx(); publishScript(); }} className="px-3 py-1.5 rounded font-semibold text-slate-900" style={{ background: colors.primaryLight }}>Publicar este paso</button>
-              <button onClick={resetScript} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50">Reiniciar</button>
-              {/* Acciones de persistencia local */}
-              <button onClick={() => saveScriptLocal(sessionId, id, scriptTexts, scriptIndex)} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50" title="Guardar una copia local del guion">
-                Guardar guion (local)
-              </button>
-              <button onClick={() => { clearScriptLocal(sessionId, id); }} className="px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50" title="Eliminar la copia local del guion">
-                Borrar guardado
-              </button>
-            </div>
-          </div>
-
-          {/* Constantes / variables (edición rápida de valores) */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">Constantes (edición rápida)</h3>
-            <p className="text-sm text-slate-600 mb-2">Introduce el valor y pulsa <span className="font-medium">Mostrar</span> para publicarlo (o <span className="font-medium">Ocultar</span> para retirarlo). Cuando se muestre, habrá un aviso sonoro breve.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {variables.map(v => {
-                const isOn = revealed.has(v.id);
-                const current = sessionVarValues[v.id];
-                return (
-                  <div
-                    key={v.id}
-                    className={`p-3 rounded-lg border bg-white transition ring-1 ${
-                      isOn ? 'border-[#1E6ACB] ring-[#1E6ACB]/30 bg-[#4FA3E3]/5' : 'border-slate-200 ring-transparent'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-slate-500">
-                        {v.type}
-                        {typeof sessionVarValues[v.id] !== 'undefined' && sessionVarValues[v.id] !== null ? (
-                          <span> · Actual: <span className="font-medium text-slate-700">{sessionVarValues[v.id]}</span></span>
-                        ) : null}
+                <div className="mt-4 space-y-3">
+                  {scriptTexts.map((t, idx) => (
+                    <div
+                      key={idx}
+                      className={`rounded-2xl border px-4 py-3 transition ${
+                        idx === scriptIndex
+                          ? 'border-[#1E6ACB] bg-[#1E6ACB]/5 shadow-sm'
+                          : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paso {idx + 1}</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => { setScriptIndex(idx); publishScript(idx); }}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                              scriptIndex === idx ? 'border-[#1E6ACB] text-[#0A3D91]' : 'border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
+                            }`}
+                            title="Seleccionar y publicar este paso"
+                          >
+                            Publicar ahora
+                          </button>
+                          <button
+                            onClick={() => setScriptIndex(idx)}
+                            className={`rounded-full border px-3 py-1 text-xs transition ${
+                              scriptIndex === idx ? 'border-slate-300 text-slate-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                            }`}
+                            title="Marcar este paso como actual"
+                          >
+                            Marcar
+                          </button>
+                        </div>
                       </div>
-                      {isOn && (
-                        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#1E6ACB]/10 text-[#1E6ACB]">
-                          ● visible
-                        </span>
-                      )}
+                      <input
+                        value={t}
+                        onChange={(e) => setScriptTexts((arr) => arr.map((x, i) => (i === idx ? e.target.value : x)))}
+                        placeholder={idx === 0 ? 'Llegada a urgencias...' : 'Texto del evento...'}
+                        className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
                     </div>
+                  ))}
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <button onClick={resetScript} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">Reiniciar guion</button>
+                  <button onClick={() => saveScriptLocal(sessionId, id, scriptTexts, scriptIndex)} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Guardar una copia local del guion">Guardar (local)</button>
+                  <button onClick={() => { clearScriptLocal(sessionId, id); }} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Eliminar la copia local del guion">Borrar guardado</button>
+                </div>
+              </section>
 
-                    <div className="font-medium mt-0.5">{v.label}</div>
+              <section
+                ref={variablesRef}
+                className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
+              >
+                <h3 className="text-lg font-semibold text-slate-900">Constantes (edición rápida)</h3>
+                <p className="mt-1 text-sm text-slate-600 max-w-2xl">Introduce un valor provisional y, cuando toque mostrarlo, pulsa <span className="font-medium text-slate-800">Mostrar</span>. Si necesitas retirarlo, usa <span className="font-medium text-slate-800">Ocultar</span>.</p>
+                {variables.length === 0 ? (
+                  <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    No hay constantes configuradas para este escenario.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    {Object.entries(VARIABLE_GROUP_CONFIG).map(([key, cfg]) => {
+                      const items = variablesGrouped[key] || [];
+                      if (!items.length) return null;
+                      return (
+                        <section key={key} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-slate-800">{cfg.title}</h4>
+                            <span className="text-xs text-slate-500">{items.length}</span>
+                          </div>
+                          {cfg.description ? (
+                            <p className="mt-1 text-xs text-slate-500">{cfg.description}</p>
+                          ) : null}
+                          <div className={`mt-3 overflow-y-auto pr-1 ${cfg.maxHeight || ''}`}>
+                            <div className={cfg.grid}>{items.map(renderVariableCard)}</div>
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
 
-                    {/* Input + unidad (primera fila) */}
-                    <div className="mt-2">
-                      <div className="flex items-stretch rounded border border-slate-300 focus-within:ring-2 focus-within:ring-[#1E6ACB] h-9">
-                        <input
-                          value={pendingValues[v.id] ?? ''}
-                          onChange={(e)=> setPending(v.id, e.target.value)}
-                          placeholder={current ? `Actual: ${current}` : (v.initial_value ?? '')}
-                          className="flex-1 rounded-l px-3 outline-none h-full"
-                        />
-                        {v.unit && (
-                          <span className="px-2 min-w-[3rem] grid place-items-center text-xs text-slate-500 bg-slate-50 border-l border-slate-200 rounded-r h-full">
-                            {v.unit}
-                          </span>
-                        )}
-                      </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <section
+                  ref={bannerRef}
+                  className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
+                >
+                  <h3 className="text-lg font-semibold text-slate-900">Texto en pantalla (banner)</h3>
+                  <p className="mt-1 text-sm text-slate-600">Publica mensajes puntuales en la pantalla del alumnado. Al guardar, se enviará un aviso visual y sonoro.</p>
+                  <textarea
+                    rows={4}
+                    className="mt-3 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                    placeholder="Introduce el texto que verán los alumnos (introducción, instrucciones, etc.)"
+                    value={bannerText}
+                    onChange={(e) => setBannerText(e.target.value)}
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => saveBanner()}
+                      className="rounded-full px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+                      style={{ background: colors.primary }}
+                      title="Publicar/actualizar el texto en la pantalla del alumno"
+                    >
+                      Publicar en pantalla
+                    </button>
+                    <button
+                      onClick={() => saveBanner("")}
+                      className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400"
+                      title="Vaciar el banner en la pantalla del alumno"
+                    >
+                      Limpiar banner
+                    </button>
+                  </div>
+                </section>
 
-                      {/* Botonera (segunda fila) para que no se corte en pantallas estrechas */}
-                      <div className="mt-2 flex flex-wrap gap-2">
+                <section
+                  ref={phasesRef}
+                  className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
+                >
+                  <h3 className="text-lg font-semibold text-slate-900">Fase del caso</h3>
+                  <p className="mt-1 text-sm text-slate-600">Selecciona la fase activa para sincronizar la vista de los alumnos.</p>
+                  {steps && steps.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {steps.map((st) => (
                         <button
-                          onClick={()=> publishValue(v.id)}
-                          className={`h-9 px-3 rounded ring-1 text-sm transition ${isOn ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 hover:bg-slate-50'}`}
-                          title="Publicar ahora al alumnado"
+                          key={st.id}
+                          type="button"
+                          onClick={() => updateStep(st.id)}
+                          className={`rounded-full px-3 py-1.5 text-sm transition ${
+                            currentStepId === st.id
+                              ? 'bg-[#1E6ACB]/10 text-[#0A3D91]'
+                              : 'border border-slate-200 text-slate-700 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
+                          }`}
+                          title="Cambiar fase (se reflejará en la pantalla de alumnos)"
                         >
-                          Mostrar
+                          {st.name}
                         </button>
-                        <button
-                          onClick={()=> hideVariable(v.id)}
-                          className="h-9 px-3 rounded ring-1 ring-slate-200 hover:bg-slate-50 text-sm transition"
-                          title="Ocultar al alumnado"
-                        >
-                          Ocultar
-                        </button>
-                      </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-sm text-slate-500">Este escenario no tiene fases definidas.</div>
+                  )}
+                  <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4">
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Acciones rápidas</h4>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        onClick={clearAllVariables}
+                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                        title="Oculta todas las variables reveladas en la pantalla del alumno"
+                      >
+                        Ocultar constantes
+                      </button>
+                      <button
+                        onClick={triggerAlarm}
+                        className="rounded-full border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
+                        title="Emitir una alarma sonora en las pantallas conectadas"
+                      >
+                        🔔 Alarma
+                      </button>
+                      <button
+                        onClick={forceRefresh}
+                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                        title="Forzar un refresco inmediato en las pantallas conectadas"
+                      >
+                        ⚡ Refrescar pantallas
+                      </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Texto en pantalla (banner) */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">
-              Texto en pantalla (banner)
-            </h3>
-            <textarea
-              rows={3}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-              placeholder="Introduce el texto que verán los alumnos (introducción del caso, mensajes, etc.)"
-              value={bannerText}
-              onChange={(e) => setBannerText(e.target.value)}
-            />
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                onClick={() => saveBanner()}
-                className="px-3 py-2 rounded-lg font-semibold text-slate-900 hover:opacity-90"
-                style={{ background: colors.primaryLight }}
-                title="Publicar/actualizar el texto en la pantalla del alumno"
-              >
-                Publicar en pantalla
-              </button>
-              <button
-                onClick={() => saveBanner("")}
-                className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-                title="Vaciar el banner en la pantalla del alumno"
-              >
-                Limpiar banner
-              </button>
-            </div>
-          </div>
-
-          {/* Fase del caso */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">Fase del caso</h3>
-            {steps && steps.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {steps.map((st) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => updateStep(st.id)}
-                    className={`px-3 py-1.5 rounded-full text-sm ring-1 ${
-                      currentStepId === st.id
-                        ? "ring-[#1E6ACB] bg-[#4FA3E3]/10"
-                        : "ring-slate-200 bg-white hover:bg-slate-50"
-                    }`}
-                    title="Cambiar fase (se reflejará en la pantalla de alumnos)"
-                  >
-                    {st.name}
-                  </button>
-                ))}
+                </section>
               </div>
-            ) : (
-              <div className="text-sm text-slate-500">
-                Este escenario no tiene fases definidas.
-              </div>
-            )}
-          </div>
-
-          {/* Acciones rápidas */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">Acciones rápidas</h3>
-            <button
-              onClick={clearAllVariables}
-              className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-              title="Oculta todas las variables reveladas en la pantalla del alumno"
-            >
-              Ocultar todas las variables
-            </button>
-            <button
-              onClick={triggerAlarm}
-              className="ml-2 px-3 py-2 rounded-lg border border-red-300 text-red-700 hover:bg-red-50"
-              title="Emitir una alarma sonora en las pantallas conectadas"
-            >
-              🔔 Alarma
-            </button>
-            <button
-              onClick={forceRefresh}
-              className="ml-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50"
-              title="Forzar un refresco inmediato en las pantallas conectadas"
-            >
-              ⚡ Refrescar pantallas
-            </button>
-          </div>
-
-
+            </div>
           </div>
         </section>
 
+
         {/* Ayuda y enlace público */}
-        <aside className={`p-6 bg-white rounded-2xl border border-slate-200 shadow-sm ${!isRunning ? 'opacity-90' : ''}`}>
+        <aside
+          ref={checklistRef}
+          className={`p-6 rounded-2xl bg-white/95 shadow-sm ring-1 ring-slate-200/60 lg:sticky lg:top-24 ${!isRunning ? 'opacity-90' : ''} flex flex-col gap-4`}
+        >
           <h3 className="text-lg font-semibold flex items-center gap-2">Pantalla del alumno <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">pública</span></h3>
           {publicUrl ? (
-            <div className="mt-2 text-sm">
-              <p className="text-slate-700">
-                Comparte este enlace para proyectar la pantalla del alumno:
-              </p>
-              <div className="mt-2 flex items-center gap-2">
-                <a
-                  href={publicUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[#0A3D91] underline break-all"
-                >
-                  {publicUrl}
-                </a>
-                <button
-                  onClick={() => navigator.clipboard.writeText(publicUrl)}
-                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200"
-                  title="Copiar enlace"
-                >
-                  Copiar
-                </button>
+            <div className="mt-3 space-y-4 text-sm">
+              <div>
+                <p className="text-slate-700">Código para la pantalla de alumnos:</p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-lg tracking-[0.3em] text-slate-900 shadow-inner">
+                    {prettyPublicCode}
+                  </span>
+                  <button
+                    onClick={copyPublicCode}
+                    className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                    title="Copiar código"
+                  >
+                    Copiar código
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="text-slate-700">Enlace directo (por si prefieres compartirlo):</p>
+                <div className="mt-2 space-y-1">
+                  {publicPath && (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                      <span className="font-mono bg-slate-100 px-2 py-1 rounded border border-slate-200">{publicPath}</span>
+                      <span className="text-slate-400">(ruta corta)</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={publicUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="break-all text-[#0A3D91] underline"
+                    >
+                      {publicUrl}
+                    </a>
+                    <button
+                      onClick={copyPublicUrl}
+                      className="px-3 py-1.5 rounded-lg bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-200"
+                      title="Copiar enlace"
+                    >
+                      Copiar enlace
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
@@ -1543,145 +2491,460 @@ export default function Presencial_Instructor() {
           </details>
 
           {(
-            <div className="mt-8">
-              <h3 className="text-lg font-semibold mb-2">Checklist (ABCDE / Patología / Medicación)</h3>
+            <section className="mt-6 flex flex-col gap-4 flex-1">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-lg font-semibold text-slate-900">Checklist (ABCDE / Patología / Medicación)</h3>
+                {checklist?.length ? (
+                  <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{checklist.length} ítems</span>
+                ) : null}
+              </div>
 
-              {/* Nota de estado cuando aún no se ha iniciado la sesión */}
               {!isRunning && (
-                <div className="mb-2 inline-flex items-center gap-2 text-xs px-2 py-1 rounded bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-800">
                   ⚠️ Inicia la sesión para editar el checklist
                 </div>
               )}
 
-              {/* Contenido del checklist: se desactiva hasta iniciar */}
-              <div className={`${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''}`}>
-              {(!checklist || checklist.length === 0) ? (
-                <div className="rounded-lg border border-dashed border-slate-300 p-4 bg-slate-50 text-slate-600">
-                  <p>No hay ítems de checklist para este escenario.</p>
-                  <p className="mt-1">Crea los ítems en Supabase en <code>scenario_checklist</code> con columnas <code>label</code>, <code>category</code> (A, B, C, D, E, Diagnóstico, Tratamiento) y <code>order_index</code>.</p>
-                  <div className="mt-3">
-                    <Link
-                      to={`/presencial/${id}/confirm?flow=dual`}
-                      className="inline-block px-3 py-2 rounded-lg border border-slate-300 hover:bg-white"
-                    >
-                      Ir a confirmar alumnos
-                    </Link>
+              <div className={`${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''} flex-1 flex flex-col`}>
+                {(!checklist || checklist.length === 0) ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-sm text-slate-600">
+                    <p>No hay ítems de checklist para este escenario.</p>
+                    <p className="mt-1">Crea los ítems en Supabase en <code>scenario_checklist</code> con columnas <code>label</code>, <code>category</code> (A, B, C, D, E, Diagnóstico, Tratamiento) y <code>order_index</code>.</p>
+                    <div className="mt-3">
+                      <Link
+                        to={`/presencial/${id}/confirm?flow=dual`}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                      >
+                        Ir a confirmar alumnos
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <>
-                  {/* Pestañas de categoría */}
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {CATEGORY_ORDER.map(cat => {
-                      const count = (groupedChecklist[cat] || []).length;
-                      if (count === 0) return null;
-                      const active = activeCategory === cat;
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => setActiveCategory(cat)}
-                          className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${active ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10 text-[#0A3D91]' : 'ring-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
-                          title={`Ver items de ${cat}`}
-                        >
-                          {cat} <span className="ml-1 text-xs text-slate-500">({count})</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4 rounded-2xl border border-slate-200/60 bg-white/90 p-4 shadow-sm flex-1">
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        {CATEGORY_ORDER.map(cat => {
+                          const items = groupedChecklist[cat] || [];
+                          if (items.length === 0) return null;
+                          const active = activeCategory === cat;
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => setActiveCategory(cat)}
+                              className={`rounded-full px-3 py-1.5 text-sm transition ${
+                                active
+                                  ? 'bg-[#1E6ACB]/10 text-[#0A3D91] ring-1 ring-[#1E6ACB]'
+                                  : 'border border-slate-200 text-slate-700 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
+                              }`}
+                              title={`Ver items de ${cat}`}
+                            >
+                              {cat}
+                              <span className="ml-1 text-xs text-slate-500">({items.length})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                  {/* Filtro por rol */}
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {ROLE_ORDER.map(r => {
-                      // contar elementos por rol dentro de la categoría activa
-                      const count = (groupedChecklist[activeCategory] || []).filter(it => (activeRole === 'Todos' ? true : true) && normalizeRole(it.role) === (r === 'Todos' ? normalizeRole(it.role) : r)).length;
-                      // Para el botón "Todos" mostramos el total de la categoría activa
-                      const totalCat = (groupedChecklist[activeCategory] || []).length;
-                      const active = activeRole === r;
-                      if (r === 'Todos') {
-                        return (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => setActiveRole('Todos')}
-                            className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${active ? 'ring-slate-400 bg-slate-100 text-slate-800' : 'ring-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
-                            title="Ver todos los roles"
-                          >
-                            Todos <span className="ml-1 text-xs text-slate-500">({totalCat})</span>
-                          </button>
-                        );
-                      }
-                      const roleCount = (groupedChecklist[activeCategory] || []).filter(it => normalizeRole(it.role) === r).length;
-                      // Ocultar botones de rol sin items
-                      if (roleCount === 0) return null;
-                      return (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => setActiveRole(r)}
-                          className={`px-3 py-1.5 rounded-full text-sm ring-1 transition ${active ? 'ring-slate-400 bg-slate-100 text-slate-800' : 'ring-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
-                          title={`Filtrar por rol: ${r}`}
-                        >
-                          {r} <span className="ml-1 text-xs text-slate-500">({roleCount})</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                      <div className="flex flex-wrap gap-2">
+                        {ROLE_ORDER.map(r => {
+                          const totalCat = (groupedChecklist[activeCategory] || []).length;
+                          const active = activeRole === r;
+                          if (r === 'Todos') {
+                            return (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => setActiveRole('Todos')}
+                                className={`rounded-full px-3 py-1.5 text-sm transition ${active ? 'bg-slate-200 text-slate-800' : 'border border-slate-200 text-slate-600 hover:border-slate-400'}`}
+                                title="Ver todos los roles"
+                              >
+                                Todos <span className="ml-1 text-xs text-slate-500">({totalCat})</span>
+                              </button>
+                            );
+                          }
+                          const roleCount = (groupedChecklist[activeCategory] || []).filter(it => normalizeRole(it.role) === r).length;
+                          if (roleCount === 0) return null;
+                          return (
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => setActiveRole(r)}
+                              className={`rounded-full px-3 py-1.5 text-sm transition ${active ? 'bg-slate-200 text-slate-800' : 'border border-slate-200 text-slate-600 hover:border-slate-400'}`}
+                              title={`Filtrar por rol: ${r}`}
+                            >
+                              {r} <span className="ml-1 text-xs text-slate-500">({roleCount})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                  {/* Lista de items de la categoría activa y rol activo */}
-                  <div className="space-y-3">
-                    {(groupedChecklist[activeCategory] || [])
-                      .filter(item => activeRole === 'Todos' ? true : normalizeRole(item.role) === activeRole)
-                      .map(item => {
-                        const role = normalizeRole(item.role);
-                        const roleCls = ROLE_COLORS[role] || ROLE_COLORS['Común'];
-                        const wb = WEIGHT_BADGE[item.weight] || null;
-                        return (
-                          <div key={item.id} className="p-3 rounded-lg border border-slate-200 bg-white shadow-sm">
-                            <div className="flex flex-col gap-2">
-                              <div className="flex items-center gap-2">
-                                <div className="font-medium text-slate-900">{item.label}</div>
-                                <span className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${roleCls}`} title={`Rol: ${role}`}>
-                                  {role}
-                                </span>
-                                {wb && (
-                                  <span className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${wb.cls}`} title={`Peso ${item.weight}`}>
-                                    {wb.label}
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span className="font-semibold uppercase tracking-wide">Estados</span>
+                        {CHECK_STATUSES.map(s => (
+                          <span key={s.key} className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5">
+                            <span>{s.icon}</span>
+                            {s.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 overflow-y-auto pr-1 flex-1">
+                      {(groupedChecklist[activeCategory] || [])
+                        .filter(item => activeRole === 'Todos' ? true : normalizeRole(item.role) === activeRole)
+                        .map(item => {
+                          const role = normalizeRole(item.role);
+                          const roleCls = ROLE_COLORS[role] || ROLE_COLORS['Común'];
+                          const wb = WEIGHT_BADGE[item.weight] || null;
+                          const status = checkStatus[item.id];
+                          return (
+                            <article key={item.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="max-w-full text-sm font-medium text-slate-900">{item.label}</div>
+                                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${roleCls}`} title={`Rol: ${role}`}>
+                                    {role}
                                   </span>
-                                )}
+                                  {wb && (
+                                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${wb.cls}`} title={`Peso ${item.weight}`}>
+                                      {wb.label}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex flex-wrap gap-2">
+                              <div className="mt-3 flex flex-wrap gap-2">
                                 {CHECK_STATUSES.map(s => (
                                   <button
                                     key={s.key}
                                     type="button"
                                     onClick={() => upsertChecklist(item.id, s.key)}
-                                    className={`px-2.5 py-1.5 rounded ring-1 text-sm ${checkStatus[item.id] === s.key ? 'ring-[#1E6ACB] bg-[#4FA3E3]/10' : 'ring-slate-200 hover:bg-slate-50'}`}
+                                    className={`rounded-full px-3 py-1.5 text-sm transition ${status === s.key ? 'bg-[#1E6ACB]/10 text-[#0A3D91] ring-1 ring-[#1E6ACB]' : 'border border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'}`}
                                     title={s.label}
                                   >
-                                    <span className="mr-1">{s.icon}</span>{s.label}
+                                    <span className="mr-1">{s.icon}</span>
+                                    {s.label}
                                   </button>
                                 ))}
                               </div>
-                              <input
-                                type="text"
-                                placeholder="Nota opcional"
-                                value={checkNotes[item.id] || ''}
-                                onChange={(e) => saveChecklistNote(item.id, e.target.value)}
-                                className="w-full rounded border border-slate-300 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                              <label className="mt-3 block">
+                                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Nota</span>
+                                <input
+                                  type="text"
+                                  placeholder="Añade un comentario breve (opcional)"
+                                  value={checkNotes[item.id] || ''}
+                                  onChange={(e) => saveChecklistNote(item.id, e.target.value)}
+                                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                                />
+                              </label>
+                            </article>
+                          );
+                        })}
+                    </div>
                   </div>
-                </>
-              )}
+                )}
               </div>
-            </div>
+            </section>
           )}
         </aside>
       </main>
+
+      {ventModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm px-4 py-8">
+          <div className="flex w-full max-w-6xl max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Ventilación mecánica</h3>
+                <p className="text-sm text-slate-600">Configura el modo y los parámetros que verán los alumnos.</p>
+              </div>
+              <button
+                onClick={() => setVentModalOpen(false)}
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] items-start">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <span className="font-semibold text-slate-700">
+                      Modo: <span className="text-slate-800">{ventState?.mode || ventForm.mode}</span>
+                    </span>
+                    {ventState?.meta?.template?.name || selectedTemplateKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200">
+                        ⚙️ {ventState?.meta?.template?.name || VENTILATION_TEMPLATES.find(t => t.key === selectedTemplateKey)?.name}
+                      </span>
+                    ) : null}
+                    {patientInfo.weightKg ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200">
+                        ⚖️ {patientInfo.weightKg} kg
+                      </span>
+                    ) : null}
+                    <span className="text-slate-500">
+                      {ventState?.timestamp
+                        ? `Última actualización ${new Date(ventState.timestamp).toLocaleTimeString()}`
+                        : 'Sin publicar todavía'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <button
+                    onClick={handleVentApply}
+                    disabled={isPublishingVent}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#1E6ACB] px-4 py-2 text-sm font-semibold text-white shadow hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isPublishingVent ? 'Publicando…' : 'Aplicar parámetros'}
+                  </button>
+                  <button
+                    onClick={handleVentStop}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Detener ventilación
+                  </button>
+                  <button
+                    onClick={() => setVentModalOpen(false)}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    Salir sin cambios
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <h4 className="text-sm font-semibold text-slate-700">Plantillas rápidas</h4>
+                <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-4">
+                  {VENTILATION_TEMPLATES.map((tpl) => {
+                    const activeTpl = selectedTemplateKey === tpl.key;
+                    return (
+                      <button
+                        key={tpl.key}
+                        type="button"
+                        onClick={() => handleSelectTemplate(tpl.key)}
+                        title={tpl.description}
+                        className={`rounded-xl border px-2 py-2 text-left text-sm transition flex flex-col gap-1 h-full ${
+                          activeTpl
+                            ? 'border-[#1E6ACB] bg-[#1E6ACB]/5 text-[#0A3D91] shadow-sm'
+                            : 'border-slate-200 hover:border-[#1E6ACB] hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-wide">
+                          <span className="font-semibold text-slate-600">{tpl.name}</span>
+                          {activeTpl ? <span className="text-[#0A3D91] font-semibold">Seleccionada</span> : null}
+                        </div>
+                        <span className="text-[11px] text-slate-500">
+                          <span className="font-semibold text-slate-700">{tpl.mode}</span> · {tpl.tidalVolumePerKg ?? 7} ml/kg
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-500">Pasa el cursor sobre cada tarjeta para ver la descripción completa.</p>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Modo</label>
+                    <select
+                      value={ventForm.mode}
+                      onChange={(e) => {
+                        const nextMode = e.target.value;
+                        clearTemplateMeta();
+                        setVentForm((prev) => {
+                          const nextForm = { ...prev, mode: nextMode };
+                          setVentState((prevState) => {
+                            if (!prevState || prevState.active !== 'pending') return prevState;
+                            const nextDraft = {
+                              mode: nextMode,
+                              parameters: { ...nextForm.parameters },
+                              patient: { ...nextForm.patient },
+                            };
+                            return { ...prevState, draft: nextDraft, mode: nextMode };
+                          });
+                          return nextForm;
+                        });
+                      }}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                    >
+                      <option value="VC">Volumen control (VC)</option>
+                      <option value="PC">Presión control (PC)</option>
+                      <option value="PSV">Presión soporte (PSV)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-slate-700">Parámetros del ventilador</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 text-sm">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">Volumen tidal (mL)</span>
+                      <input
+                        type="number"
+                        min={10}
+                        max={200}
+                        step={5}
+                        value={ventForm.parameters.tidalVolume}
+                        onChange={(e) => handleVentFieldChange('parameters', 'tidalVolume', Number(e.target.value))}
+                        className={`rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 ${
+                          tidalVolumeOutOfRange
+                            ? 'border-amber-400 focus:ring-amber-400 bg-amber-50/40'
+                            : 'border-slate-300 focus:ring-[#1E6ACB]'
+                        }`}
+                      />
+                      {tidalPerKg != null ? (
+                        <span
+                          className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] ${
+                            tidalVolumeOutOfRange
+                              ? 'bg-amber-100/70 text-amber-700'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          <span className="font-semibold text-slate-700">Actual {tidalPerKg} ml/kg</span>
+                          {recommendedTidalRange ? (
+                            <span className="text-slate-500">
+                              (6–8 ml/kg → {recommendedTidalRange.minMl}-{recommendedTidalRange.maxMl} mL)
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : null}
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">Frecuencia (rpm)</span>
+                      <input
+                        type="number"
+                        min={8}
+                        max={40}
+                        value={ventForm.parameters.rate}
+                        onChange={(e) => handleVentFieldChange('parameters', 'rate', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">PEEP (cmH₂O)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={18}
+                        value={ventForm.parameters.peep}
+                        onChange={(e) => handleVentFieldChange('parameters', 'peep', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">FiO₂</span>
+                      <input
+                        type="number"
+                        min={0.21}
+                        max={1}
+                        step={0.01}
+                        value={ventForm.parameters.fio2}
+                        onChange={(e) => handleVentFieldChange('parameters', 'fio2', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">Ti (s)</span>
+                      <input
+                        type="number"
+                        min={0.3}
+                        max={2}
+                        step={0.05}
+                        value={ventForm.parameters.inspiratoryTime}
+                        onChange={(e) => handleVentFieldChange('parameters', 'inspiratoryTime', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                    {ventForm.mode === 'PC' && (
+                      <label className="flex flex-col gap-1">
+                        <span className="text-slate-600">Presión control (cmH₂O)</span>
+                        <input
+                          type="number"
+                          min={10}
+                          max={35}
+                          value={ventForm.parameters.pressureControl}
+                          onChange={(e) => handleVentFieldChange('parameters', 'pressureControl', Number(e.target.value))}
+                          className="rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                        />
+                      </label>
+                    )}
+                    {ventForm.mode === 'PSV' && (
+                      <label className="flex flex-col gap-1">
+                        <span className="text-slate-600">Presión soporte (cmH₂O)</span>
+                        <input
+                          type="number"
+                          min={8}
+                          max={25}
+                          value={ventForm.parameters.pressureSupport}
+                          onChange={(e) => handleVentFieldChange('parameters', 'pressureSupport', Number(e.target.value))}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                        />
+                      </label>
+                    )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-slate-700">Estado del paciente</h4>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">Compliance</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={ventForm.patient.compliance}
+                        onChange={(e) => handleVentFieldChange('patient', 'compliance', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">Resistencia</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={ventForm.patient.resistance}
+                        onChange={(e) => handleVentFieldChange('patient', 'resistance', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">Shunt alveolar</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={0.4}
+                        step={0.01}
+                        value={ventForm.patient.shunt}
+                        onChange={(e) => handleVentFieldChange('patient', 'shunt', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-slate-600">Espacio muerto</span>
+                      <input
+                        type="number"
+                        min={0.05}
+                        max={0.4}
+                        step={0.01}
+                        value={ventForm.patient.deadspace}
+                        onChange={(e) => handleVentFieldChange('patient', 'deadspace', Number(e.target.value))}
+                        className="rounded-lg border border-slate-300 px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

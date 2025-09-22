@@ -1,6 +1,7 @@
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../../../../supabaseClient';
+import { reportError, reportWarning } from '../../../../utils/reporting.js';
 
 // Sonido: Web Audio API para alertas
 export default function Presencial_Alumno() {
@@ -19,7 +20,7 @@ export default function Presencial_Alumno() {
   const [stepName, setStepName] = useState('');
   const [bannerText, setBannerText] = useState('');           // ← NUEVO
   const [currentStepId, setCurrentStepId] = useState(null);   // ← NUEVO
-  const [scenarioTitle, setScenarioTitle] = useState('');
+  const [, setScenarioTitle] = useState('');
   const [patientOverview, setPatientOverview] = useState('');
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -29,18 +30,417 @@ export default function Presencial_Alumno() {
   const [alarmVisible, setAlarmVisible] = useState(false);
   const lastAlarmRef = useRef(null);
 
+  const sessionIdValue = session?.id ?? null;
+  const sessionScenarioId = session?.scenario_id ?? null;
+  const sessionStartAt = session?.started_at ?? null;
+  const sessionEndedAt = session?.ended_at ?? null;
+
   const [flash, setFlash] = useState({}); // { [variableId]: true }
   const [elapsedMs, setElapsedMs] = useState(0);
 
-  function typeMeta(t) {
-    switch (t) {
-      case 'vital':  return { label: 'Constante', badge: '⚡', ring: 'ring-sky-300',    chip: 'bg-sky-50 text-sky-700 ring-sky-200' };
-      case 'lab':    return { label: 'Analítica', badge: '🧪', ring: 'ring-emerald-300',chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200' };
-      case 'imagen': return { label: 'Imagen',    badge: '🖼️', ring: 'ring-violet-300', chip: 'bg-violet-50 text-violet-700 ring-violet-200' };
-      case 'texto':  return { label: 'Nota',      badge: '📝', ring: 'ring-amber-300',  chip: 'bg-amber-50 text-amber-700 ring-amber-200' };
-      default:       return { label: 'Dato',      badge: '•',  ring: 'ring-slate-300',  chip: 'bg-slate-50 text-slate-700 ring-slate-200' };
+  const [ventilationState, setVentilationState] = useState(null);
+
+  const categorizedVars = useMemo(() => {
+    const result = { vital: [], lab: [], images: [], others: [] };
+    for (const v of vars) {
+      const meta = typeMeta(v.type);
+      const richValue = parseRichValue(v.value);
+      const isImage = richValue?.kind === 'image' && richValue.src;
+      const isFlash = !!flash[v.id];
+      const item = { v, meta, richValue, isImage, isFlash };
+      if (isImage) result.images.push(item);
+      else if (v.type === 'vital') result.vital.push(item);
+      else if (v.type === 'lab') result.lab.push(item);
+      else result.others.push(item);
+    }
+    return result;
+  }, [vars, flash]);
+
+  const renderDataCard = ({ v, meta, isFlash }) => (
+    <div
+      key={v.id}
+      className={`relative rounded-2xl border border-slate-200 bg-white/90 shadow-sm p-5 transition-transform duration-200 ${
+        isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="text-slate-500 text-xs flex items-center gap-1">
+          <span aria-hidden>{meta.badge}</span>
+          <span>{meta.label}</span>
+        </div>
+        <span className={`px-2 py-0.5 rounded-full text-[11px] ring-1 ${meta.chip}`}>{v.label}</span>
+      </div>
+      <div className="text-3xl md:text-4xl font-mono mt-2">
+        {v.value}
+        {v.unit ? <span className="ml-1 text-slate-500 text-lg">{v.unit}</span> : null}
+      </div>
+    </div>
+  );
+
+  const mainHeightOffset = clean ? 120 : 190;
+  const mainStyle = useMemo(() => ({ height: `calc(100vh - ${mainHeightOffset}px)` }), [mainHeightOffset]);
+  const mainImageItem = categorizedVars.images[0] || null;
+  const extraImages = categorizedVars.images.slice(1);
+
+  const ventWaveData = useMemo(() => {
+    if (!ventilationState?.generated?.waveforms) return null;
+    const { pressure = [], volume = [], flow = [] } = ventilationState.generated.waveforms;
+    const build = (values, width = 220, height = 90) => {
+      if (!Array.isArray(values) || values.length === 0) return null;
+      let minVal = values[0];
+      let maxVal = values[0];
+      for (let i = 1; i < values.length; i += 1) {
+        const val = values[i];
+        if (val < minVal) minVal = val;
+        if (val > maxVal) maxVal = val;
+      }
+      const range = Math.max(0.0001, maxVal - minVal);
+      const zeroY = minVal <= 0 && maxVal >= 0
+        ? (height - ((0 - minVal) / range) * height)
+        : null;
+      return {
+        path: buildSvgPath(values, width, height),
+        min: minVal,
+        max: maxVal,
+        zeroY,
+        height,
+        width
+      };
+    };
+    return {
+      pressure: build(pressure),
+      volume: build(volume),
+      flow: build(flow)
+    };
+  }, [ventilationState]);
+
+  const ventilationCard = useMemo(() => {
+    if (!ventilationState) return null;
+    const state = ventilationState;
+    const status = state.active;
+    const pending = status === 'pending';
+    const stopped = status === false;
+    const showPublishedParams = status === true;
+    const active = showPublishedParams;
+    const paramsSource = showPublishedParams ? (state.parameters || {}) : {};
+    const metrics = showPublishedParams ? (state.generated?.metrics || {}) : {};
+    const meta = state.meta && typeof state.meta === 'object' ? state.meta : {};
+    const weightKg = typeof meta.weightKg === 'number' && Number.isFinite(meta.weightKg) ? meta.weightKg : null;
+    const tidalPerKg = showPublishedParams && typeof meta.tidalPerKg === 'number' && Number.isFinite(meta.tidalPerKg) ? meta.tidalPerKg : null;
+    const templateInfo = meta.template && meta.template.name ? meta.template : null;
+    const modeLabel = showPublishedParams ? (state.mode || null) : (state.mode || state.draft?.mode || null);
+    const recommendedBase = meta.recommendedTidal;
+    const recommended = recommendedBase || (weightKg ? {
+      minMl: Math.round(weightKg * 6),
+      maxMl: Math.round(weightKg * 8),
+      minMlPerKg: 6,
+      maxMlPerKg: 8
+    } : null);
+    const recommendedRangeLabel = recommended
+      ? `${recommended.minMl}-${recommended.maxMl} mL (${recommended.minMlPerKg}–${recommended.maxMlPerKg} ml/kg)`
+      : null;
+    const recommendedWithin = recommended && tidalPerKg != null
+      ? tidalPerKg >= recommended.minMlPerKg && tidalPerKg <= recommended.maxMlPerKg
+      : null;
+    const formattedWeight = weightKg != null ? (Number.isInteger(weightKg) ? weightKg : weightKg.toFixed(1)) : null;
+    const tidalPerKgLabel = tidalPerKg != null ? tidalPerKg.toFixed(2) : null;
+    const updatedLabel = (() => {
+      if (!state.timestamp) return null;
+      const dt = new Date(state.timestamp);
+      if (Number.isNaN(dt.getTime())) return null;
+      return dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    })();
+    const buildValue = (value, formatter) => {
+      if (!showPublishedParams) return '—';
+      if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+      return formatter(value);
+    };
+    const paramItems = [
+      { label: 'Volumen tidal', value: buildValue(paramsSource.tidalVolume, (v) => `${Math.round(v)} mL`) },
+      ...(showPublishedParams && tidalPerKgLabel ? [{ label: 'Volumen/kg', value: `${tidalPerKgLabel} ml/kg` }] : []),
+      { label: 'Frecuencia', value: buildValue(paramsSource.rate, (v) => `${Math.round(v)} rpm`) },
+      { label: 'PEEP', value: buildValue(paramsSource.peep, (v) => `${v.toFixed(1)} cmH₂O`) },
+      { label: 'FiO₂', value: buildValue(paramsSource.fio2, (v) => `${Math.round(v * 100)}%`) },
+      { label: 'Tiempo insp.', value: buildValue(paramsSource.inspiratoryTime, (v) => `${v.toFixed(1)} s`) }
+    ];
+    if (showPublishedParams && modeLabel === 'PC') {
+      paramItems.push({ label: 'Presión control', value: buildValue(paramsSource.pressureControl, (v) => `${v.toFixed(1)} cmH₂O`) });
+    }
+    if (showPublishedParams && modeLabel === 'PSV') {
+      paramItems.push({ label: 'Presión soporte', value: buildValue(paramsSource.pressureSupport, (v) => `${v.toFixed(1)} cmH₂O`) });
+    }
+    const formattedMetrics = [
+      { key: 'plateauPressure', label: 'Presión plateau', unit: 'cmH₂O', decimals: 1 },
+      { key: 'peakPressure', label: 'Presión pico', unit: 'cmH₂O', decimals: 1 },
+      { key: 'drivingPressure', label: 'Presión de conducción', unit: 'cmH₂O', decimals: 1 },
+      { key: 'etco2', label: 'EtCO₂ estimado', unit: 'mmHg', decimals: 1 },
+      { key: 'spo2', label: 'SpO₂ estimada', unit: '%', decimals: 1 }
+    ]
+      .map(item => {
+        const value = metrics[item.key];
+        if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+        return {
+          label: item.label,
+          text: `${value.toFixed(item.decimals)} ${item.unit}`
+        };
+      })
+      .filter(Boolean);
+    const waveEntries = !ventWaveData ? [] : [
+      { key: 'pressure', label: 'Presión', unit: 'cmH₂O', color: '#1E6ACB', data: ventWaveData.pressure, digits: 1 },
+      { key: 'volume', label: 'Volumen', unit: 'L', color: '#0F766E', data: ventWaveData.volume, digits: 2 },
+      { key: 'flow', label: 'Flujo', unit: 'L/s', color: '#EA580C', data: ventWaveData.flow, digits: 2 }
+    ].filter(entry => entry.data && entry.data.path);
+    const formatRange = (value, digits = 1) => (
+      typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : null
+    );
+    const showDetails = showPublishedParams && waveEntries.length > 0;
+    const badgeClass = pending
+      ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
+      : showPublishedParams
+        ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
+        : 'bg-slate-200 text-slate-600 ring-1 ring-slate-300';
+    const badgeLabel = pending ? '◌ Pendiente' : showPublishedParams ? '● Activa' : stopped ? '◦ Detenida' : '◦ Inactiva';
+
+    return (
+      <div className="flex max-h-[80vh] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-slate-700">Ventilación mecánica</h4>
+            <p className="text-xs text-slate-500">
+              {pending
+                ? 'El instructor está preparando los parámetros.'
+                : active
+                  ? 'Parámetros enviados por el instructor.'
+                  : 'El ventilador está en pausa.'}
+              {updatedLabel ? ` · Actualizado ${updatedLabel}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {formattedWeight ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                ⚖️ {formattedWeight} kg
+              </span>
+            ) : null}
+            {templateInfo ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                ⚙️ {templateInfo.name}
+              </span>
+            ) : null}
+            {modeLabel ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                Modo {modeLabel}
+              </span>
+            ) : null}
+            <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}>
+              {badgeLabel}
+            </span>
+          </div>
+        </div>
+        <div className="mt-4 flex-1 overflow-y-auto pr-1">
+          {pending ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+            <p>Parámetros pendientes de configurar.</p>
+            {templateInfo ? (
+              <span className="mt-1 block text-xs text-slate-500">Plantilla seleccionada: {templateInfo.name}</span>
+            ) : null}
+            {recommendedRangeLabel ? (
+              <span className="mt-2 block text-xs text-slate-500">
+                Referencia 6–8 ml/kg: {recommendedRangeLabel}
+              </span>
+            ) : null}
+            {paramItems.length > 0 && (
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-3 lg:grid-cols-4 text-[11px]">
+                {paramItems.map(item => (
+                  <div key={item.label} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{item.label}</div>
+                    <div className="mt-0.5 text-[12px] font-semibold text-slate-700">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {updatedLabel ? (
+              <span className="mt-3 block text-xs text-slate-500">Última interacción {updatedLabel}</span>
+            ) : null}
+          </div>
+        ) : showDetails ? (
+          <>
+            {recommendedRangeLabel ? (
+              <div
+                className={`mt-4 rounded-xl border px-3 py-2 text-xs font-medium ${
+                  recommendedWithin === false
+                    ? 'border-amber-300 bg-amber-50 text-amber-700'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}
+              >
+                <div className="uppercase tracking-wide text-[11px] font-semibold">Guía por peso</div>
+                <div className="mt-0.5">Rango recomendado: {recommendedRangeLabel}</div>
+                {tidalPerKgLabel ? (
+                  <div className="mt-0.5">Actual: {tidalPerKgLabel} ml/kg</div>
+                ) : null}
+                {templateInfo ? (
+                  <div className="mt-0.5 text-[11px] text-slate-500">Plantilla aplicada: {templateInfo.name}</div>
+                ) : null}
+              </div>
+            ) : null}
+            {paramItems.length > 0 && (
+              <div className="mt-2 grid grid-cols-2 gap-1.5 text-[12px] sm:grid-cols-3 lg:grid-cols-4">
+                {paramItems.map(item => (
+                  <div key={item.label} className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{item.label}</div>
+                    <div className="mt-0.5 text-[12px] font-semibold text-slate-800">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {formattedMetrics.length > 0 && (
+              <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5">
+                <h5 className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Indicadores simulados</h5>
+                <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-[12px] sm:grid-cols-3">
+                  {formattedMetrics.map(item => (
+                    <div key={item.label} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
+                      <div className="text-[10px] text-slate-500">{item.label}</div>
+                      <div className="mt-0.5 text-[12px] font-semibold text-slate-900">{item.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {waveEntries.length > 0 && (
+              <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {waveEntries.map(entry => (
+                  <div key={entry.key} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span className="font-semibold uppercase tracking-wide">{entry.label}</span>
+                      {typeof entry.data.min === 'number' && typeof entry.data.max === 'number' ? (
+                        <span className="font-mono text-[10px]">
+                          {formatRange(entry.data.min, entry.digits)} – {formatRange(entry.data.max, entry.digits)} {entry.unit}
+                        </span>
+                      ) : null}
+                    </div>
+                    <svg
+                      viewBox={`0 0 ${entry.data.width} ${entry.data.height}`}
+                      className="mt-1 h-14 w-full text-slate-300"
+                      preserveAspectRatio="none"
+                      role="presentation"
+                    >
+                      <rect x="0" y="0" width={entry.data.width} height={entry.data.height} fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="6 6" />
+                      {typeof entry.data.zeroY === 'number' && entry.data.zeroY >= 0 && entry.data.zeroY <= entry.data.height ? (
+                        <line x1="0" x2={entry.data.width} y1={entry.data.zeroY} y2={entry.data.zeroY} stroke="#cbd5f5" strokeWidth="1" strokeDasharray="4 4" />
+                      ) : null}
+                      <path d={entry.data.path} fill="none" stroke={entry.color} strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : stopped ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+            Ventilación detenida por el instructor.
+            {recommendedRangeLabel ? (
+              <span className="mt-2 block text-xs text-slate-500">
+                Referencia 6–8 ml/kg: {recommendedRangeLabel}
+              </span>
+            ) : null}
+            {updatedLabel ? (
+              <span className="mt-1 block text-xs text-slate-500">Última actualización {updatedLabel}</span>
+            ) : null}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+            No hay datos de ventilación disponibles todavía.
+            {recommendedRangeLabel ? (
+              <span className="mt-2 block text-xs text-slate-500">
+                Referencia 6–8 ml/kg: {recommendedRangeLabel}
+              </span>
+            ) : null}
+          </div>
+        )}
+        </div>
+      </div>
+    );
+  }, [ventilationState, ventWaveData]);
+
+function typeMeta(t) {
+  switch (t) {
+    case 'vital':  return { label: 'Constante', badge: '⚡', ring: 'ring-sky-300',    chip: 'bg-sky-50 text-sky-700 ring-sky-200' };
+    case 'lab':    return { label: 'Analítica', badge: '🧪', ring: 'ring-emerald-300',chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200' };
+    case 'imagen': return { label: 'Imagen',    badge: '🖼️', ring: 'ring-violet-300', chip: 'bg-violet-50 text-violet-700 ring-violet-200' };
+    case 'texto':  return { label: 'Nota',      badge: '📝', ring: 'ring-amber-300',  chip: 'bg-amber-50 text-amber-700 ring-amber-200' };
+    default:       return { label: 'Dato',      badge: '•',  ring: 'ring-slate-300',  chip: 'bg-slate-50 text-slate-700 ring-slate-200' };
+  }
+}
+
+function parseRichValue(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.kind === 'image' && parsed.src && !parsed.alt) {
+        parsed.alt = parsed.label || 'Imagen clínica';
+      }
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+function normalizeVentPayload(payload) {
+  if (!payload) return null;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return null;
     }
   }
+  if (!payload || typeof payload !== 'object') return null;
+  if (payload.active === 'pending') {
+    const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : undefined;
+    const draft = payload.draft && typeof payload.draft === 'object' ? payload.draft : undefined;
+    const base = {
+      active: 'pending',
+      timestamp: payload.timestamp || new Date().toISOString(),
+      mode: payload.mode || draft?.mode || null,
+      draft
+    };
+    if (meta) base.meta = meta;
+    return base;
+  }
+  if (payload.active === false) {
+    const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : undefined;
+    const base = { active: false, timestamp: payload.timestamp || new Date().toISOString() };
+    if (meta) base.meta = meta;
+    return base;
+  }
+  if (!payload.generated || !payload.generated.waveforms) return null;
+  return payload;
+}
+
+function buildSvgPath(values = [], width = 260, height = 140) {
+  if (!Array.isArray(values) || values.length === 0) return '';
+  const w = Math.max(width, 1);
+  const h = Math.max(height, 1);
+  let minVal = values[0];
+  let maxVal = values[0];
+  for (let i = 1; i < values.length; i += 1) {
+    const val = values[i];
+    if (val < minVal) minVal = val;
+    if (val > maxVal) maxVal = val;
+  }
+  const range = Math.max(0.0001, maxVal - minVal);
+  const denom = Math.max(values.length - 1, 1);
+  return values
+    .map((val, idx) => {
+      const x = (idx / denom) * w;
+      const normalized = (val - minVal) / range;
+      const y = h - normalized * h;
+      return `${idx === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+}
 
   // Ficha paciente → chips + bullets + párrafos
   function parsePatientOverview(pov) {
@@ -61,9 +461,13 @@ export default function Presencial_Alumno() {
           if (sex)    chips.push({ label: String(sex),   key: 'sex' });
           if (weight) chips.push({ label: `${weight} kg`, key: 'weight' });
           rest = rest.slice(m[0].length).trim();
-        } catch {}
+        } catch (error) {
+          reportWarning('PresencialAlumno.parseDemographics', error);
+        }
       }
-    } catch {}
+    } catch (error) {
+      reportWarning('PresencialAlumno.parseOverview.demographics', error);
+    }
 
     // Array JSON al inicio
     try {
@@ -75,14 +479,18 @@ export default function Presencial_Alumno() {
             bullets = arr.map(x => String(x)).filter(Boolean);
             rest = rest.slice(a[0].length).trim();
           }
-        } catch {}
+        } catch (error) {
+          reportWarning('PresencialAlumno.parseOverview.bulletArray', error);
+        }
       }
-    } catch {}
+    } catch (error) {
+      reportWarning('PresencialAlumno.parseOverview', error);
+    }
 
     rest = rest
       .replace(/^\[\s*"?|"?\s*\]$/g, '')
-      .replace(/\",\s*\"/g, '\n')
-      .replace(/^\"|\"$/g, '')
+      .replace(/",\s*"/g, '\n')
+      .replace(/^"|"$/g, '')
       .trim();
 
     const paragraphs = rest ? rest.split(/\n{2,}/).map(s => s.trim()).filter(Boolean) : [];
@@ -95,6 +503,8 @@ export default function Presencial_Alumno() {
   const lastBannerRef = useRef(null);
   const lastActionAtRef = useRef(null);
   const lastFingerprintRef = useRef(null);
+
+  const navigationPanelRef = useRef(null);
 
   async function loadParticipantsByCode(pcode) {
     if (!pcode) return;
@@ -207,7 +617,9 @@ export default function Presencial_Alumno() {
             .limit(1)
             .maybeSingle();
           lastActionAtRef.current = lastAct?.created_at || null;
-        } catch {}
+        } catch (error) {
+          reportWarning('PresencialAlumno.loadLastAction', error, { sessionId: s.id });
+        }
         const fp0 = JSON.stringify({
           b: s?.banner_text || '',
           step: s?.current_step_id || null,
@@ -227,7 +639,9 @@ export default function Presencial_Alumno() {
               .eq('id', s.current_step_id)
               .maybeSingle();
             if (st?.name && mounted) setStepName(st.name);
-          } catch {}
+          } catch (error) {
+            reportWarning('PresencialAlumno.loadStepName', error, { stepId: s.current_step_id });
+          }
         }
         setEnded(!!s?.ended_at);
         if (!s?.started_at) setElapsedMs(0);
@@ -247,7 +661,9 @@ export default function Presencial_Alumno() {
               for (const v of allVars) map[v.id] = { label: v.label, unit: v.unit, type: v.type };
               varMetaRef.current = map;
             }
-          } catch {}
+          } catch (error) {
+            reportWarning('PresencialAlumno.loadVariablesMeta', error, { scenarioId: s.scenario_id });
+          }
         }
 
         // Título + ficha paciente
@@ -261,7 +677,9 @@ export default function Presencial_Alumno() {
             const pov = povRes?.data;
             if (sc?.title) setScenarioTitle(sc.title);
             if (typeof pov === 'string' && pov.trim()) setPatientOverview(pov); else setPatientOverview('');
-          } catch {}
+          } catch (error) {
+            reportWarning('PresencialAlumno.loadScenarioMeta', error, { scenarioId: s.scenario_id });
+          }
         }
 
         // Variables reveladas
@@ -471,9 +889,16 @@ export default function Presencial_Alumno() {
                 const row = payload?.new;
                 if (!row) return;
                 const key = (row.action_key || '').toLowerCase();
+                const p = row.payload;
+
+                if (key === 'ventilation.update') {
+                  const vent = normalizeVentPayload(p);
+                  if (vent) setVentilationState(vent);
+                  return;
+                }
+
                 if (key.includes('publish') || key.includes('banner') || key.includes('step')) {
                   let txt = '';
-                  const p = row.payload;
                   if (p && typeof p === 'object') {
                     txt = p.text || p.message || p.banner || p.content || '';
                   } else if (typeof p === 'string') {
@@ -512,8 +937,8 @@ export default function Presencial_Alumno() {
   useEffect(() => {
     let timerId;
     try {
-      const hasStart = !!session?.started_at;
-      const hasEnd   = !!session?.ended_at || ended;
+      const hasStart = !!sessionStartAt;
+      const hasEnd   = !!sessionEndedAt || ended;
 
       if (!hasStart) {
         // sin inicio: siempre 0
@@ -521,11 +946,11 @@ export default function Presencial_Alumno() {
         return () => {};
       }
 
-      const startTs = new Date(session.started_at).getTime();
+      const startTs = new Date(sessionStartAt).getTime();
 
       // Si ya terminó, fija el tiempo y no abras intervalos
       if (hasEnd) {
-        const endTs = new Date(session.ended_at).getTime();
+        const endTs = new Date(sessionEndedAt).getTime();
         setElapsedMs(Math.max(0, endTs - startTs));
         return () => {};
       }
@@ -534,23 +959,25 @@ export default function Presencial_Alumno() {
       const tick = () => setElapsedMs(Math.max(0, Date.now() - startTs));
       tick();
       timerId = setInterval(tick, 500);
-    } catch {}
+    } catch (error) {
+      reportWarning('PresencialAlumno.timer', error, { sessionId: sessionIdValue });
+    }
     return () => { if (timerId) clearInterval(timerId); };
-  }, [session?.started_at, session?.ended_at, ended]);
+  }, [sessionStartAt, sessionEndedAt, sessionIdValue, ended]);
 
   // (Opcional) Auto-redirección al informe solo si ?autoinforme=1
   const autoInforme = searchParams.get('autoinforme') === '1' || searchParams.get('autoinforme') === 'true';
   useEffect(() => {
-    if (autoInforme && ended && session?.id) {
+    if (autoInforme && ended && sessionIdValue) {
       const t = setTimeout(() => {
-        navigate(`/presencial/${session.id}/informe`, { replace: true });
+        navigate(`/presencial/${sessionIdValue}/informe`, { replace: true });
       }, 800);
       return () => clearTimeout(t);
     }
-  }, [autoInforme, ended, session?.id, navigate]);
+  }, [autoInforme, ended, sessionIdValue, navigate]);
 
   // Helper: recargar estado del alumno sin F5
-  async function reloadAll(sessionId, scenarioId) {
+  const reloadAll = useCallback(async (sessionId, scenarioId) => {
     try {
       const [{ data: sess }, { data: sv } ] = await Promise.all([
         supabase
@@ -577,7 +1004,9 @@ export default function Presencial_Alumno() {
                 .eq('id', sess.current_step_id)
                 .maybeSingle();
               if (st?.name) setStepName(st.name);
-            } catch {}
+            } catch (error) {
+              reportWarning('PresencialAlumno.reload.stepName', error, { stepId: sess.current_step_id });
+            }
           } else {
             setStepName('');
           }
@@ -602,7 +1031,9 @@ export default function Presencial_Alumno() {
           .limit(1)
           .maybeSingle();
         lastActionAtRef.current = lastAct2?.created_at || lastActionAtRef.current || null;
-      } catch {}
+      } catch (error) {
+        reportWarning('PresencialAlumno.reload.lastAction', error, { sessionId });
+      }
       const fp = JSON.stringify({
         b: typeof bannerText === 'string' ? bannerText : '',
         step: currentStepId || null,
@@ -611,10 +1042,10 @@ export default function Presencial_Alumno() {
         a: lastActionAtRef.current || ''
       });
       lastFingerprintRef.current = fp;
-    } catch (e) {
-      console.warn('[Alumno] reloadAll error:', e);
+    } catch (error) {
+      reportError('PresencialAlumno.reloadAll', error, { sessionId, scenarioId });
     }
-  }
+  }, [bannerText, currentStepId, ended]);
 
   // Fallback: polling suave para detectar cambios si Realtime no llega
   useEffect(() => {
@@ -623,7 +1054,7 @@ export default function Presencial_Alumno() {
     const tick = async () => {
       try {
         if (!active) return;
-        const sid = session?.id;
+        const sid = sessionIdValue;
         if (!sid) return;
         // 1) Leer campos básicos de sesión
         const { data: sess } = await supabase
@@ -648,20 +1079,20 @@ export default function Presencial_Alumno() {
           a
         });
         if (fp !== lastFingerprintRef.current) {
-          await reloadAll(sid, session?.scenario_id);
+          await reloadAll(sid, sessionScenarioId);
           if (!sess?.started_at) setElapsedMs(0);
           lastFingerprintRef.current = fp;
           lastActionAtRef.current = a;
         }
-      } catch (e) {
-        // silencioso
+      } catch (error) {
+        reportWarning('PresencialAlumno.pollFallback', error, { sessionId: sessionIdValue });
       } finally {
         if (active) timer = setTimeout(tick, 3000);
       }
     };
     timer = setTimeout(tick, 3000);
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [session?.id, session?.scenario_id]);
+  }, [sessionIdValue, sessionScenarioId, reloadAll]);
 
   useEffect(() => {
     if (muted) return;
@@ -701,7 +1132,7 @@ export default function Presencial_Alumno() {
       {/* HERO (se oculta con ?clean=1) */}
       {!clean && (
         <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white">
-          <div className="max-w-6xl mx-auto px-5 py-8">
+          <div className="w-full px-5 sm:px-8 lg:px-12 py-5">
             <div className="flex items-end justify-between gap-4 flex-wrap">
               <div>
                 <h1 className="text-2xl md:text-3xl font-semibold">Simulación presencial</h1>
@@ -741,15 +1172,14 @@ export default function Presencial_Alumno() {
         </section>
       )}
 
-      <main className={`${clean ? 'max-w-7xl' : 'max-w-6xl'} mx-auto px-5 py-8`}>
+      <main style={mainStyle} className="w-full px-4 sm:px-6 lg:px-10 xl:px-14 pt-4 pb-6 flex flex-col gap-4 overflow-hidden">
         {loading && <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">Cargando…</div>}
         {errorMsg && !loading && <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">{errorMsg}</div>}
 
-        {/* Cronómetro (solo en contenido cuando clean=1); en modo normal está en el HERO */}
         {clean && (
-          <div className="mb-6 flex justify-center">
-            <div className={`rounded-3xl border border-slate-200 bg-white/80 backdrop-blur shadow-lg px-8 py-5`}>
-              <div className={`text-5xl md:text-6xl font-mono tracking-tight text-slate-900`}
+          <div className="shrink-0 flex justify-center">
+            <div className="rounded-3xl border border-slate-200 bg-white/80 backdrop-blur px-8 py-4 shadow-lg">
+              <div className="text-5xl font-mono tracking-tight text-slate-900"
                    title={session?.started_at ? new Date(session.started_at).toLocaleString() : 'Esperando inicio'}>
                 {session?.started_at ? fmtHMS(elapsedMs) : 'Esperando inicio'}
                 {ended ? <span className="ml-3 align-middle text-sm text-slate-600">(finalizada)</span> : null}
@@ -758,58 +1188,26 @@ export default function Presencial_Alumno() {
           </div>
         )}
 
-        {/* Finalizada */}
-        {ended && (
-          <div className={`mb-8 rounded-3xl border border-slate-200 bg-white/70 backdrop-blur ${clean ? 'p-10 md:p-12' : 'p-6'} shadow-lg`}>
-            <div className={`font-semibold ${clean ? 'text-3xl md:text-4xl text-center' : 'text-2xl'}`}>Simulación terminada</div>
-            <div className={`mt-4 ${clean ? 'text-center' : ''}`}>
-              <button
-                onClick={() => session?.id && navigate(`/presencial/${session.id}/informe`)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400"
-                title="Requiere iniciar sesión"
-              >
-                Ver informe
-                <span className="text-xs opacity-80">(requiere login)</span>
-              </button>
-            </div>
-            <p className={`mt-2 ${clean ? 'text-center text-lg' : 'text-slate-600'}`}>Redirigiendo al informe…</p>
-          </div>
-        )}
-
-        {/* Banner de narrativa (texto del instructor) */}
         {bannerText && (
-          <div className={`mb-8 rounded-3xl border border-slate-200 bg-white/70 backdrop-blur ${clean ? 'p-10 md:p-12' : 'p-6'} shadow-lg`}>
-            <div className={`font-semibold leading-snug tracking-tight ${clean ? 'text-3xl md:text-5xl text-center' : 'text-2xl md:text-3xl'}`}>
+          <div className="shrink-0 rounded-3xl border border-slate-200 bg-white/80 backdrop-blur px-6 py-4 shadow-lg">
+            <div className="text-2xl md:text-3xl font-semibold leading-snug tracking-tight text-slate-800">
               {String(bannerText).split(/\n{2,}/).map((para, i) => (
-                <p key={i} className="mb-2 last:mb-0">
-                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700">
-                    {para}
-                  </span>
-                </p>
+                <p key={i} className="mb-2 last:mb-0">{para}</p>
               ))}
             </div>
           </div>
         )}
 
-        {/* Fase actual */}
-        {stepName && (
-          <div className={`mb-6 ${clean ? 'flex justify-center' : ''}`}>
-            <span className="px-3 py-1.5 rounded-full text-sm ring-1 ring-slate-200 bg-slate-50 text-slate-700">Fase actual: {stepName}</span>
-          </div>
-        )}
-
-        {/* Layout con sidebar para ficha paciente y participantes */}
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6">
-          {(patientOverview || (participants && participants.length > 0)) ? (
-            <aside className="lg:sticky lg:top-4 h-fit space-y-4">
-              {/* Ficha paciente */}
-              {patientOverview ? (() => {
-                const { chips, bullets, paragraphs } = parsePatientOverview(patientOverview);
-                return (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="text-sm font-semibold text-slate-700 mb-2">Ficha inicial del paciente</div>
+        <div className="flex-1 overflow-hidden grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(420px,520px)] xl:grid-cols-[minmax(0,0.7fr)_minmax(480px,600px)]">
+         <section className="flex flex-col gap-4 overflow-hidden">
+            {patientOverview ? (() => {
+              const { chips, bullets, paragraphs } = parsePatientOverview(patientOverview);
+              return (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col overflow-hidden">
+                  <div className="text-sm font-semibold text-slate-700 mb-2">Ficha inicial del paciente</div>
+                  <div className="space-y-3 overflow-auto pr-2 max-h-[28vh]">
                     {chips.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
+                      <div className="flex flex-wrap gap-2">
                         {chips.map(c => (
                           <span key={c.key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700 ring-1 ring-slate-200">
                             {c.key === 'age' ? '🧒' : c.key === 'sex' ? '⚧' : c.key === 'weight' ? '⚖️' : '•'}{c.label}
@@ -818,7 +1216,7 @@ export default function Presencial_Alumno() {
                       </div>
                     )}
                     {bullets.length > 0 && (
-                      <ul className="list-disc pl-5 mb-3 space-y-1 text-sm text-slate-800">
+                      <ul className="list-disc pl-5 space-y-1 text-sm text-slate-800">
                         {bullets.map((b, i) => <li key={i}>{b}</li>)}
                       </ul>
                     )}
@@ -828,67 +1226,119 @@ export default function Presencial_Alumno() {
                       </div>
                     ) : (!bullets.length ? <div className="text-sm text-slate-600">—</div> : null)}
                   </div>
-                );
-              })() : null}
-
-              {/* Participantes (solo si no mostramos el hero) */}
-              {participants && participants.length > 0 && clean ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-700 mb-2">Participantes</div>
-                  <ul className="space-y-1">
-                    {participants.map(p => (
-                      <li key={p.id} className="text-sm text-slate-800 flex items-center gap-2">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
-                        <span className="font-medium">{p.name}</span>
-                        {p.role ? <span className="text-slate-500">· {p.role.charAt(0).toUpperCase() + p.role.slice(1)}</span> : null}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              ) : null}
-            </aside>
-          ) : <div className="hidden lg:block" />}
+              );
+            })() : null}
 
-          {/* Contenido principal: variables compartidas */}
-          <section>
-            {vars.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {vars.map(v => {
-                  const meta = typeMeta(v.type);
-                  const isFlash = !!flash[v.id];
-                  return (
-                    <div key={v.id} className={`relative rounded-2xl border border-slate-200 bg-white/80 backdrop-blur p-5 shadow-sm transition-transform duration-200 ${isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="text-slate-500 text-xs flex items-center gap-1">
-                          <span aria-hidden>{meta.badge}</span><span>{meta.label}</span>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] ring-1 ${meta.chip}`}>{v.label}</span>
+            {categorizedVars.vital.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-hidden">
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">Constantes</h4>
+                <div className="grid auto-rows-fr grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 overflow-auto pr-1 max-h-[18vh]">
+                  {categorizedVars.vital.map(({ v, meta, isFlash }) => (
+                    <div
+                      key={v.id}
+                      className={`rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm ${
+                        isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
+                      }`}
+                    >
+                      <div className="text-xs font-medium text-slate-600 flex items-center gap-1 truncate">
+                        <span aria-hidden>{meta.badge}</span>
+                        <span className="truncate">{v.label || meta.label}</span>
                       </div>
-                      <div className="text-3xl md:text-4xl font-mono mt-2">
-                        {v.value}{v.unit ? <span className="ml-1 text-slate-500 text-lg">{v.unit}</span> : null}
+                      <div className="mt-1 text-2xl font-mono">
+                        {v.value}
+                        {v.unit ? <span className="ml-1 text-slate-500 text-sm">{v.unit}</span> : null}
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            ) : (!loading && !errorMsg) ? (
-              <div className={`rounded-2xl border border-dashed border-slate-300 bg-white ${clean ? 'p-12 text-center' : 'p-6'} text-slate-600`}>
-                {ended ? <>No hay más datos que mostrar. La sesión ha finalizado.</> :
-                 clean ? <div className="text-xl md:text-2xl">Esperando al instructor…</div> :
-                 <>Cuando el instructor comparta datos, aparecerán aquí (constantes, analíticas, imágenes, notas…).</>}
+            )}
+
+
+            {categorizedVars.lab.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-hidden">
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">Analíticas</h4>
+                <div className="grid auto-rows-fr grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 overflow-auto pr-1 max-h-[18vh]">
+                  {categorizedVars.lab.map(({ v, meta, isFlash }) => (
+                    <div
+                      key={v.id}
+                      className={`rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm ${
+                        isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
+                      }`}
+                    >
+                      <div className="text-xs font-medium text-slate-600 flex items-center gap-1 truncate">
+                        <span aria-hidden>{meta.badge}</span>
+                        <span className="truncate">{v.label || meta.label}</span>
+                      </div>
+                      <div className="mt-1 text-lg font-medium text-slate-800">
+                        {v.value}
+                        {v.unit ? <span className="ml-1 text-slate-500 text-sm">{v.unit}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {categorizedVars.others.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-hidden">
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">Otros datos</h4>
+                <div className="grid auto-rows-fr grid-cols-4 gap-3 overflow-auto pr-1 max-h-[18vh]">
+                  {categorizedVars.others.map(renderDataCard)}
+                </div>
+              </div>
+            )}
+
+            {participants && participants.length > 0 && clean ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm overflow-auto max-h-[14vh]">
+                <div className="text-sm font-semibold text-slate-700 mb-2">Participantes</div>
+                <ul className="space-y-1">
+                  {participants.map(p => (
+                    <li key={p.id} className="text-sm text-slate-800 flex items-center gap-2">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                      <span className="font-medium">{p.name}</span>
+                      {p.role ? <span className="text-slate-500">· {p.role.charAt(0).toUpperCase() + p.role.slice(1)}</span> : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
           </section>
+
+          <aside className="flex flex-col items-stretch gap-4 overflow-hidden">
+            {mainImageItem ? (() => {
+              const { v, meta, richValue, isFlash } = mainImageItem;
+              return (
+                <figure
+                  className={`w-full max-w-[1350px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ${isFlash ? 'ring-2 ring-violet-300 animate-pulse' : ''}`}
+                >
+                  <figcaption className="flex items-center justify-between bg-slate-900 px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-200">
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <span aria-hidden>{meta.badge}</span>
+                      {meta.label}
+                    </span>
+                    <span className="text-[0.65rem] font-semibold tracking-[0.28em] text-slate-200/80">
+                      {v.label}
+                    </span>
+                  </figcaption>
+                  <img
+                    src={richValue?.src}
+                    alt={richValue?.alt || `Radiografía ${v.label}`}
+                    className="w-full h-auto max-h-[78vh] object-contain bg-black"
+                  />
+                  {richValue?.description ? (
+                    <figcaption className="px-5 py-4 text-sm leading-relaxed text-slate-700">
+                      {richValue.description}
+                    </figcaption>
+                  ) : null}
+                </figure>
+              );
+            })() : null}
+            {ventilationCard}
+          </aside>
         </div>
 
-        {!clean && !muted ? (
-          <div className="mt-6 text-xs text-slate-500">
-            Aviso sonoro: sonará una alerta breve al mostrar/ocultar datos o publicar mensajes.
-            Si no se oye, haz clic en la página para activar el audio del navegador.
-          </div>
-        ) : null}
-
-        {/* Controles rápidos */}
         <div className="fixed right-4 bottom-4 z-30">
           <div className="flex gap-2">
             <button
@@ -913,6 +1363,13 @@ export default function Presencial_Alumno() {
           </div>
         </div>
       </main>
+
+      {!clean && !muted ? (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 text-xs text-slate-500">
+          Aviso sonoro: sonará una alerta breve al mostrar/ocultar datos o publicar mensajes. Si no se oye, haz clic en la página para activar el audio del navegador.
+        </div>
+      ) : null}
+
     </div>
   );
 }
@@ -948,19 +1405,5 @@ async function mergeVarsWithMeta(scenarioId, svRows) {
   } catch (e) {
     console.warn('[Alumno] mergeVarsWithMeta error:', e);
     return (svRows || []).map(r => ({ id: r.variable_id, label: undefined, unit: undefined, type: undefined, value: r.value }));
-  }
-}
-
-function toCards(rows = []) {
-  return rows.map(r => ({ id: r.id ?? r.variable_id, label: r.label, unit: r.unit, type: r.type, value: r.value }));
-}
-
-function labelByType(t) {
-  switch (t) {
-    case 'vital': return 'Constante';
-    case 'lab': return 'Analítica';
-    case 'imagen': return 'Imagen';
-    case 'texto': return 'Nota';
-    default: return 'Dato';
   }
 }

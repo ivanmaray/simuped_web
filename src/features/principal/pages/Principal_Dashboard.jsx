@@ -1,14 +1,21 @@
 ﻿// src/pages/Dashboard.jsx
 import React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 import { useAuth } from "../../../auth";
-import { UsersIcon, DevicePhoneMobileIcon, ChartBarIcon, AcademicCapIcon, ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
-
-// Debug: marcar que Dashboard.jsx se ha cargado
-console.debug("[Dashboard] componente cargado");
+import { reportError, reportWarning } from "../../../utils/reporting.js";
+import {
+  UsersIcon,
+  DevicePhoneMobileIcon,
+  ChartBarIcon,
+  AcademicCapIcon,
+  ArrowsRightLeftIcon,
+  PlayCircleIcon,
+  ChevronRightIcon,
+  CalendarDaysIcon
+} from "@heroicons/react/24/outline";
 
 /* -------------------- formatters -------------------- */
 export function formatLevel(level) {
@@ -27,6 +34,16 @@ export function formatRole(rol) {
   if (key.includes('enfer')) return 'Enfermería';
   if (key.includes('farm')) return 'Farmacia';
   return key ? key[0].toUpperCase() + key.slice(1) : '';
+}
+
+function formatDateHuman(dateISO) {
+  if (!dateISO) return "Sin registros";
+  try {
+    const date = new Date(dateISO);
+    return date.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return "Sin registros";
+  }
 }
 /* ---------------------------------------------------- */
 
@@ -61,16 +78,23 @@ export default function Principal_Dashboard() {
   const { ready, session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
-  const [summaryWarn, setSummaryWarn] = useState("");
 
   // Perfil
   const [nombre, setNombre] = useState("");
-  const [rol, setRol] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [roleLabel, setRoleLabel] = useState("");
 
   // Escenarios + filtros (si quieres mostrar un rápido conteo o futuras vistas)
   const [escenarios, setEscenarios] = useState([]);
   const [loadingEsc, setLoadingEsc] = useState(false);
+  const [stats, setStats] = useState({
+    onlineAttempted: 0,
+    onlineTotal: 0,
+    presencialAttempted: 0,
+    presencialTotal: 0,
+    recentScenario: null,
+    recentDate: null,
+  });
   // Presencial: avisos por email (sin consultar sesiones hasta que esté el esquema)
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState("");
@@ -81,7 +105,6 @@ export default function Principal_Dashboard() {
 
     async function init() {
       if (!ready) return; // espera a que AuthProvider resuelva
-      console.debug("[Dashboard] init: ready =", ready);
       try {
         if (!session) {
           setLoading(false);
@@ -89,7 +112,6 @@ export default function Principal_Dashboard() {
           navigate("/", { replace: true });
           return;
         }
-        console.debug("[Dashboard] init: session OK ->", session?.user?.id);
 
         // Cargar perfil (no bloqueante si falla)
         try {
@@ -100,80 +122,134 @@ export default function Principal_Dashboard() {
             .maybeSingle();
 
           if (pErr) {
-            console.warn("[Dashboard] profiles select error (no bloqueante):", pErr);
+            reportWarning("Dashboard.profile", pErr, { userId: session.user.id });
           }
 
           setNombre(prof?.nombre ?? session.user?.user_metadata?.nombre ?? "");
-          setRol((prof?.rol ?? session.user?.user_metadata?.rol ?? "").toString());
+          const roleValue = (prof?.rol ?? session.user?.user_metadata?.rol ?? "").toString();
+          setRoleLabel(roleValue);
           setIsAdmin(Boolean(prof?.is_admin ?? session.user?.user_metadata?.is_admin ?? session.user?.app_metadata?.is_admin ?? false));
         } catch (err) {
-          console.warn("[Dashboard] profiles select throw (no bloqueante):", err);
+          reportWarning("Dashboard.profile.catch", err, { userId: session.user.id });
         }
 
         await cargarEscenarios();
       } catch (e) {
-        console.error("[Dashboard] init catch:", e);
+        reportError("Dashboard.init", e, { userId: session?.user?.id });
         setErrorMsg(e?.message || "Error inicializando el panel");
       } finally {
         if (mounted) setLoading(false);
-        console.debug("[Dashboard] init: finished");
       }
     }
 
     async function cargarEscenarios() {
       setLoadingEsc(true);
       setErrorMsg("");
-      console.debug("[Dashboard] cargarEscenarios: fetching...");
 
       try {
-        const [scRes, sumRes] = await Promise.all([
-          supabase
-            .from("scenarios")
-            .select("id, title, summary, level, mode, created_at, estimated_minutes, max_attempts")
-            .order("created_at", { ascending: false }),
-          // Vista opcional; si no existe no rompemos la pantalla
-          supabase
-            .from("v_user_attempts_summary")
-            .select("scenario_id, attempts_count, last_started_at")
-        ]);
+        const normalizeMode = (mode) => {
+          const arr = Array.isArray(mode) ? mode : mode ? [mode] : [];
+          return arr.map((m) => String(m || '').toLowerCase());
+        };
 
-        if (scRes.error) {
-          console.error("[Dashboard] scenarios error:", scRes.error);
-          throw new Error(scRes.error.message || "No se pudieron cargar los escenarios");
+        const { data: attemptsRaw, error: attemptsError } = await supabase
+          .from("attempts")
+          .select(`
+            id,
+            scenario_id,
+            started_at,
+            finished_at,
+            status,
+            scenarios (
+              title,
+              summary,
+              level,
+              mode,
+              estimated_minutes,
+              max_attempts
+            )
+          `)
+          .eq("user_id", session.user.id)
+          .order("started_at", { ascending: false });
+
+        if (attemptsError) {
+          reportError("Dashboard.attempts", attemptsError);
+          throw attemptsError;
         }
 
-        if (sumRes.error) {
-          // No bloquear: continuar sin resumen
-          console.warn("[Dashboard] summary warning:", sumRes.error);
-          setSummaryWarn("No se pudo cargar el resumen de intentos. Puedes seguir usando el panel sin ese dato.");
+        const attemptsByScenario = new Map();
+        for (const row of attemptsRaw || []) {
+          const scenarioId = row?.scenario_id;
+          if (!scenarioId) continue;
+          const scenario = row?.scenarios || {};
+          const modeNormalized = normalizeMode(scenario.mode);
+
+          if (!attemptsByScenario.has(scenarioId)) {
+            attemptsByScenario.set(scenarioId, {
+              id: scenarioId,
+              scenario_id: scenarioId,
+              title: scenario.title ?? `Escenario ${scenarioId}`,
+              summary: scenario.summary ?? "",
+              level: scenario.level ?? null,
+              mode: scenario.mode ?? null,
+              mode_normalized: modeNormalized,
+              estimated_minutes: scenario.estimated_minutes ?? null,
+              max_attempts: scenario.max_attempts ?? null,
+              attempts_count: 0,
+              last_started_at: null,
+            });
+          }
+
+          const entry = attemptsByScenario.get(scenarioId);
+          entry.mode_normalized = modeNormalized;
+          entry.attempts_count = (entry.attempts_count ?? 0) + 1;
+
+          const attemptTime = row?.started_at || row?.finished_at || null;
+          if (attemptTime) {
+            const current = entry.last_started_at ? new Date(entry.last_started_at) : null;
+            const next = new Date(attemptTime);
+            if (!current || next > current) {
+              entry.last_started_at = attemptTime;
+            }
+          }
         }
 
-        const scenarios = scRes.data || [];
-        const summary = sumRes.data || [];
-        const mapSummary = new Map(summary.map(r => [r.scenario_id, r]));
-
-        const enriched = scenarios.map(sc => {
-          const s = mapSummary.get(sc.id);
-          return {
-            ...sc,
-            attempts_count: s?.attempts_count ?? 0,
-            last_started_at: s?.last_started_at ?? null,
-          };
-        });
-
-        // Solo mostrar escenarios empezados/completados por el usuario
-        const started = enriched
-          .filter(sc => (sc?.attempts_count ?? 0) > 0)
+        const attemptsWithData = Array.from(attemptsByScenario.values())
+          .filter((row) => (row?.attempts_count ?? 0) > 0)
           .sort((a, b) => {
-            const ta = a.last_started_at ? new Date(a.last_started_at).getTime() : 0;
-            const tb = b.last_started_at ? new Date(b.last_started_at).getTime() : 0;
-            return tb - ta; // más recientes primero
+            const aDate = a.last_started_at ? new Date(a.last_started_at).getTime() : 0;
+            const bDate = b.last_started_at ? new Date(b.last_started_at).getTime() : 0;
+            return bDate - aDate;
           });
 
-        setEscenarios(started);
-        console.debug("[Dashboard] cargarEscenarios: loaded", started.length);
+        setEscenarios(attemptsWithData);
+
+        const onlineAttempted = attemptsWithData.filter((row) => (row.mode_normalized || []).includes('online')).length;
+        const presencialAttempted = attemptsWithData.filter((row) => (row.mode_normalized || []).includes('presencial')).length;
+        const recentRow = attemptsWithData[0] ?? null;
+
+        const { data: totalScenarios, error: totalError } = await supabase
+          .from("scenarios")
+          .select("id, mode");
+
+        if (totalError) {
+          reportWarning("Dashboard.scenarioTotals", totalError);
+        }
+
+        const allScenarios = (totalScenarios || []).map((row) => normalizeMode(row.mode));
+        const onlineTotal = allScenarios.filter((modes) => modes.includes('online')).length;
+        const presencialTotal = allScenarios.filter((modes) => modes.includes('presencial')).length;
+
+        setStats({
+          onlineAttempted,
+          onlineTotal: onlineTotal || onlineAttempted,
+          presencialAttempted,
+          presencialTotal: presencialTotal || presencialAttempted,
+          recentScenario: recentRow?.title ?? null,
+          recentDate: recentRow?.last_started_at ?? null,
+        });
       } catch (e) {
-        console.error("[Dashboard] cargarEscenarios catch:", e);
+        reportError("Dashboard.cargarEscenarios", e);
         setEscenarios([]);
         setErrorMsg(e?.message || "Error cargando el panel");
       } finally {
@@ -201,7 +277,7 @@ export default function Principal_Dashboard() {
       if (error) throw error;
       setNotifyMsg("¡Listo! Te avisaremos por email cuando se programe la próxima sesión.");
     } catch (e) {
-      console.warn("[Dashboard] notify error:", e);
+      reportWarning("Dashboard.notify", e, { userId: session?.user?.id });
       setNotifyMsg("No pude activar el aviso (puede faltar la tabla 'presencial_notifications').");
     } finally {
       setNotifyLoading(false);
@@ -239,22 +315,18 @@ export default function Principal_Dashboard() {
         )}
 
         <Navbar />
-        {summaryWarn && (
-          <div className="bg-yellow-50 text-yellow-800 border border-yellow-200 px-4 py-2 text-sm">
-            {summaryWarn}
-          </div>
-        )}
-
         {/* Hero */}
-        <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] border-b border-white/20">
-          <div className="max-w-6xl mx-auto px-5 py-10 text-white">
+        <section className="relative overflow-hidden border-b border-white/10">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
+          <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
+          <div className="max-w-6xl mx-auto px-5 py-12 text-white relative">
             <p className="opacity-95">Bienvenido{nombre ? `, ${nombre}` : ""}</p>
             <h1 className="text-3xl md:text-4xl font-semibold mt-1">Tu panel de simulación clínica</h1>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <span className="px-3 py-1 rounded-full bg-white/10 ring-1 ring-white/30 text-white/90">{email}</span>
-              {rol ? (
+              {roleLabel ? (
                 <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ring-1 bg-white/10 ring-white/30">
-                  {formatRole(rol)}
+                  {formatRole(roleLabel)}
                 </span>
               ) : null}
               {isAdmin ? (
@@ -262,6 +334,26 @@ export default function Principal_Dashboard() {
                   Admin
                 </span>
               ) : null}
+            </div>
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <MetricCard
+                icon={ChartBarIcon}
+                label="Online realizados"
+                value={`${stats.onlineAttempted}/${stats.onlineTotal || stats.onlineAttempted || 0}`}
+                helper={stats.onlineAttempted ? `${stats.onlineAttempted} escenarios completados` : "Sin intentos aún"}
+              />
+              <MetricCard
+                icon={UsersIcon}
+                label="Presenciales realizados"
+                value={`${stats.presencialAttempted}/${stats.presencialTotal || stats.presencialAttempted || 0}`}
+                helper={stats.presencialAttempted ? `${stats.presencialAttempted} escenarios completados` : "Sin intentos aún"}
+              />
+              <MetricCard
+                icon={CalendarDaysIcon}
+                label="Último escenario"
+                value={stats.recentScenario || "—"}
+                helper={stats.recentDate ? formatDateHuman(stats.recentDate) : "Sin intentos todavía"}
+              />
             </div>
           </div>
         </section>
@@ -289,106 +381,82 @@ export default function Principal_Dashboard() {
 
           {/* Simulación presencial (modos + acciones) */}
           <section id="presencial" className="mt-8">
-            <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              {/* Header */}
-              <div className="flex items-center justify-between mb-4">
+            <article className="relative rounded-[28px] border border-white/60 bg-white/70 backdrop-blur-xl p-6 shadow-[0_30px_60px_-40px_rgba(15,23,42,0.7)]">
+              <div className="absolute inset-0 rounded-[28px] border border-white/40 pointer-events-none" />
+              <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="shrink-0 h-10 w-10 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/10 via-[#1E6ACB]/10 to-[#4FA3E3]/10 ring-1 ring-[#0A3D91]/15">
-                    <UsersIcon className="h-5 w-5 text-[#0A3D91]" />
+                  <div className="shrink-0 h-12 w-12 rounded-2xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/20 via-[#1E6ACB]/15 to-[#4FA3E3]/20 shadow-inner">
+                    <UsersIcon className="h-6 w-6 text-[#0A3D91]" />
                   </div>
-                  <h2 className="text-lg font-semibold text-slate-900">Simulación presencial</h2>
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">Simulación presencial</h2>
+                    <p className="text-sm text-slate-600">Organiza y ejecuta tus sesiones duales o clásicas con un solo vistazo.</p>
+                  </div>
                 </div>
                 {isAdmin && (
-                  <span className="px-2 py-0.5 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">Versión para instructor</span>
+                  <span className="px-3 py-1 rounded-full text-xs font-medium ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">Versión instructor</span>
                 )}
               </div>
 
-              {/* Body: two columns INSIDE the single card */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Columna izquierda: explicación de modos */}
-                <div>
-                  <p className="text-slate-700 mb-3">Dos modos de simulación presencial:</p>
-
-                  <div className="rounded-lg ring-1 ring-slate-200 p-3 mb-3">
+              <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-white/70 bg-white/75 backdrop-blur-sm p-4 shadow-[0_15px_30px_-25px_rgba(15,23,42,0.5)]">
                     <div className="font-medium">Dual · 2 pantallas</div>
-                    <ul className="mt-1 list-disc ml-5 space-y-0.5 text-[15px]">
-                      <li>El instructor crea una sesión y comparte un <span className="font-medium">código</span>.</li>
-                      <li>Con ese código se proyecta la <span className="font-medium">pantalla de alumnos</span>.</li>
-                      <li>Desde su consola, el instructor revela datos y cambia de fase en tiempo real.</li>
+                    <ul className="mt-2 list-disc ml-5 space-y-1 text-[15px] text-slate-600">
+                      <li>El instructor crea la sesión y comparte el <span className="font-medium">código</span> con el equipo.</li>
+                      <li>Los alumnos ven la sesión en una pantalla sincronizada en tiempo real.</li>
+                      <li>Checklist, cronómetro y variables se controlan desde la consola.</li>
                     </ul>
                   </div>
 
-                  <div className="rounded-lg ring-1 ring-slate-200 p-3">
+                  <div className="rounded-2xl border border-white/70 bg-white/75 backdrop-blur-sm p-4 shadow-[0_15px_30px_-25px_rgba(15,23,42,0.5)]">
                     <div className="font-medium">Clásico · 1 pantalla</div>
-                    <ul className="mt-1 list-disc ml-5 space-y-0.5 text-[15px]">
-                      <li>Una única <span className="font-medium">consola</span> para dirigir la simulación frente al equipo.</li>
-                      <li>Solo el instructor ve esta vista de control. <span className="font-medium">No requiere código</span>.</li>
+                    <ul className="mt-2 list-disc ml-5 space-y-1 text-[15px] text-slate-600">
+                      <li>Una consola central permite guiar la sesión sin dispositivos adicionales.</li>
+                      <li>No requiere códigos de acceso: ideal para formaciones rápidas.</li>
+                      <li>Genera checklist y notas para el debrief al finalizar.</li>
                     </ul>
                   </div>
 
-                  <p className="text-[15px] mt-3 text-slate-700">Al finalizar se genera un <span className="font-medium">informe</span> con checklist, intervenciones y duración.</p>
+                  <p className="text-[15px] mt-4 text-slate-600">Ambos modos generan un <span className="font-medium">informe detallado</span> con checklist, intervenciones y tiempos.</p>
                 </div>
 
-                {/* Columna derecha: acciones o próximo aviso */}
-                <div>
+                <div className="space-y-4">
                   {isAdmin ? (
-                    <div>
-                      <div className="text-sm text-slate-700 mb-3">Acciones del instructor</div>
-                      <div className="grid grid-cols-1 gap-3">
-                        {/* Clásico */}
-                        <Link
-                          to="/presencial"
-                          className="group flex items-start gap-3 rounded-xl bg-slate-50 ring-1 ring-slate-200 px-4 py-3 hover:ring-slate-300 hover:bg-white transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
-                        >
-                          <AcademicCapIcon className="h-5 w-5 text-slate-600 mt-0.5" />
-                          <div>
-                            <div className="font-semibold text-slate-900">Instructor · Clásico (1 pantalla)</div>
-                            <div className="text-xs text-slate-500">Toolkit completo en una única vista, sin código</div>
-                          </div>
-                        </Link>
-
-                        {/* Dual */}
-                        <Link
-                          to="/presencial?flow=dual"
-                          className="group flex items-start gap-3 rounded-xl px-4 py-3 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white shadow hover:shadow-md transition cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-                        >
-                          <ArrowsRightLeftIcon className="h-5 w-5 text-white/90 mt-0.5" />
-                          <div>
-                            <div className="font-semibold">Instructor · Dual (2 pantallas)</div>
-                            <div className="text-xs text-white/90">Consola del instructor + pantalla de alumnos por código</div>
-                          </div>
-                        </Link>
-                      </div>
-                      {/* Nota pequeña para admins: Próxima sesión */}
-                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                        <div className="font-medium text-slate-700 mb-1">Próxima sesión</div>
-                        <p>
-                          Al iniciar una sesión se generará un <span className="font-semibold">código público</span> para proyectar la pantalla del alumnado. 
-                          Podrás copiarlo desde la barra superior del modo instructor.
-                        </p>
-                        <Link to="/presencial-info" className="inline-block mt-2 text-[#0A3D91] hover:underline">
-                          Más info sobre la pantalla del alumno
-                        </Link>
-                      </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/80 backdrop-blur p-5 space-y-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.55)]">
+                      <Link
+                        to="/presencial/flow/dual"
+                        className="block w-full px-4 py-2.5 rounded-xl text-center font-semibold text-white bg-gradient-to-r from-[#0A3D91] to-[#1E6ACB] shadow hover:shadow-lg hover:-translate-y-0.5 transition"
+                      >
+                        Crear sesión dual
+                      </Link>
+                      <p className="text-sm text-slate-600">
+                        Configura fases, checklist y cronómetro. Al finalizar, comparte el informe desde la consola.
+                      </p>
+                      <Link
+                        to="/presencial"
+                        className="block w-full px-4 py-2.5 rounded-xl text-center font-semibold text-[#0A3D91] ring-1 ring-[#0A3D91]/20 bg-white hover:bg-[#0A3D91]/5 hover:-translate-y-0.5 transition"
+                      >
+                        Consola clásica
+                      </Link>
                     </div>
                   ) : (
-                    <div>
-                      <div className="text-sm text-slate-700">Próxima sesión</div>
-                      <div className="mt-1 text-slate-900 font-medium">
-                        El instructor anunciará el código en sala cuando inicie la sesión.
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <button
-                          onClick={handleNotify}
-                          disabled={notifyLoading}
-                          className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 hover:bg-white"
-                        >
-                          {notifyLoading ? "Guardando..." : "Avisarme por correo"}
-                        </button>
-                        {notifyMsg && <span className="text-sm text-slate-600">{notifyMsg}</span>}
-                      </div>
-                      <p className="mt-2 text-xs text-slate-500">Te avisaremos por email cuando se programe una nueva sesión presencial.</p>
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-600 text-sm">
+                      Si deseas participar en simulaciones presenciales, avisa al equipo y te enviaremos el código cuando haya nuevas sesiones.
                     </div>
+                  )}
+                  {!isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleNotify}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow"
+                      disabled={notifyLoading}
+                    >
+                      {notifyLoading ? "Activando aviso…" : "Avísame de próximas sesiones"}
+                    </button>
+                  )}
+                  {notifyMsg && (
+                    <p className="text-sm text-slate-600">{notifyMsg}</p>
                   )}
                 </div>
               </div>
@@ -426,48 +494,66 @@ export default function Principal_Dashboard() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {escenarios.slice(0, 6).map((sc) => (
-                  <article key={sc.id} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition">
-                    <header className="mb-3">
-                      <h3 className="text-lg font-semibold text-slate-900 group-hover:underline">
-                        <Link to={`/simulacion/${sc.id}/confirm`}>{sc.title}</Link>
-                      </h3>
-                      <p className="text-sm text-slate-600 line-clamp-2">{sc.summary || ""}</p>
-                    </header>
+                  <article key={sc.id} className="group relative rounded-3xl border border-white/80 bg-white/95 p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.6)] hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.6)] hover:-translate-y-1 transition">
+                    <Link to={`/simulacion/${sc.id}/confirm`} className="absolute inset-0" aria-hidden="true" tabIndex={-1} />
+                    <div className="relative z-10">
+                      <header className="mb-3 flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#0A3D91]/15 via-[#1E6ACB]/10 to-[#4FA3E3]/15 grid place-items-center">
+                          <PlayCircleIcon className="h-5 w-5 text-[#0A3D91]" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
+                            {sc.title}
+                          </h3>
+                          <p className="text-sm text-slate-600 line-clamp-2">{sc.summary || ""}</p>
+                        </div>
+                      </header>
 
-                    <div className="flex flex-wrap items-center gap-2 mb-3">
-                      {sc.level ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] ring-1 ring-slate-200 bg-slate-50">
-                          {formatLevel(sc.level)}
+                      <div className="flex flex-wrap items-center gap-2 mb-4 text-xs text-slate-600">
+                        {sc.level ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                            {formatLevel(sc.level)}
+                          </span>
+                        ) : null}
+                        {sc.estimated_minutes ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                            ~{sc.estimated_minutes} min
+                          </span>
+                        ) : null}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                          Intentos: {sc.attempts_count ?? 0}{typeof sc.max_attempts === 'number' ? `/${sc.max_attempts}` : ''}
                         </span>
-                      ) : null}
-                      {sc.estimated_minutes ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] ring-1 ring-slate-200 bg-slate-50">
-                          ~{sc.estimated_minutes} min
+                      </div>
+
+                      <footer className="flex items-center justify-between text-sm">
+                        <span className="inline-flex items-center gap-1 font-medium text-[#0A3D91]">
+                          Continuar
+                          <ChevronRightIcon className="h-4 w-4" />
                         </span>
-                      ) : null}
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] ring-1 ring-slate-200 bg-slate-50">
-                        Intentos: {sc.attempts_count ?? 0}{typeof sc.max_attempts === 'number' ? `/${sc.max_attempts}` : ''}
-                      </span>
+                        {sc.last_started_at ? (
+                          <span className="text-xs text-slate-500">Último intento: {formatDateHuman(sc.last_started_at)}</span>
+                        ) : (
+                          <span className="text-xs text-slate-400">Sin intentos</span>
+                        )}
+                      </footer>
                     </div>
-
-                    <footer className="flex items-center justify-between">
-                      <Link
-                        to={`/simulacion/${sc.id}/confirm`}
-                        className="text-sm font-medium text-[#0A3D91] hover:underline"
-                      >
-                        Continuar
-                      </Link>
-                      {sc.last_started_at ? (
-                        <span className="text-xs text-slate-500">Último: {new Date(sc.last_started_at).toLocaleDateString()}</span>
-                      ) : (
-                        <span className="text-xs text-slate-400">Sin intentos</span>
-                      )}
-                    </footer>
                   </article>
                 ))}
               </div>
             </section>
-          ) : null}
+          ) : (
+            <section className="mt-10">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
+                <p>Aún no has comenzado ningún escenario. Empieza en "Simulación online" para ver aquí tu progreso.</p>
+                <Link
+                  to="/simulacion"
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow"
+                >
+                  Ir a simulaciones
+                </Link>
+              </div>
+            </section>
+          )}
         </main>
       </div>
     </ErrorBoundary>
@@ -477,12 +563,12 @@ export default function Principal_Dashboard() {
 function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon, titleAttr }) {
   const content = (
     <div className="flex items-start gap-4">
-      <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/10 via-[#1E6ACB]/10 to-[#4FA3E3]/10 ring-1 ring-[#0A3D91]/15">
-        {Icon ? <Icon className="h-6 w-6 text-[#0A3D91]" /> : null}
+      <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/15 via-[#1E6ACB]/10 to-[#4FA3E3]/15 shadow-inner">
+        {Icon ? <Icon className="h-6 w-6 text-[#0A3D91] drop-shadow-sm" /> : null}
       </div>
       <div className="flex-1">
         <div className="flex items-center gap-3">
-          <h3 className="text-lg font-semibold group-hover:underline">{title}</h3>
+          <h3 className="text-lg font-semibold group-hover:underline decoration-2 decoration-[#0A3D91]/40">{title}</h3>
           {badge ? (
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-black/10 ${badgeColor}`}>
               {badge}
@@ -494,10 +580,9 @@ function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon,
     </div>
   );
   if (!to) {
-    // Render as a non-clickable block
     return (
       <div
-        className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm opacity-70 cursor-not-allowed"
+        className="group block rounded-3xl border border-slate-200 bg-white p-6 shadow-sm opacity-70 cursor-not-allowed"
         title={titleAttr || "Disponible próximamente"}
       >
         {content}
@@ -509,9 +594,26 @@ function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon,
       to={to}
       state={stateObj}
       title={titleAttr || title}
-      className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
+      className="group block rounded-3xl border border-transparent bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.4)] hover:shadow-[0_25px_45px_-25px_rgba(15,23,42,0.35)] hover:-translate-y-0.5 transition"
     >
       {content}
     </Link>
+  );
+}
+
+function MetricCard({ icon: Icon, label, value, helper }) {
+  return (
+    <div className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm px-4 py-3 shadow-[0_10px_25px_-20px_rgba(15,23,42,0.6)]">
+      <div className="flex items-center gap-3">
+        <div className="h-9 w-9 shrink-0 rounded-xl bg-white/15 grid place-items-center">
+          {Icon ? <Icon className="h-5 w-5 text-white/90" /> : null}
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-white/70">{label}</p>
+          <p className="text-lg font-semibold text-white leading-tight">{value}</p>
+          {helper ? <p className="text-[11px] text-white/70 mt-0.5">{helper}</p> : null}
+        </div>
+      </div>
+    </div>
   );
 }
