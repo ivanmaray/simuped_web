@@ -608,6 +608,7 @@ export default function Presencial_Instructor() {
   const [xrayAssignedByCategory, setXrayAssignedByCategory] = useState({});
   const initialTemplate = VENTILATION_TEMPLATES[0] || null;
   const [ventModalOpen, setVentModalOpen] = useState(false);
+  const ventModalRef = useRef(null);
   const [ventForm, setVentForm] = useState(initialTemplate ? buildFormFromTemplate(initialTemplate, null) : DEFAULT_VENT_FORM);
   const [ventState, setVentState] = useState(null);
   const [isPublishingVent, setIsPublishingVent] = useState(false);
@@ -629,6 +630,33 @@ export default function Presencial_Instructor() {
     if (!Number.isFinite(tv) || tv <= 0) return null;
     return Number((tv / weightKg).toFixed(2));
   }, [ventForm.parameters.tidalVolume, weightKg]);
+  const ventAudienceSummary = useMemo(() => {
+    if (!ventState) return null;
+    switch (ventState.active) {
+      case true:
+        return {
+          text: 'El alumnado ve los parámetros publicados.',
+          tone: 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        };
+      case 'pending':
+        return {
+          text: 'El alumnado ve la tarjeta de ventilación en estado "Pendiente".',
+          tone: 'border-amber-200 bg-amber-50 text-amber-700'
+        };
+      case 'hidden':
+        return {
+          text: 'La tarjeta de ventilación está oculta en la pantalla del alumno.',
+          tone: 'border-slate-300 bg-slate-100 text-slate-700'
+        };
+      case false:
+        return {
+          text: 'El alumnado ve el mensaje de ventilación detenida.',
+          tone: 'border-red-200 bg-red-50 text-red-700'
+        };
+      default:
+        return null;
+    }
+  }, [ventState]);
   const tidalVolumeOutOfRange = useMemo(() => {
     if (!recommendedTidalRange || tidalPerKg == null) return false;
     return tidalPerKg < recommendedTidalRange.minMlPerKg || tidalPerKg > recommendedTidalRange.maxMlPerKg;
@@ -1611,15 +1639,96 @@ export default function Presencial_Instructor() {
     if (!sessionId) return;
     setCurrentStepId(stepId);
     try {
+      // 1) Persistir en la fila de la sesión (compatibilidad con clientes que solo leen la tabla)
       await supabase
         .from("presencial_sessions")
         .update({ current_step_id: stepId })
         .eq("id", sessionId);
-      console.debug('[Instructor] Fase actualizada', { sessionId, stepId });
+
+      // 2) Emitir acción realtime para clientes que escuchan session_actions
       try {
-        const name = steps.find(s => s.id === stepId)?.name || null;
-        logEvent('step.change', { step_id: stepId, name });
-      } catch {}
+        const name = steps.find((s) => s.id === stepId)?.name || null;
+        await supabase
+          .from('session_actions')
+          .insert({
+            session_id: sessionId,
+            step_id: stepId,
+            action_key: 'step.set',
+            payload: { step_id: stepId, text: name }
+          });
+        // Log interno
+        try { logEvent('step.change', { step_id: stepId, name }); } catch {}
+      } catch (eAct) {
+        console.debug('[Instructor] session_actions step.set omitido', eAct?.message);
+      }
+
+      // 2b) Publicar guion vinculado al paso (si existe texto en ese índice)
+      try {
+        const idx = steps.findIndex((s) => s.id === stepId);
+        if (idx >= 0) {
+          const raw = Array.isArray(scriptTexts) ? scriptTexts[idx] : null;
+          const txt = (typeof raw === 'string' ? raw : '').trim();
+          if (txt) {
+            // Guardar en banner_text (persistente)
+            await supabase
+              .from('presencial_sessions')
+              .update({ banner_text: txt })
+              .eq('id', sessionId);
+            // Acción para alumnos que escuchan session_actions
+            try {
+              await supabase.from('session_actions').insert({
+                session_id: sessionId,
+                step_id: stepId,
+                action_key: 'script.publish',
+                payload: { index: idx, text: txt }
+              });
+            } catch {}
+            // Estado local coherente
+            setBannerText(txt);
+            try { logEvent('script.publish', { index: idx, text: txt }); } catch {}
+          }
+        }
+      } catch (eScript) {
+        console.debug('[Instructor] updateStep: script.publish omitido', eScript?.message);
+      }
+
+      // 2c) Efectos del paso: ejemplo de Circulación → bajar TA sistólica a 60 y mostrar
+      try {
+        const stepName = steps.find((s) => s.id === stepId)?.name || '';
+        if (/circulaci[óo]n/i.test(stepName)) {
+          // Buscar variable de tensión arterial (por etiqueta o clave)
+          const candidate = (variables || []).find(v => {
+            const lbl = (v.label || '').toString();
+            const key = (v.key || '').toString();
+            return /(tensi[óo]n|TA|presi[óo]n\s*arterial)/i.test(lbl) || /(ta|bp|blood_pressure)/i.test(key);
+          });
+          if (candidate) {
+            const variableId = candidate.id;
+            const val = '60';
+            // Persistir valor y revelar al alumnado
+            await supabase
+              .from('session_variables')
+              .upsert({ session_id: sessionId, variable_id: variableId, value: val, is_revealed: true, updated_at: new Date().toISOString() }, { onConflict: 'session_id,variable_id' });
+            // Broadcast de actualización
+            try {
+              await supabase.from('session_actions').insert({
+                session_id: sessionId,
+                step_id: stepId,
+                action_key: 'variable.update',
+                payload: { variable_id: variableId, value: val }
+              });
+            } catch {}
+            // Estado local
+            setSessionVarValues(prev => ({ ...prev, [variableId]: val }));
+            setRevealed(prev => { const s = new Set(prev); s.add(variableId); return s; });
+            try { logEvent('variable.update', { variable_id: variableId, label: candidate.label, value: val }); } catch {}
+          }
+        }
+      } catch (eFx) {
+        console.debug('[Instructor] efectos de paso omitidos', eFx?.message);
+      }
+
+      console.debug('[Instructor] Fase actualizada', { sessionId, stepId });
     } catch (e) {
       console.error("[Instructor] updateStep error:", e);
       setErrorMsg("No se pudo cambiar la fase del caso.");
@@ -1757,6 +1866,33 @@ export default function Presencial_Instructor() {
       void broadcastVentPending();
     }
   }, [ventState, broadcastVentPending]);
+
+  const handleVentModalKeyDown = useCallback((event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setVentModalOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ventModalOpen) return undefined;
+    const prevOverflow = document?.body?.style?.overflow;
+    if (document?.body) {
+      document.body.style.overflow = 'hidden';
+    }
+    const timer = setTimeout(() => {
+      const node = ventModalRef.current;
+      if (node && typeof node.focus === 'function') {
+        node.focus({ preventScroll: true });
+      }
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      if (document?.body) {
+        document.body.style.overflow = prevOverflow || '';
+      }
+    };
+  }, [ventModalOpen]);
 
   async function upsertChecklist(itemId, status) {
     if (!sessionId) return;
@@ -1954,14 +2090,17 @@ export default function Presencial_Instructor() {
               {!startedAt && <span className="rounded-full bg-white/10 px-2.5 py-1 ring-1 ring-white/30">● No iniciada</span>}
               {startedAt && !endedAt && <span className="rounded-full bg-green-500/20 px-2.5 py-1 ring-1 ring-green-300/40">● En curso</span>}
               {startedAt && endedAt && <span className="rounded-full bg-slate-200/30 px-2.5 py-1 ring-1 ring-white/30">● Finalizada</span>}
-              {currentStepId && steps.length > 0 && (
-                <span className="rounded-full bg-white/15 px-2.5 py-1 ring-1 ring-white/30">
-                  Fase: {steps.find((s) => s.id === currentStepId)?.name || '—'}
+              {startedAt && (
+                <span className="rounded-full px-3.5 py-1.5 text-sm md:text-base bg-white/15 ring-1 ring-white/30">
+                  Tiempo: {fmtDuration(elapsedSec)}
                 </span>
               )}
-              {startedAt && (
-                <span className="rounded-full bg-white/15 px-2.5 py-1 ring-1 ring-white/30">
-                  Tiempo: {fmtDuration(elapsedSec)}
+              {currentStepId && steps.length > 0 && (
+                <span
+                  className="rounded-full px-4 py-2 text-base md:text-lg font-semibold bg-white/20 ring-2 ring-white/40 shadow-sm tracking-tight"
+                  title="Fase actual"
+                >
+                  {steps.find((s) => s.id === currentStepId)?.name || '—'}
                 </span>
               )}
             </div>
@@ -1996,16 +2135,19 @@ export default function Presencial_Instructor() {
                   ● Finalizada
                 </span>
               )}
-              {currentStepId && steps.length > 0 ? (
-                <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
-                  Fase: {steps.find((s) => s.id === currentStepId)?.name || "—"}
-                </span>
-              ) : null}
               {startedAt && (
-                <span className="ml-1 px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
+                <span className="px-3.5 py-1.5 rounded-full bg-white/15 ring-1 ring-white/30 text-sm md:text-base">
                   Tiempo: {fmtDuration(elapsedSec)}
                 </span>
               )}
+              {currentStepId && steps.length > 0 ? (
+                <span
+                  className="px-4 py-2 rounded-full bg-white/20 ring-2 ring-white/40 shadow-sm text-base md:text-lg font-semibold tracking-tight"
+                  title="Fase actual"
+                >
+                  {steps.find((s) => s.id === currentStepId)?.name || "—"}
+                </span>
+              ) : null}
               {startedAt && (
                 <span className="px-2.5 py-1 rounded-full bg-white/15 ring-1 ring-white/30">
                   Iniciada: {new Date(startedAt).toLocaleString()}
@@ -2133,7 +2275,7 @@ export default function Presencial_Instructor() {
             <div className="px-6 py-4 flex flex-wrap items-center gap-3">
               <h2 className="text-lg font-semibold mr-auto">Control de la sesión</h2>
               {!isRunning && (
-                <span className="inline-flex items-center gap-2 text-sm px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 ring-1 ring-amber-200">
+                <span className="inline-flex flex-1 min-w-[200px] items-center justify-center gap-2 rounded-full bg-amber-100 px-2.5 py-1 text-sm text-amber-800 ring-1 ring-amber-200 sm:flex-none" role="status" aria-live="polite">
                   ⚠️ Pulsa <span className="font-semibold">Iniciar</span> para activar los controles
                 </span>
               )}
@@ -2145,7 +2287,7 @@ export default function Presencial_Instructor() {
               <button
                 onClick={startSession}
                 disabled={isRunning || !!endedAt}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg font-semibold transition shadow-sm ${
+                className={`inline-flex flex-1 min-w-[150px] items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition shadow-sm sm:flex-none sm:text-base ${
                   isRunning || !!endedAt
                     ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
                     : 'text-white hover:opacity-95 animate-pulse ring-2 ring-offset-2 ring-[#1E6ACB] shadow-md'
@@ -2158,7 +2300,7 @@ export default function Presencial_Instructor() {
               <button
                 onClick={endSession}
                 disabled={!startedAt || !!endedAt}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition shadow-sm ${
+                className={`inline-flex flex-1 min-w-[150px] items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition shadow-sm sm:flex-none sm:text-base ${
                   !startedAt || endedAt
                     ? "border-slate-200 text-slate-400 cursor-not-allowed"
                     : "border-red-300 text-red-700 hover:bg-red-50"
@@ -2169,21 +2311,21 @@ export default function Presencial_Instructor() {
               </button>
               <button
                 onClick={triggerAlarm}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 shadow-sm"
+                className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700 shadow-sm sm:flex-none sm:text-base"
                 title="Emitir una alarma sonora en las pantallas conectadas"
               >
                 🔔 Alarma
               </button>
               <button
                 onClick={forceRefresh}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 shadow-sm"
+                className="inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 shadow-sm sm:flex-none sm:text-base"
                 title="Forzar un refresco inmediato en las pantallas conectadas"
               >
                 ⚡ Refrescar pantallas
               </button>
               <button
                 onClick={handleOpenVentModal}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 shadow-sm"
+                className="inline-flex flex-1 min-w-[180px] items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 shadow-sm sm:flex-none sm:text-base"
                 title="Configurar ventilación mecánica"
               >
                 🫁 Ventilación mecánica
@@ -2191,7 +2333,7 @@ export default function Presencial_Instructor() {
               <button
                 onClick={handleVentHide}
                 disabled={!ventState}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition shadow-sm ${
+                className={`inline-flex flex-1 min-w-[180px] items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition shadow-sm sm:flex-none sm:text-base ${
                   ventState
                     ? 'border-slate-300 text-slate-700 hover:bg-slate-50'
                     : 'border-slate-200 text-slate-400 cursor-not-allowed'
@@ -2201,7 +2343,7 @@ export default function Presencial_Instructor() {
                 ⛔ Ocultar ventilación
               </button>
               {ventState?.active === true && (
-                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700" aria-live="polite">
                   ● Ventilación activa ({ventState.mode})
                   {ventState?.meta?.template?.name ? (
                     <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
@@ -2210,6 +2352,11 @@ export default function Presencial_Instructor() {
                   ) : null}
                 </span>
               )}
+              {ventAudienceSummary ? (
+                <span className={`inline-flex flex-1 min-w-[220px] items-center justify-center rounded-full border px-3 py-1 text-[11px] font-medium sm:flex-none ${ventAudienceSummary.tone}`} aria-live="polite">
+                  {ventAudienceSummary.text}
+                </span>
+              ) : null}
               {endedAt && (
                 <Link
                   to={`/presencial/${id}/informe?session=${sessionId}`}
@@ -2651,11 +2798,20 @@ export default function Presencial_Instructor() {
 
       {ventModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm px-4 py-8">
-          <div className="flex w-full max-w-6xl max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <div
+            ref={ventModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="vent-modal-title"
+            aria-describedby="vent-modal-desc"
+            tabIndex={-1}
+            onKeyDown={handleVentModalKeyDown}
+            className="flex w-full max-w-6xl max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
+          >
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Ventilación mecánica</h3>
-                <p className="text-sm text-slate-600">Configura el modo y los parámetros que verán los alumnos.</p>
+                <h3 id="vent-modal-title" className="text-lg font-semibold text-slate-900">Ventilación mecánica</h3>
+                <p id="vent-modal-desc" className="text-sm text-slate-600">Configura el modo y los parámetros que verán los alumnos.</p>
               </div>
               <button
                 onClick={() => setVentModalOpen(false)}

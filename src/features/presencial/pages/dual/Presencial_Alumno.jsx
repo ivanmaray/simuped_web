@@ -206,7 +206,7 @@ export default function Presencial_Alumno() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h4 className="text-sm font-semibold text-slate-700">Ventilación mecánica</h4>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500" role="status" aria-live="polite">
               {pending
                 ? 'El instructor está preparando los parámetros.'
                 : active
@@ -897,6 +897,31 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                   return;
                 }
 
+                // Sincronizar paso actual desde acciones del instructor
+                if (key === 'step.set' || key === 'step' || key.includes('step')) {
+                  try {
+                    let nextStepId = null;
+                    if (p && typeof p === 'object') {
+                      nextStepId = p.step_id || p.stepId || p.id || p.current_step_id || null;
+                    } else if (typeof p === 'string' || typeof p === 'number') {
+                      // Permitir que el payload sea el id directamente
+                      nextStepId = p;
+                    }
+                    if (nextStepId) {
+                      setCurrentStepId(nextStepId);
+                      // Cargar el nombre del paso para mostrarlo en la UI
+                      supabase
+                        .from('scenario_steps')
+                        .select('name')
+                        .eq('id', nextStepId)
+                        .maybeSingle()
+                        .then(({ data }) => { if (data?.name) setStepName(data.name); });
+                    }
+                  } catch (e) {
+                    reportWarning('PresencialAlumno.session_actions.stepSync', e, { payload: p });
+                  }
+                }
+
                 if (key.includes('publish') || key.includes('banner') || key.includes('step')) {
                   let txt = '';
                   if (p && typeof p === 'object') {
@@ -1150,11 +1175,24 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                   </span>
                 </p>
               </div>
-              {/* Cronómetro en HERO */}
+              {/* Cronómetro en HERO + fase */}
               <div className="shrink-0 rounded-3xl ring-1 ring-white/30 bg-white/10 backdrop-blur px-4 py-2 md:px-6 md:py-3">
-                <div className="font-mono tracking-tight text-white text-3xl md:text-5xl" title={session?.started_at ? new Date(session.started_at).toLocaleString() : 'Esperando inicio'}>
-                  {session?.started_at ? fmtHMS(elapsedMs) : 'Esperando inicio'}
-                  {ended ? <span className="ml-3 align-middle text-sm text-white/80">(finalizada)</span> : null}
+                <div className="flex items-center gap-4">
+                  <div
+                    className="font-mono tracking-tight text-white text-3xl md:text-5xl"
+                    title={session?.started_at ? new Date(session.started_at).toLocaleString() : 'Esperando inicio'}
+                  >
+                    {session?.started_at ? fmtHMS(elapsedMs) : 'Esperando inicio'}
+                    {ended ? <span className="ml-3 align-middle text-sm text-white/80">(finalizada)</span> : null}
+                  </div>
+                  {stepName ? (
+                    <span
+                      className="rounded-full px-4 py-2 text-base md:text-lg font-semibold bg-white/20 ring-2 ring-white/40 shadow-sm tracking-tight"
+                      title="Fase actual"
+                    >
+                      {stepName}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1172,7 +1210,7 @@ function buildSvgPath(values = [], width = 260, height = 140) {
         </section>
       )}
 
-      <main style={mainStyle} className="w-full px-4 sm:px-6 lg:px-10 xl:px-14 pt-4 pb-6 flex flex-col gap-4 overflow-hidden">
+      <main style={mainStyle} className="w-full px-4 sm:px-6 lg:px-10 xl:px-14 pt-4 pb-6 flex flex-col gap-4 overflow-y-auto min-h-0">
         {loading && <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">Cargando…</div>}
         {errorMsg && !loading && <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">{errorMsg}</div>}
 
@@ -1198,8 +1236,8 @@ function buildSvgPath(values = [], width = 260, height = 140) {
           </div>
         )}
 
-        <div className="flex-1 overflow-hidden grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(420px,520px)] xl:grid-cols-[minmax(0,0.7fr)_minmax(480px,600px)]">
-         <section className="flex flex-col gap-4 overflow-hidden">
+        <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(420px,520px)] xl:grid-cols-[minmax(0,0.7fr)_minmax(480px,600px)]">
+         <section className="flex flex-col gap-4 overflow-visible">
             {patientOverview ? (() => {
               const { chips, bullets, paragraphs } = parsePatientOverview(patientOverview);
               return (
@@ -1231,9 +1269,9 @@ function buildSvgPath(values = [], width = 260, height = 140) {
             })() : null}
 
             {categorizedVars.vital.length > 0 && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-visible">
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">Constantes</h4>
-                <div className="grid auto-rows-fr grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 overflow-auto pr-1 max-h-[18vh]">
+                <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(200px,1fr))] sm:overflow-y-auto sm:pr-1 sm:max-h-[30vh] md:max-h-none md:overflow-visible">
                   {categorizedVars.vital.map(({ v, meta, isFlash }) => (
                     <div
                       key={v.id}
@@ -1257,9 +1295,9 @@ function buildSvgPath(values = [], width = 260, height = 140) {
 
 
             {categorizedVars.lab.length > 0 && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-visible">
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">Analíticas</h4>
-                <div className="grid auto-rows-fr grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 overflow-auto pr-1 max-h-[18vh]">
+                <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(200px,1fr))] sm:overflow-y-auto sm:pr-1 sm:max-h-[30vh] md:max-h-none md:overflow-visible">
                   {categorizedVars.lab.map(({ v, meta, isFlash }) => (
                     <div
                       key={v.id}
@@ -1282,9 +1320,9 @@ function buildSvgPath(values = [], width = 260, height = 140) {
             )}
 
             {categorizedVars.others.length > 0 && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-visible">
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">Otros datos</h4>
-                <div className="grid auto-rows-fr grid-cols-4 gap-3 overflow-auto pr-1 max-h-[18vh]">
+                <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(200px,1fr))] sm:overflow-y-auto sm:pr-1 sm:max-h-[30vh] md:max-h-none md:overflow-visible">
                   {categorizedVars.others.map(renderDataCard)}
                 </div>
               </div>
