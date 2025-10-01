@@ -583,7 +583,6 @@ export default function Presencial_Instructor() {
   const scriptRef = useRef(null);
   const bannerRef = useRef(null);
   const variablesRef = useRef(null);
-  const phasesRef = useRef(null);
   const checklistRef = useRef(null);
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
@@ -939,6 +938,14 @@ export default function Presencial_Instructor() {
       setPatientInfo({ chips: [], weightKg: null });
     }
   }, [scenario?.patient_overview]);
+
+  useEffect(() => {
+    if (!steps || steps.length === 0) return;
+    const idx = steps.findIndex((s) => s.id === currentStepId);
+    if (idx >= 0 && scriptIndex !== idx) {
+      setScriptIndex(idx);
+    }
+  }, [steps, currentStepId, scriptIndex]);
 
   // Variables reveladas (para marcar botones activos)
   const [revealed, setRevealed] = useState(new Set());
@@ -1561,28 +1568,6 @@ export default function Presencial_Instructor() {
     try { logEvent('script.publish', { index, text: txt }); } catch {}
   }
 
-  function nextScript() {
-    if (scriptIndex < scriptTexts.length - 1) {
-      const i = scriptIndex + 1;
-      setScriptIndex(i);
-      ensureCtx();
-      publishScript(i);
-    }
-  }
-  function prevScript() {
-    if (scriptIndex > 0) {
-      const i = scriptIndex - 1;
-      setScriptIndex(i);
-      ensureCtx();
-      publishScript(i);
-    }
-  }
-  function addScriptLine() {
-    setScriptTexts(arr => [...arr, '']);
-    const i = scriptTexts.length; // nuevo índice al final
-    setScriptIndex(i);
-    // no se publica automáticamente porque aún no hay texto
-  }
   function resetScript() {
     const i = 0;
     setScriptTexts(DEFAULT_SCRIPT);
@@ -1591,6 +1576,15 @@ export default function Presencial_Instructor() {
     ensureCtx();
     publishScript(i);
   }
+
+  const handleScriptTextChange = useCallback((idx, value) => {
+    setScriptTexts(prev => {
+      const next = Array.isArray(prev) ? [...prev] : [];
+      while (next.length <= idx) next.push('');
+      next[idx] = value;
+      return next;
+    });
+  }, []);
 
   // NUEVO: guardar banner (con confirmación sonora)
   async function saveBanner(nextText) {
@@ -2227,7 +2221,7 @@ export default function Presencial_Instructor() {
                 onClick={() => scrollToSection(scriptRef)}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
               >
-                📝 Guion
+                🧭 Fases y guion
               </button>
               <button
                 type="button"
@@ -2242,13 +2236,6 @@ export default function Presencial_Instructor() {
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
               >
                 📊 Constantes
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollToSection(phasesRef)}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
-              >
-                🔁 Fases
               </button>
               <button
                 type="button"
@@ -2382,62 +2369,109 @@ export default function Presencial_Instructor() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
-                    <h3 className="text-lg font-semibold text-slate-900">Guion del caso</h3>
-                    <p className="text-sm text-slate-600 max-w-xl">Define la narración que verán los alumnos durante la sesión. Puedes preparar tantos hitos como necesites y publicarlos de forma secuencial.</p>
+                    <h3 className="text-lg font-semibold text-slate-900">Fases y guion sincronizado</h3>
+                    <p className="text-sm text-slate-600 max-w-xl">Cada fase publica su texto asociado en la pantalla del alumnado. Edita el contenido y utiliza “Activar y mostrar” para sincronizarlo.</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={addScriptLine} className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">+ Añadir</button>
-                    <button onClick={prevScript} className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">← Anterior</button>
-                    <button onClick={nextScript} className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">Siguiente →</button>
-                    <button onClick={() => { ensureCtx(); publishScript(); }} className="rounded-full px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90" style={{ background: colors.primary }}>Publicar actual</button>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {scriptTexts.map((t, idx) => (
-                    <div
-                      key={idx}
-                      className={`rounded-2xl border px-4 py-3 transition ${
-                        idx === scriptIndex
-                          ? 'border-[#1E6ACB] bg-[#1E6ACB]/5 shadow-sm'
-                          : 'border-slate-200 bg-white'
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paso {idx + 1}</span>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            onClick={() => { setScriptIndex(idx); publishScript(idx); }}
-                            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                              scriptIndex === idx ? 'border-[#1E6ACB] text-[#0A3D91]' : 'border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
-                            }`}
-                            title="Seleccionar y publicar este paso"
-                          >
-                            Publicar ahora
-                          </button>
-                          <button
-                            onClick={() => setScriptIndex(idx)}
-                            className={`rounded-full border px-3 py-1 text-xs transition ${
-                              scriptIndex === idx ? 'border-slate-300 text-slate-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                            }`}
-                            title="Marcar este paso como actual"
-                          >
-                            Marcar
-                          </button>
-                        </div>
-                      </div>
-                      <input
-                        value={t}
-                        onChange={(e) => setScriptTexts((arr) => arr.map((x, i) => (i === idx ? e.target.value : x)))}
-                        placeholder={idx === 0 ? 'Llegada a urgencias...' : 'Texto del evento...'}
-                        className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-                      />
+                  {steps?.length ? (
+                    <div className="flex flex-col items-end text-right text-xs text-slate-500">
+                      <span className="font-semibold uppercase tracking-wide">Fase activa</span>
+                      <span className="text-sm text-slate-700">{steps.find(s => s.id === currentStepId)?.name || '—'}</span>
                     </div>
-                  ))}
+                  ) : null}
                 </div>
+                {steps && steps.length > 0 ? (
+                  <div className="mt-4 space-y-4">
+                    {steps.map((st, idx) => {
+                      const isActive = currentStepId === st.id;
+                      const isFocused = scriptIndex === idx;
+                      const value = scriptTexts[idx] ?? '';
+                      return (
+                        <article
+                          key={st.id}
+                          className={`rounded-2xl border px-4 py-3 transition ${
+                            isActive
+                              ? 'border-[#1E6ACB] bg-[#1E6ACB]/5 shadow-sm'
+                              : isFocused
+                                ? 'border-slate-300 bg-white shadow-sm'
+                                : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fase {idx + 1}</span>
+                              <div className="mt-1 text-sm font-semibold text-slate-800">{st.name}</div>
+                              {isActive ? (
+                                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#1E6ACB]/10 px-2 py-0.5 text-[11px] font-medium text-[#0A3D91]">
+                                  ● Mostrando al alumnado
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => { setScriptIndex(idx); ensureCtx(); updateStep(st.id); }}
+                                className="rounded-full bg-[#1E6ACB] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-90"
+                              >
+                                Activar y mostrar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setScriptIndex(idx)}
+                                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                                  isFocused ? 'border-[#1E6ACB] text-[#0A3D91]' : 'border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
+                                }`}
+                              >
+                                Usar como borrador
+                              </button>
+                            </div>
+                          </div>
+                          <textarea
+                            value={value}
+                            onFocus={() => setScriptIndex(idx)}
+                            onChange={(e) => handleScriptTextChange(idx, e.target.value)}
+                            placeholder={st.name || (idx === 0 ? 'Llegada a urgencias...' : 'Texto del evento...')}
+                            rows={2}
+                            className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                          />
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                    Este escenario no tiene fases definidas. Puedes usar el banner manual para comunicarte con el alumnado.
+                  </div>
+                )}
                 <div className="mt-5 flex flex-wrap gap-2 text-xs text-slate-500">
-                  <button onClick={resetScript} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">Reiniciar guion</button>
+                  <button onClick={resetScript} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">Reiniciar textos</button>
                   <button onClick={() => saveScriptLocal(sessionId, id, scriptTexts, scriptIndex)} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Guardar una copia local del guion">Guardar (local)</button>
                   <button onClick={() => { clearScriptLocal(sessionId, id); }} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Eliminar la copia local del guion">Borrar guardado</button>
+                </div>
+                <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4">
+                  <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Acciones rápidas</h4>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={clearAllVariables}
+                      className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                      title="Oculta todas las variables reveladas en la pantalla del alumno"
+                    >
+                      Ocultar constantes
+                    </button>
+                    <button
+                      onClick={triggerAlarm}
+                      className="rounded-full border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
+                      title="Emitir una alarma sonora en las pantallas conectadas"
+                    >
+                      🔔 Alarma
+                    </button>
+                    <button
+                      onClick={forceRefresh}
+                      className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                      title="Forzar un refresco inmediato en las pantallas conectadas"
+                    >
+                      ⚡ Refrescar pantallas
+                    </button>
+                  </div>
                 </div>
               </section>
 
@@ -2508,60 +2542,6 @@ export default function Presencial_Instructor() {
                   </div>
                 </section>
 
-                <section
-                  ref={phasesRef}
-                  className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
-                >
-                  <h3 className="text-lg font-semibold text-slate-900">Fase del caso</h3>
-                  <p className="mt-1 text-sm text-slate-600">Selecciona la fase activa para sincronizar la vista de los alumnos.</p>
-                  {steps && steps.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {steps.map((st) => (
-                        <button
-                          key={st.id}
-                          type="button"
-                          onClick={() => updateStep(st.id)}
-                          className={`rounded-full px-3 py-1.5 text-sm transition ${
-                            currentStepId === st.id
-                              ? 'bg-[#1E6ACB]/10 text-[#0A3D91]'
-                              : 'border border-slate-200 text-slate-700 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
-                          }`}
-                          title="Cambiar fase (se reflejará en la pantalla de alumnos)"
-                        >
-                          {st.name}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-sm text-slate-500">Este escenario no tiene fases definidas.</div>
-                  )}
-                  <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4">
-                    <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Acciones rápidas</h4>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        onClick={clearAllVariables}
-                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
-                        title="Oculta todas las variables reveladas en la pantalla del alumno"
-                      >
-                        Ocultar constantes
-                      </button>
-                      <button
-                        onClick={triggerAlarm}
-                        className="rounded-full border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
-                        title="Emitir una alarma sonora en las pantallas conectadas"
-                      >
-                        🔔 Alarma
-                      </button>
-                      <button
-                        onClick={forceRefresh}
-                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
-                        title="Forzar un refresco inmediato en las pantallas conectadas"
-                      >
-                        ⚡ Refrescar pantallas
-                      </button>
-                    </div>
-                  </div>
-                </section>
               </div>
             </div>
           </div>
