@@ -447,22 +447,51 @@ function buildSvgPath(values = [], width = 260, height = 140) {
   // Ficha paciente → chips + bullets + párrafos
   function parsePatientOverview(pov) {
     if (!pov || typeof pov !== 'string') return { chips: [], bullets: [], paragraphs: [] };
-    let chips = [], bullets = [], rest = pov.trim();
+    let chips = [];
+    let bullets = [];
+    let paragraphs = [];
+    let rest = pov.trim();
 
-    // Demografía JSON al inicio
+    const tryJsonArray = (raw) => {
+      const txt = String(raw || '').trim();
+      if (!txt.startsWith('[') || !txt.endsWith(']')) return null;
+      try {
+        const parsed = JSON.parse(txt);
+        return Array.isArray(parsed) ? parsed.map((x) => String(x)).filter(Boolean) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const takeJsonBlock = (pattern) => {
+      const match = rest.match(pattern);
+      if (!match || !match[0]) return null;
+      rest = rest.slice(match[0].length).trim();
+      return match[1] || match[0];
+    };
+
+    // Demografía JSON
     try {
-      const m = rest.match(/^\s*\{[\s\S]*?\}\s*(?:\n+|$)/);
-      if (m && m[0]) {
-        const jsonTxt = m[0].trim().replace(/,+\s*$/, '');
+      const jsonTxt = takeJsonBlock(/^\s*(?:[-•*]\s*)?(\{[\s\S]*?\})\s*(?:\n+|$)/);
+      if (jsonTxt) {
         try {
           const demo = JSON.parse(jsonTxt);
           const age = demo.age || demo.edad;
           const sex = demo.sex || demo.sexo;
           const weight = demo.weightKg || demo.weight_kg || demo.peso;
-          if (age)    chips.push({ label: String(age),   key: 'age' });
-          if (sex)    chips.push({ label: String(sex),   key: 'sex' });
+          if (age) chips.push({ label: String(age), key: 'age' });
+          if (sex) chips.push({ label: String(sex), key: 'sex' });
           if (weight) chips.push({ label: `${weight} kg`, key: 'weight' });
-          rest = rest.slice(m[0].length).trim();
+          const desc = demo.description || demo.context || demo.summary;
+          if (desc) paragraphs.push(String(desc));
+          const extraNotes = demo.notes || demo.detalles;
+          if (Array.isArray(extraNotes)) {
+            bullets = bullets.concat(extraNotes.map((x) => String(x)).filter(Boolean));
+          } else if (extraNotes) {
+            const noteArr = tryJsonArray(extraNotes);
+            if (noteArr) bullets = bullets.concat(noteArr);
+            else paragraphs.push(String(extraNotes));
+          }
         } catch (error) {
           reportWarning('PresencialAlumno.parseDemographics', error);
         }
@@ -471,15 +500,14 @@ function buildSvgPath(values = [], width = 260, height = 140) {
       reportWarning('PresencialAlumno.parseOverview.demographics', error);
     }
 
-    // Array JSON al inicio
+    // Lista JSON
     try {
-      const a = rest.match(/^\s*\[[\s\S]*?\]\s*(?:\n+|$)/);
-      if (a && a[0]) {
+      const arrayTxt = takeJsonBlock(/^\s*(?:[-•*]\s*)?(\[[\s\S]*?\])\s*(?:\n+|$)/);
+      if (arrayTxt) {
         try {
-          const arr = JSON.parse(a[0].trim());
+          const arr = JSON.parse(arrayTxt.trim());
           if (Array.isArray(arr)) {
-            bullets = arr.map(x => String(x)).filter(Boolean);
-            rest = rest.slice(a[0].length).trim();
+            bullets = bullets.concat(arr.map((x) => String(x)).filter(Boolean));
           }
         } catch (error) {
           reportWarning('PresencialAlumno.parseOverview.bulletArray', error);
@@ -490,13 +518,25 @@ function buildSvgPath(values = [], width = 260, height = 140) {
     }
 
     rest = rest
+      .replace(/^[\s]*[-•*]\s*/gm, '')
       .replace(/^\[\s*"?|"?\s*\]$/g, '')
       .replace(/",\s*"/g, '\n')
       .replace(/^"|"$/g, '')
       .trim();
 
-    const paragraphs = rest ? rest.split(/\n{2,}/).map(s => s.trim()).filter(Boolean) : [];
-    return { chips, bullets, paragraphs };
+    if (rest) {
+      const more = rest.split(/\n{2,}|\r\n{2,}/).map((s) => s.replace(/^[\s]*[-•*]\s*/, '').trim()).filter(Boolean);
+      if (more.length) paragraphs = paragraphs.concat(more);
+    }
+
+    const finalParagraphs = [];
+    paragraphs.forEach((p) => {
+      const arr = tryJsonArray(p);
+      if (arr) bullets = bullets.concat(arr);
+      else finalParagraphs.push(p);
+    });
+
+    return { chips, bullets, paragraphs: finalParagraphs };
   }
 
   const varMetaRef = useRef({});
@@ -1183,16 +1223,26 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                     <span className={`inline-block w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-300' : 'bg-white/50'}`} />
                     {connected ? 'Conectado' : 'Reconectando…'}
                   </span>
-                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ring-1 ${ended ? 'bg-rose-50 ring-rose-200 text-rose-700' : (session?.started_at ? 'bg-emerald-50 ring-emerald-200 text-emerald-700' : 'bg-amber-50 ring-amber-200 text-amber-700')}`}>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ended ? '#f43f5e' : (session?.started_at ? '#10b981' : '#f59e0b') }} />
-                    {ended ? 'Simulación terminada' : (session?.started_at ? 'En curso' : 'Esperando a iniciar')}
-                  </span>
-                </p>
-              </div>
-              {/* Cronómetro en HERO + fase */}
-              <div className="shrink-0 rounded-3xl ring-1 ring-white/30 bg-white/10 backdrop-blur px-4 py-2 md:px-6 md:py-3">
-                <div className="flex items-center gap-4">
-                  <div
+              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ring-1 ${ended ? 'bg-rose-50 ring-rose-200 text-rose-700' : (session?.started_at ? 'bg-emerald-50 ring-emerald-200 text-emerald-700' : 'bg-amber-50 ring-amber-200 text-amber-700')}`}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ended ? '#f43f5e' : (session?.started_at ? '#10b981' : '#f59e0b') }} />
+                {ended ? 'Simulación terminada' : (session?.started_at ? 'En curso' : 'Esperando a iniciar')}
+              </span>
+            </p>
+            <div className="mt-3 inline-flex items-center gap-2 text-sm font-semibold">
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs uppercase tracking-wide text-white/90 ring-1 ring-white/40">
+                ◉ Fase actual
+              </span>
+              <span className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm shadow-lg ring-2 ring-[#1E6ACB]/30 transition ${
+                phasePulse ? 'bg-white text-[#0A3D91]' : 'bg-white/90 text-[#0A3D91]'
+              }`}>
+                {stepName || 'Selecciona una fase en el panel del instructor'}
+              </span>
+            </div>
+          </div>
+          {/* Cronómetro en HERO + fase */}
+          <div className="shrink-0 rounded-3xl ring-1 ring-white/30 bg-white/10 backdrop-blur px-4 py-2 md:px-6 md:py-3">
+            <div className="flex items-center gap-4">
+              <div
                     className="font-mono tracking-tight text-white text-3xl md:text-5xl"
                     title={session?.started_at ? new Date(session.started_at).toLocaleString() : 'Esperando inicio'}
                   >
@@ -1239,6 +1289,14 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                    title={session?.started_at ? new Date(session.started_at).toLocaleString() : 'Esperando inicio'}>
                 {session?.started_at ? fmtHMS(elapsedMs) : 'Esperando inicio'}
                 {ended ? <span className="ml-3 align-middle text-sm text-slate-600">(finalizada)</span> : null}
+              </div>
+              <div className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
+                  ◉ Fase
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-1.5 text-sm shadow ring-1 ring-slate-200">
+                  {stepName || 'Pendiente de seleccionar'}
+                </span>
               </div>
             </div>
           </div>

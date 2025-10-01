@@ -78,6 +78,106 @@ function parsePatientDemographics(overview) {
   return info;
 }
 
+function parsePatientOverviewRich(pov) {
+  if (!pov || typeof pov !== 'string') return { chips: [], bullets: [], paragraphs: [] };
+  let rest = pov.trim();
+  let chips = [];
+  let bullets = [];
+  let paragraphs = [];
+
+  const tryJsonArray = (raw) => {
+    const txt = String(raw || '').trim();
+    if (!txt.startsWith('[') || !txt.endsWith(']')) return null;
+    try {
+      const parsed = JSON.parse(txt);
+      return Array.isArray(parsed) ? parsed.map((x) => String(x)).filter(Boolean) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const takeJsonBlock = (pattern) => {
+    const match = rest.match(pattern);
+    if (!match || !match[0]) return null;
+    rest = rest.slice(match[0].length).trim();
+    return match[1] || match[0];
+  };
+
+  // Demografía JSON
+  try {
+    const jsonTxt = takeJsonBlock(/^\s*(?:[-•*]\s*)?(\{[\s\S]*?\})\s*(?:\n+|$)/);
+    if (jsonTxt) {
+      try {
+        const demo = JSON.parse(jsonTxt);
+        const age = demo.age || demo.edad;
+        const sex = demo.sex || demo.sexo;
+        const weight = demo.weightKg || demo.weight_kg || demo.peso;
+        if (age) chips.push({ label: String(age), key: 'age' });
+        if (sex) chips.push({ label: String(sex), key: 'sex' });
+        if (weight) chips.push({ label: `${weight} kg`, key: 'weight' });
+        const desc = demo.description || demo.context || demo.summary;
+        if (desc) paragraphs.push(String(desc));
+        const extraNotes = demo.notes || demo.detalles;
+        if (Array.isArray(extraNotes)) {
+          bullets = bullets.concat(extraNotes.map((x) => String(x)).filter(Boolean));
+        } else if (extraNotes) {
+          const noteArr = tryJsonArray(extraNotes);
+          if (noteArr) bullets = bullets.concat(noteArr);
+          else paragraphs.push(String(extraNotes));
+        }
+      } catch (error) {
+        reportWarning('PresencialInstructor.parseOverview.demographics', error);
+      }
+    }
+  } catch (error) {
+    reportWarning('PresencialInstructor.extractDemographics', error);
+  }
+
+  // Array JSON de bullets
+  try {
+    const arrayTxt = takeJsonBlock(/^\s*(?:[-•*]\s*)?(\[[\s\S]*?\])\s*(?:\n+|$)/);
+    if (arrayTxt) {
+      try {
+        const arr = JSON.parse(arrayTxt.trim());
+        if (Array.isArray(arr)) {
+          bullets = bullets.concat(arr.map((x) => String(x)).filter(Boolean));
+        } else {
+          const arr2 = tryJsonArray(arr);
+          if (arr2) bullets = bullets.concat(arr2);
+        }
+      } catch (error) {
+        reportWarning('PresencialInstructor.parseOverview.array', error);
+      }
+    }
+  } catch (error) {
+    reportWarning('PresencialInstructor.extractArray', error);
+  }
+
+  rest = rest
+    .replace(/^[\s]*[-•*]\s*/gm, '')
+    .replace(/^\[\s*"?|"?\s*\]$/g, '')
+    .replace(/",\s*"/g, '\n')
+    .replace(/^"|"$/g, '')
+    .trim();
+
+  if (rest) {
+    const more = rest
+      .split(/\n{2,}|\r\n{2,}/)
+      .map((s) => s.replace(/^[\s]*[-•*]\s*/, '').trim())
+      .filter(Boolean);
+    if (more.length) paragraphs = paragraphs.concat(more);
+  }
+
+  const finalParagraphs = [];
+  paragraphs.forEach((p) => {
+    const arr = tryJsonArray(p);
+    if (arr) bullets = bullets.concat(arr);
+    else finalParagraphs.push(p);
+  });
+
+  return { chips, bullets, paragraphs: finalParagraphs };
+}
+
 // --- Checklist categorías ABCDE/Patología/Medicación/Otros ---
 const CATEGORY_ORDER = ['A', 'B', 'C', 'D', 'E', 'Diagnóstico', 'Tratamiento', 'Otros'];
 const ROLE_ORDER = ['Todos', 'Medicina', 'Enfermería', 'Farmacia', 'Común'];
@@ -614,6 +714,21 @@ export default function Presencial_Instructor() {
   const [patientInfo, setPatientInfo] = useState({ chips: [], weightKg: null });
   const weightKg = patientInfo.weightKg;
   const [selectedTemplateKey, setSelectedTemplateKey] = useState(initialTemplate?.key || null);
+  const patientOverviewRich = useMemo(() => parsePatientOverviewRich(scenario?.patient_overview || ''), [scenario?.patient_overview]);
+  const patientOverviewChips = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    const addChip = (chip) => {
+      if (!chip || !chip.label) return;
+      const key = `${chip.key || 'chip'}:${chip.label}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(chip);
+    };
+    (patientInfo.chips || []).forEach(addChip);
+    (patientOverviewRich.chips || []).forEach(addChip);
+    return merged;
+  }, [patientInfo.chips, patientOverviewRich.chips]);
   const recommendedTidalRange = useMemo(() => {
     if (!weightKg) return null;
     return {
@@ -2177,9 +2292,9 @@ export default function Presencial_Instructor() {
         <section className="bg-white/80 backdrop-blur border-b border-slate-200">
           <div className="max-w-6xl mx-auto px-5 py-3">
             <h3 className="text-sm font-semibold text-slate-800 mb-1">Ficha inicial del paciente</h3>
-            {patientInfo.chips.length > 0 && (
+            {patientOverviewChips.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2 text-xs">
-                {patientInfo.chips.map((chip) => (
+                {patientOverviewChips.map((chip) => (
                   <span
                     key={`${chip.key}-${chip.label}`}
                     className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700 ring-1 ring-slate-200"
@@ -2190,13 +2305,21 @@ export default function Presencial_Instructor() {
                 ))}
               </div>
             )}
-            <div className="text-sm text-slate-700 leading-relaxed">
-              {scenario.patient_overview.split(/\n+/).map((line, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="mt-1 text-slate-400">•</span>
-                  <span>{line}</span>
+            <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
+              {patientOverviewRich.bullets.length > 0 ? (
+                <ul className="list-disc pl-5 space-y-1">
+                  {patientOverviewRich.bullets.map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {patientOverviewRich.paragraphs.length > 0 ? (
+                <div className="space-y-2">
+                  {patientOverviewRich.paragraphs.map((p, idx) => (
+                    <p key={idx}>{p}</p>
+                  ))}
                 </div>
-              ))}
+              ) : null}
             </div>
           </div>
         </section>
