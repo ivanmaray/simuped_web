@@ -1657,18 +1657,15 @@ export default function Presencial_Instructor() {
       }
 
       // 2b) Publicar guion vinculado al paso (si existe texto en ese índice)
+      let phaseAudioTriggered = false;
       try {
         const idx = steps.findIndex((s) => s.id === stepId);
         if (idx >= 0) {
           const raw = Array.isArray(scriptTexts) ? scriptTexts[idx] : null;
           const txt = (typeof raw === 'string' ? raw : '').trim();
           if (txt) {
-            // Guardar en banner_text (persistente)
-            await supabase
-              .from('presencial_sessions')
-              .update({ banner_text: txt })
-              .eq('id', sessionId);
-            // Acción para alumnos que escuchan session_actions
+            await saveBanner(txt);
+            phaseAudioTriggered = true; // saveBanner ya reproduce el beep correspondiente
             try {
               await supabase.from('session_actions').insert({
                 session_id: sessionId,
@@ -1677,8 +1674,6 @@ export default function Presencial_Instructor() {
                 payload: { index: idx, text: txt }
               });
             } catch {}
-            // Estado local coherente
-            setBannerText(txt);
             try { logEvent('script.publish', { index: idx, text: txt }); } catch {}
           }
         }
@@ -1723,6 +1718,10 @@ export default function Presencial_Instructor() {
       }
 
       console.debug('[Instructor] Fase actualizada', { sessionId, stepId });
+      if (!phaseAudioTriggered) {
+        ensureCtx();
+        playBeep({ freq: 860, ms: 160, gain: 0.16 });
+      }
     } catch (e) {
       console.error("[Instructor] updateStep error:", e);
       setErrorMsg("No se pudo cambiar la fase del caso.");

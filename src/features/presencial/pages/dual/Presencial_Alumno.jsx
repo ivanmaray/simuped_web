@@ -37,6 +37,8 @@ export default function Presencial_Alumno() {
 
   const [flash, setFlash] = useState({}); // { [variableId]: true }
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [phasePulse, setPhasePulse] = useState(false);
+  const [phaseToast, setPhaseToast] = useState(null);
 
   const [ventilationState, setVentilationState] = useState(null);
 
@@ -958,6 +960,18 @@ function buildSvgPath(values = [], width = 260, height = 140) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [public_code, codeParam]);
 
+  useEffect(() => {
+    if (!stepName) return undefined;
+    setPhasePulse(true);
+    setPhaseToast(stepName);
+    const t1 = setTimeout(() => setPhasePulse(false), 1200);
+    const t2 = setTimeout(() => setPhaseToast(null), 2600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [stepName]);
+
   // Cronómetro: vive solo de los timestamps del servidor
   useEffect(() => {
     let timerId;
@@ -1185,14 +1199,18 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                     {session?.started_at ? fmtHMS(elapsedMs) : 'Esperando inicio'}
                     {ended ? <span className="ml-3 align-middle text-sm text-white/80">(finalizada)</span> : null}
                   </div>
-                  {stepName ? (
-                    <span
-                      className="rounded-full px-4 py-2 text-base md:text-lg font-semibold bg-white/20 ring-2 ring-white/40 shadow-sm tracking-tight"
-                      title="Fase actual"
-                    >
-                      {stepName}
-                    </span>
-                  ) : null}
+                {stepName ? (
+                  <span
+                    className={`rounded-full px-4 py-2 text-base md:text-lg font-semibold tracking-tight transition ${
+                      phasePulse
+                        ? 'bg-white text-slate-900 ring-4 ring-white/70 shadow-xl animate-pulse'
+                        : 'bg-white/20 text-white ring-2 ring-white/40 shadow-sm'
+                    }`}
+                    title="Fase actual"
+                  >
+                    {stepName}
+                  </span>
+                ) : null}
                 </div>
               </div>
             </div>
@@ -1227,7 +1245,11 @@ function buildSvgPath(values = [], width = 260, height = 140) {
         )}
 
         {bannerText && (
-          <div className="shrink-0 rounded-3xl border border-slate-200 bg-white/80 backdrop-blur px-6 py-4 shadow-lg">
+          <div
+            className={`shrink-0 rounded-3xl border border-slate-200 bg-white/85 backdrop-blur px-6 py-4 shadow-lg transition ${
+              phasePulse ? 'ring-4 ring-[#1E6ACB]/50 shadow-2xl animate-[pulse_1.2s_ease-in-out_2]' : ''
+            }`}
+          >
             <div className="text-2xl md:text-3xl font-semibold leading-snug tracking-tight text-slate-800">
               {String(bannerText).split(/\n{2,}/).map((para, i) => (
                 <p key={i} className="mb-2 last:mb-0">{para}</p>
@@ -1401,6 +1423,14 @@ function buildSvgPath(values = [], width = 260, height = 140) {
           </div>
         </div>
       </main>
+
+      {phaseToast && !clean ? (
+        <div className="pointer-events-none fixed inset-x-0 top-24 z-40 flex justify-center px-4">
+          <div className="min-w-[220px] max-w-lg rounded-2xl bg-white/95 px-5 py-3 text-center text-sm font-semibold text-slate-800 shadow-xl ring-2 ring-[#1E6ACB]/30">
+            {phaseToast}
+          </div>
+        </div>
+      ) : null}
 
       {!clean && !muted ? (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 text-xs text-slate-500">
