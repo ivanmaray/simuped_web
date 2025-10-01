@@ -42,6 +42,84 @@ export default function Presencial_Alumno() {
 
   const [ventilationState, setVentilationState] = useState(null);
 
+  const currentStepIdRef = useRef(null);
+  const stepsCacheRef = useRef({ scenarioId: null, map: new Map() });
+
+  useEffect(() => {
+    currentStepIdRef.current = currentStepId == null ? null : String(currentStepId);
+  }, [currentStepId]);
+
+  useEffect(() => () => { currentStepIdRef.current = null; }, []);
+
+  const ensureStepsLoaded = useCallback(async (scenarioId) => {
+    if (!scenarioId) return;
+    const cache = stepsCacheRef.current;
+    if (cache.scenarioId === scenarioId && cache.map && cache.map.size > 0) return;
+    try {
+      const { data, error } = await supabase
+        .from('scenario_steps')
+        .select('id, name')
+        .eq('scenario_id', scenarioId);
+      if (error) throw error;
+      if (Array.isArray(data)) {
+        const map = new Map();
+        for (const step of data) {
+          if (step?.id == null) continue;
+          map.set(String(step.id), step?.name || '');
+        }
+        stepsCacheRef.current = { scenarioId, map };
+      }
+    } catch (error) {
+      reportWarning('PresencialAlumno.steps.preload', error, { scenarioId });
+    }
+  }, []);
+
+  const applyStepName = useCallback(async (
+    stepId,
+    { fallbackName, fetchIfMissing = true, isActive, cacheFallback = false } = {}
+  ) => {
+    const activeFn = typeof isActive === 'function' ? isActive : () => true;
+    if (stepId == null || stepId === '') {
+      if (activeFn()) setStepName('');
+      return;
+    }
+    const stepKey = String(stepId);
+    const cache = stepsCacheRef.current;
+    const cachedName = cache.map && typeof cache.map.get === 'function' ? cache.map.get(stepKey) : undefined;
+    if (cachedName) {
+      if (activeFn()) setStepName(cachedName || '');
+      return;
+    }
+    if (typeof fallbackName === 'string' && fallbackName.trim()) {
+      const trimmed = fallbackName.trim();
+      if (activeFn()) setStepName(trimmed);
+      if (cacheFallback) {
+        const nextMap = new Map(stepsCacheRef.current.map);
+        nextMap.set(stepKey, trimmed);
+        stepsCacheRef.current = { scenarioId: stepsCacheRef.current.scenarioId, map: nextMap };
+      }
+    }
+    if (!fetchIfMissing) return;
+    try {
+      const { data, error } = await supabase
+        .from('scenario_steps')
+        .select('name, scenario_id')
+        .eq('id', stepId)
+        .maybeSingle();
+      if (error) throw error;
+      if (currentStepIdRef.current !== stepKey || !activeFn()) return;
+      if (data?.name) {
+        setStepName(data.name);
+        const nextMap = new Map(stepsCacheRef.current.map);
+        nextMap.set(stepKey, data.name);
+        const nextScenarioId = data?.scenario_id ?? stepsCacheRef.current.scenarioId;
+        stepsCacheRef.current = { scenarioId: nextScenarioId, map: nextMap };
+      }
+    } catch (error) {
+      reportWarning('PresencialAlumno.stepName.load', error, { stepId });
+    }
+  }, []);
+
   const categorizedVars = useMemo(() => {
     const result = { vital: [], lab: [], images: [], others: [] };
     for (const v of vars) {
@@ -58,26 +136,58 @@ export default function Presencial_Alumno() {
     return result;
   }, [vars, flash]);
 
-  const renderDataCard = ({ v, meta, isFlash }) => (
-    <div
-      key={v.id}
-      className={`relative rounded-2xl border border-slate-200 bg-white/90 shadow-sm p-5 transition-transform duration-200 ${
-        isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <div className="text-slate-500 text-xs flex items-center gap-1">
-          <span aria-hidden>{meta.badge}</span>
-          <span>{meta.label}</span>
+  const renderDataCard = ({ v, meta, richValue, isFlash }) => {
+    const isImage = richValue?.kind === 'image' && richValue.src;
+    if (isImage) {
+      return (
+        <figure
+          key={v.id}
+          className={`relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
+            isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
+          }`}
+        >
+          <figcaption className="flex items-center justify-between bg-slate-900 px-4 py-2 text-[11px] uppercase tracking-[0.2em] text-slate-200">
+            <span className="flex items-center gap-2">
+              <span aria-hidden>{meta.badge}</span>
+              {meta.label}
+            </span>
+            <span className="font-semibold tracking-[0.28em] text-slate-200/80">{v.label}</span>
+          </figcaption>
+          <img
+            src={richValue.src}
+            alt={richValue.alt || v.label || 'Imagen clínica'}
+            className="w-full h-auto object-contain bg-black"
+          />
+          {richValue.description ? (
+            <figcaption className="px-4 py-3 text-xs leading-relaxed text-slate-700">
+              {richValue.description}
+            </figcaption>
+          ) : null}
+        </figure>
+      );
+    }
+
+    return (
+      <div
+        key={v.id}
+        className={`relative rounded-2xl border border-slate-200 bg-white/90 shadow-sm p-5 transition-transform duration-200 ${
+          isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="text-slate-500 text-xs flex items-center gap-1">
+            <span aria-hidden>{meta.badge}</span>
+            <span>{meta.label}</span>
+          </div>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] ring-1 ${meta.chip}`}>{v.label}</span>
         </div>
-        <span className={`px-2 py-0.5 rounded-full text-[11px] ring-1 ${meta.chip}`}>{v.label}</span>
+        <div className="text-3xl md:text-4xl font-mono mt-2">
+          {v.value}
+          {v.unit ? <span className="ml-1 text-slate-500 text-lg">{v.unit}</span> : null}
+        </div>
       </div>
-      <div className="text-3xl md:text-4xl font-mono mt-2">
-        {v.value}
-        {v.unit ? <span className="ml-1 text-slate-500 text-lg">{v.unit}</span> : null}
-      </div>
-    </div>
-  );
+    );
+  };
 
   const mainHeightOffset = clean ? 120 : 190;
   const mainStyle = useMemo(() => ({ height: `calc(100vh - ${mainHeightOffset}px)` }), [mainHeightOffset]);
@@ -649,6 +759,10 @@ function buildSvgPath(values = [], width = 260, height = 140) {
         if (s?.started_at && !s?.ended_at) {
           setEnded(false);
         }
+        if (s?.scenario_id) {
+          await ensureStepsLoaded(s.scenario_id);
+          if (!mounted) return;
+        }
         // Inicializar fingerprint basada en estado + última acción
         try {
           const { data: lastAct } = await supabase
@@ -672,18 +786,15 @@ function buildSvgPath(values = [], width = 260, height = 140) {
 
         // Seed de estado derivado
         setBannerText(s?.banner_text || '');
-        setCurrentStepId(s?.current_step_id || null);
-        if (s?.current_step_id) {
-          try {
-            const { data: st } = await supabase
-              .from('scenario_steps')
-              .select('name')
-              .eq('id', s.current_step_id)
-              .maybeSingle();
-            if (st?.name && mounted) setStepName(st.name);
-          } catch (error) {
-            reportWarning('PresencialAlumno.loadStepName', error, { stepId: s.current_step_id });
-          }
+        const initialStepId = s?.current_step_id ?? null;
+        const initialStepKey = initialStepId == null ? null : String(initialStepId);
+        currentStepIdRef.current = initialStepKey;
+        setCurrentStepId(initialStepId);
+        if (initialStepKey) {
+          await applyStepName(initialStepId, { isActive: () => mounted && currentStepIdRef.current === initialStepKey });
+          if (!mounted) return;
+        } else if (mounted) {
+          setStepName('');
         }
         setEnded(!!s?.ended_at);
         if (!s?.started_at) setElapsedMs(0);
@@ -807,11 +918,16 @@ function buildSvgPath(values = [], width = 260, height = 140) {
 
               // Paso actual
               if (Object.prototype.hasOwnProperty.call(next, 'current_step_id')) {
-                setCurrentStepId(next.current_step_id || null);
-                if (next.current_step_id) {
-                  supabase.from('scenario_steps').select('name').eq('id', next.current_step_id).maybeSingle()
-                    .then(({ data }) => { if (data?.name && mounted) setStepName(data.name); });
-                } else {
+                const stepId = next.current_step_id ?? null;
+                const stepKey = stepId == null ? null : String(stepId);
+                currentStepIdRef.current = stepKey;
+                setCurrentStepId(stepId);
+                if (stepKey) {
+                  void ensureStepsLoaded(next.scenario_id || sessionScenarioId);
+                  void applyStepName(stepId, {
+                    isActive: () => mounted && currentStepIdRef.current === stepKey
+                  });
+                } else if (mounted) {
                   setStepName('');
                 }
               }
@@ -834,6 +950,7 @@ function buildSvgPath(values = [], width = 260, height = 140) {
 
               // Escenario puede cambiar (raro, pero tolerante)
               if (next.scenario_id && next.scenario_id !== session?.scenario_id) {
+                void ensureStepsLoaded(next.scenario_id);
                 Promise.all([
                   supabase.from('scenarios').select('title').eq('id', next.scenario_id).maybeSingle(),
                   supabase.rpc('get_patient_overview', { p_scenario_id: next.scenario_id })
@@ -943,21 +1060,33 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                 if (key === 'step.set' || key === 'step' || key.includes('step')) {
                   try {
                     let nextStepId = null;
+                    let fallbackName = null;
                     if (p && typeof p === 'object') {
                       nextStepId = p.step_id || p.stepId || p.id || p.current_step_id || null;
-                    } else if (typeof p === 'string' || typeof p === 'number') {
-                      // Permitir que el payload sea el id directamente
+                      fallbackName = p.text || p.name || p.step_name || p.stepName || p.title || null;
+                    } else if (typeof p === 'string') {
+                      const trimmed = p.trim();
+                      const numeric = trimmed ? Number(trimmed) : NaN;
+                      if (trimmed && !Number.isNaN(numeric)) {
+                        nextStepId = numeric;
+                      } else if (trimmed) {
+                        fallbackName = trimmed;
+                      }
+                    } else if (typeof p === 'number') {
                       nextStepId = p;
                     }
-                    if (nextStepId) {
+                    if (nextStepId != null && nextStepId !== '') {
+                      const stepKey = String(nextStepId);
+                      currentStepIdRef.current = stepKey;
                       setCurrentStepId(nextStepId);
-                      // Cargar el nombre del paso para mostrarlo en la UI
-                      supabase
-                        .from('scenario_steps')
-                        .select('name')
-                        .eq('id', nextStepId)
-                        .maybeSingle()
-                        .then(({ data }) => { if (data?.name) setStepName(data.name); });
+                      const isActive = () => mounted && currentStepIdRef.current === stepKey;
+                      void ensureStepsLoaded(sessionScenarioId);
+                      void applyStepName(nextStepId, {
+                        fallbackName,
+                        isActive,
+                        cacheFallback: Boolean(fallbackName),
+                        fetchIfMissing: !fallbackName
+                      });
                     }
                   } catch (e) {
                     reportWarning('PresencialAlumno.session_actions.stepSync', e, { payload: p });
@@ -1071,21 +1200,16 @@ function buildSvgPath(values = [], width = 260, height = 140) {
       ]);
 
       if (sess) {
+        await ensureStepsLoaded(scenarioId);
         if (typeof sess.banner_text !== 'undefined') setBannerText(sess.banner_text || '');
         if (typeof sess.ended_at !== 'undefined' && sess.ended_at) setEnded(true);
         if (typeof sess.current_step_id !== 'undefined') {
-          setCurrentStepId(sess.current_step_id || null);
-          if (sess.current_step_id) {
-            try {
-              const { data: st } = await supabase
-                .from('scenario_steps')
-                .select('name')
-                .eq('id', sess.current_step_id)
-                .maybeSingle();
-              if (st?.name) setStepName(st.name);
-            } catch (error) {
-              reportWarning('PresencialAlumno.reload.stepName', error, { stepId: sess.current_step_id });
-            }
+          const nextStepId = sess.current_step_id ?? null;
+          const nextStepKey = nextStepId == null ? null : String(nextStepId);
+          currentStepIdRef.current = nextStepKey;
+          setCurrentStepId(nextStepId);
+          if (nextStepKey) {
+            await applyStepName(nextStepId, { isActive: () => currentStepIdRef.current === nextStepKey });
           } else {
             setStepName('');
           }
@@ -1124,7 +1248,7 @@ function buildSvgPath(values = [], width = 260, height = 140) {
     } catch (error) {
       reportError('PresencialAlumno.reloadAll', error, { sessionId, scenarioId });
     }
-  }, [bannerText, currentStepId, ended]);
+  }, [applyStepName, bannerText, currentStepId, ended, ensureStepsLoaded]);
 
   // Fallback: polling suave para detectar cambios si Realtime no llega
   useEffect(() => {
