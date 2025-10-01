@@ -1543,11 +1543,13 @@ export default function Presencial_Instructor() {
     setPendingValues(prev => ({ ...prev, [variableId]: value }));
   }
 
-  async function publishValue(variableId) {
+  async function publishValue(variableId, valueOverride) {
     if (!sessionId) return;
     playBeep({ freq: 900 });
     const v = variables.find(x => x.id === variableId);
-    const val = (pendingValues[variableId] ?? sessionVarValues[variableId] ?? v?.initial_value ?? null);
+    const val = (typeof valueOverride !== 'undefined'
+      ? valueOverride
+      : (pendingValues[variableId] ?? sessionVarValues[variableId] ?? v?.initial_value ?? null));
     try {
       await supabase
         .from('session_variables')
