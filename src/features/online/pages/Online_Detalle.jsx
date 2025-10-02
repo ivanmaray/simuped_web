@@ -599,6 +599,42 @@ export default function Online_Detalle() {
   const answeredTotal = useMemo(() => Object.keys(answers).length, [answers]);
   const allAnswered = totalQuestions > 0 && answeredTotal >= totalQuestions;
 
+  const finishAttempt = useCallback(async (statusOverride) => {
+    if (!attemptId) return;
+  
+    const correctCount = Object.values(answers).filter((a) => a?.isCorrect).length;
+    const total = totalQuestions || 0;
+    const base = total ? (correctCount / total) * 100 : 0;
+    const hintCount = Object.values(hintsUsed).reduce((a, b) => a + (b || 0), 0);
+    const penalty = hintCount * HINT_PENALTY_POINTS;
+    const score = Math.max(0, Math.round(base - penalty));
+  
+    try {
+      const safeStatus = typeof statusOverride === "string" && statusOverride.trim() ? statusOverride.trim() : "finalizado";
+      const { error: updErr } = await supabase
+        .from("attempts")
+        .update({
+          finished_at: new Date().toISOString(),
+          correct_count: correctCount,
+          total_count: total,
+          score,
+          status: safeStatus,
+        })
+        .eq("id", attemptId);
+  
+      if (updErr) {
+        console.error("[SimulacionDetalle] finishAttempt update error:", updErr);
+        alert(`Hubo un problema al finalizar el intento: ${updErr.message || updErr.details || "Error desconocido"}`);
+      } else {
+        setShowSummary(true);
+        try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+      }
+    } catch (e) {
+      console.error("[SimulacionDetalle] finishAttempt excepción:", e);
+      alert(`Hubo un problema al finalizar el intento: ${e.message || e.toString()}`);
+    }
+  }, [answers, attemptId, hintsUsed, totalQuestions]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -917,6 +953,8 @@ export default function Online_Detalle() {
   }, [loading]);
 
   // Auto-finalizar cuando se acaba el tiempo (moved to top-level)
+
+
   useEffect(() => {
     if (!timeUp || showSummary) return;
     // Si se agota el tiempo, finalizamos como "abandonado" salvo que ya estén todas respondidas (entonces "finalizado")
@@ -1007,42 +1045,6 @@ export default function Online_Detalle() {
     }
   }
 
-  const finishAttempt = useCallback(async (statusOverride) => {
-    if (!attemptId) return;
-
-    // calcula correctas desde memoria local
-    const correctCount = Object.values(answers).filter((a) => a?.isCorrect).length;
-    const total = totalQuestions || 0;
-    const base = total ? (correctCount / total) * 100 : 0;
-    const hintCount = Object.values(hintsUsed).reduce((a, b) => a + (b || 0), 0);
-    const penalty = hintCount * HINT_PENALTY_POINTS;
-    const score = Math.max(0, Math.round(base - penalty));
-
-    try {
-      const safeStatus = typeof statusOverride === "string" && statusOverride.trim() ? statusOverride.trim() : "finalizado";
-      const { error: updErr } = await supabase
-        .from("attempts")
-        .update({
-          finished_at: new Date().toISOString(),
-          correct_count: correctCount,
-          total_count: total,
-          score,
-          status: safeStatus,
-        })
-        .eq("id", attemptId);
-
-      if (updErr) {
-        console.error("[SimulacionDetalle] finishAttempt update error:", updErr);
-        alert(`Hubo un problema al finalizar el intento: ${updErr.message || updErr.details || "Error desconocido"}`);
-      } else {
-        setShowSummary(true);
-        try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
-      }
-    } catch (e) {
-      console.error("[SimulacionDetalle] finishAttempt excepción:", e);
-      alert(`Hubo un problema al finalizar el intento: ${e.message || e.toString()}`);
-    }
-  }, [answers, attemptId, hintsUsed, totalQuestions]);
 
   function nextStep() {
     setCurrentIdx((i) => Math.min(i + 1, steps.length - 1));
@@ -1389,7 +1391,10 @@ export default function Online_Detalle() {
               <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
             <button
-              onClick={() => { setShowBriefing(false); }}
+              onClick={() => {
+                setShowBriefing(false);
+                try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+              }}
               disabled={showSummary || !tepComplete}
               className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 disabled:opacity-50"
               title={!tepComplete ? "Completa el TEP para continuar" : (showSummary ? "El intento ya está finalizado o expirado" : "Continuar a preguntas")}

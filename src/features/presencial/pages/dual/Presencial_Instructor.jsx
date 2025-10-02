@@ -2,7 +2,7 @@
 // Ruta esperada: /presencial/instructor/:id/:sessionId  (id = escenario)
 // También soporta: /presencial/instructor
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, forwardRef, useId } from "react";
 import { supabase } from "../../../../supabaseClient";
 import Navbar from "../../../../components/Navbar.jsx";
 import { reportWarning } from "../../../../utils/reporting.js";
@@ -650,8 +650,74 @@ function clearScriptLocal(sessionId, scenarioId){
   try { localStorage.removeItem(makeScriptKey(sessionId, scenarioId)); } catch {}
 }
 
+const CollapsibleCard = forwardRef(function CollapsibleCard(
+  {
+    id,
+    title,
+    icon = null,
+    collapsed,
+    onToggle,
+    headerExtra = null,
+    className = '',
+    bodyClassName = '',
+    children
+  },
+  ref
+) {
+  const bodyId = useId();
+  const contentId = id ? `${id}-content` : bodyId;
+
+  return (
+    <section
+      ref={ref}
+      className={`rounded-2xl border border-slate-200 bg-white/95 shadow-sm overflow-hidden ${className}`.trim()}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        aria-controls={contentId}
+        className="flex w-full items-center gap-3 px-6 py-4 text-left transition hover:bg-slate-50"
+      >
+        <div className="flex flex-1 items-center gap-3">
+          {icon ? <span className="text-xl" aria-hidden>{icon}</span> : null}
+          <span className="text-lg font-semibold text-slate-900">{title}</span>
+        </div>
+        {headerExtra ? (
+          <div className="ml-auto flex items-center gap-3 text-sm text-slate-600">
+            {headerExtra}
+          </div>
+        ) : null}
+        <span
+          className={`ml-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-sm text-slate-500 transition-transform ${
+            collapsed ? '' : 'rotate-180'
+          }`}
+          aria-hidden
+        >
+          ▾
+        </span>
+      </button>
+      <div
+        id={contentId}
+        className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+          collapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'
+        }`}
+      >
+        <div
+          className={`overflow-hidden transition-all duration-200 ease-in-out ${
+            collapsed ? '-translate-y-1 opacity-0' : 'translate-y-0 opacity-100'
+          } ${bodyClassName}`.trim()}
+        >
+          {children}
+        </div>
+      </div>
+    </section>
+  );
+});
+
 export default function Presencial_Instructor() {
-  const { id, sessionId } = useParams();
+  const { id, sessionId: sessionParam } = useParams();
+  const sessionId = sessionParam && sessionParam !== 'null' ? sessionParam : null;
   const navigate = useNavigate();
 
   // Event logger tied to current sessionId
@@ -684,6 +750,7 @@ export default function Presencial_Instructor() {
   const bannerRef = useRef(null);
   const variablesRef = useRef(null);
   const checklistRef = useRef(null);
+  const shareRef = useRef(null);
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
   const [fullscreenMode, setFullscreenMode] = useState(false);
@@ -775,6 +842,22 @@ export default function Presencial_Instructor() {
     if (!recommendedTidalRange || tidalPerKg == null) return false;
     return tidalPerKg < recommendedTidalRange.minMlPerKg || tidalPerKg > recommendedTidalRange.maxMlPerKg;
   }, [recommendedTidalRange, tidalPerKg]);
+
+  const [collapsedCards, setCollapsedCards] = useState(() => ({
+    script: true,
+    banner: true,
+    variables: true,
+    share: true,
+    checklist: true
+  }));
+
+  const toggleCard = useCallback((key, nextState) => {
+    setCollapsedCards((prev) => {
+      const desired = typeof nextState === 'boolean' ? nextState : !prev[key];
+      if (prev[key] === desired) return prev;
+      return { ...prev, [key]: desired };
+    });
+  }, []);
 
   const variablesGrouped = useMemo(() => {
     const groups = {
@@ -1120,14 +1203,29 @@ export default function Presencial_Instructor() {
     try { navigator.clipboard.writeText(publicUrl); } catch {}
   }, [publicUrl]);
 
-  const scrollToSection = useCallback((ref) => {
-    if (!ref || !ref.current) return;
-    try {
-      ref.current.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
-    } catch {
-      ref.current.scrollIntoView();
+  const scrollToSection = useCallback((ref, options = {}) => {
+    const { expandKey } = options;
+    const runScroll = () => {
+      if (!ref || !ref.current) return;
+      try {
+        ref.current.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+      } catch {
+        ref.current.scrollIntoView();
+      }
+    };
+
+    if (expandKey) {
+      toggleCard(expandKey, false);
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(runScroll));
+      } else {
+        setTimeout(runScroll, 0);
+      }
+      return;
     }
-  }, []);
+
+    runScroll();
+  }, [toggleCard]);
 
   useEffect(() => {
     setXrayCategorySelection({});
@@ -1140,38 +1238,37 @@ export default function Presencial_Instructor() {
     let mounted = true;
     (async () => {
       try {
-        // Intento de reanudar última sesión abierta (persistencia local)
-        try {
-          const raw = localStorage.getItem(LS_KEY);
-          if (raw) {
-            const last = JSON.parse(raw);
-            if (last && last.id && last.scenario_id) {
-              // Comprobar si sigue abierta (o si no hay columna ended_at, al menos que exista)
-              const { data: s0 } = await supabase
-                .from('presencial_sessions')
-                .select('id, scenario_id, ended_at')
-                .eq('id', last.id)
-                .maybeSingle();
-              if (s0 && (!Object.prototype.hasOwnProperty.call(s0, 'ended_at') || !s0.ended_at)) {
-                navigate(`/presencial/instructor/${s0.scenario_id}/${s0.id}`, { replace: true });
-                return; // detenemos aquí para no cargar el selector
-              } else {
-                // Si está cerrada, limpia el registro local
-                localStorage.removeItem(LS_KEY);
+        if (!id || !sessionId) {
+          let resumed = false;
+          try {
+            const raw = localStorage.getItem(LS_KEY);
+            if (raw) {
+              const last = JSON.parse(raw);
+              if (last && last.id && last.scenario_id) {
+                const { data: s0 } = await supabase
+                  .from('presencial_sessions')
+                  .select('id, scenario_id, ended_at')
+                  .eq('id', last.id)
+                  .maybeSingle();
+                if (s0 && (!Object.prototype.hasOwnProperty.call(s0, 'ended_at') || !s0.ended_at)) {
+                  navigate(`/presencial/instructor/${s0.scenario_id}/${s0.id}`, { replace: true });
+                  resumed = true;
+                } else {
+                  localStorage.removeItem(LS_KEY);
+                }
               }
             }
+          } catch (error) {
+            reportWarning('PresencialInstructor.restoreSession', error);
           }
-        } catch (error) {
-          reportWarning('PresencialInstructor.restoreSession', error);
-        }
-        // Si faltan parámetros, mostrar selector de escenarios
-        if (!id || !sessionId) {
+          if (resumed) return;
+
           setLoading(true);
           setScenario(null);
           setSession(null);
           setSteps([]);
           setVariables([]);
-          setErrorMsg("");
+          setErrorMsg('');
           const { data: scs, error: scsErr } = await supabase
             .from("scenarios")
             .select("id,title,summary,estimated_minutes,level")
@@ -1183,8 +1280,8 @@ export default function Presencial_Instructor() {
           return;
         }
 
-        // Con params presentes, activamos loading hasta terminar la carga
         setLoading(true);
+        setErrorMsg('');
         // 1) Escenario
         const { data: sc, error: scErr } = await supabase
           .from("scenarios")
@@ -1238,10 +1335,9 @@ export default function Presencial_Instructor() {
           const startedAtDb = s.started_at ? new Date(s.started_at) : null;
           const createdAtDb = s.created_at ? new Date(s.created_at) : null;
           const endedAtDb = s.ended_at ? new Date(s.ended_at) : null;
-          const startedDiffMs = startedAtDb && createdAtDb ? Math.abs(startedAtDb.getTime() - createdAtDb.getTime()) : null;
-          const considerStarted = Boolean(startedAtDb && !endedAtDb && (startedDiffMs == null || startedDiffMs > 5000));
+          const considerStarted = Boolean(startedAtDb && !endedAtDb);
 
-          setStartedAt(considerStarted || endedAtDb ? s.started_at : null);
+          setStartedAt(s.started_at || null);
           setEndedAt(s.ended_at || null);
 
           if (endedAtDb) {
@@ -1264,7 +1360,7 @@ export default function Presencial_Instructor() {
             setElapsedSec(0);
           }
 
-          const shouldUnlock = considerStarted && !endedAtDb;
+          const shouldUnlock = considerStarted;
           setUiUnlocked(shouldUnlock);
           setTimerActive(shouldUnlock);
           setTimerStartAt(shouldUnlock ? s.started_at : null);
@@ -2276,15 +2372,6 @@ export default function Presencial_Instructor() {
                   Copiar enlace de alumnos
                 </button>
               )}
-              {sessionId && !startedAt && !endedAt && (
-                <Link
-                  to={`/presencial/confirm/${id}/${sessionId}`}
-                  className="ml-2 px-3 py-1.5 rounded-lg bg-white/15 ring-1 ring-white/30 hover:bg-white/20"
-                  title="Pasar lista / confirmar alumnos"
-                >
-                  Confirmar alumnos
-                </Link>
-              )}
             </div>
           </div>
         </section>
@@ -2342,28 +2429,28 @@ export default function Presencial_Instructor() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => scrollToSection(scriptRef)}
+                onClick={() => scrollToSection(scriptRef, { expandKey: 'script' })}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
               >
                 🧭 Fases y guion
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection(bannerRef)}
+                onClick={() => scrollToSection(bannerRef, { expandKey: 'banner' })}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
               >
                 📢 Banner
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection(variablesRef)}
+                onClick={() => scrollToSection(variablesRef, { expandKey: 'variables' })}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
               >
                 📊 Constantes
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection(checklistRef)}
+                onClick={() => scrollToSection(checklistRef, { expandKey: 'checklist' })}
                 className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
               >
                 ✅ Checklist
@@ -2485,186 +2572,208 @@ export default function Presencial_Instructor() {
               </button>
             </div>
           </div>
-          <div className={`p-6 ${!isRunning ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+          <div className="p-6">
             <div className="space-y-8">
-              <section
+              <CollapsibleCard
                 ref={scriptRef}
-                className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold text-slate-900">Fases y guion sincronizado</h3>
-                    <p className="text-sm text-slate-600 max-w-xl">Cada fase publica su texto asociado en la pantalla del alumnado. Edita el contenido y utiliza “Activar y mostrar” para sincronizarlo.</p>
+                id="script"
+                icon="🧭"
+                title="Fases y guion sincronizado"
+                collapsed={collapsedCards.script}
+                onToggle={() => toggleCard('script')}
+                className={!isRunning ? 'opacity-60' : ''}
+                bodyClassName={`px-6 pb-6 ${!isRunning ? 'pointer-events-none select-none' : ''}`}
+                headerExtra={steps?.length ? (
+                  <div className="flex flex-col items-end text-xs text-slate-500">
+                    <span className="font-semibold uppercase tracking-wide">Fase activa</span>
+                    <span className="text-sm text-slate-700">{steps.find((s) => s.id === currentStepId)?.name || '—'}</span>
                   </div>
-                  {steps?.length ? (
-                    <div className="flex flex-col items-end text-right text-xs text-slate-500">
-                      <span className="font-semibold uppercase tracking-wide">Fase activa</span>
-                      <span className="text-sm text-slate-700">{steps.find(s => s.id === currentStepId)?.name || '—'}</span>
+                ) : null}
+              >
+                <div className="space-y-4 pt-2">
+                  <p className="text-sm text-slate-600 max-w-xl">
+                    Cada fase publica su texto asociado en la pantalla del alumnado. Edita el contenido y utiliza “Activar y mostrar” para sincronizarlo.
+                  </p>
+                  {steps && steps.length > 0 ? (
+                    <div className="space-y-4">
+                      {steps.map((st, idx) => {
+                        const isActive = currentStepId === st.id;
+                        const isFocused = scriptIndex === idx;
+                        const value = scriptTexts[idx] ?? '';
+                        return (
+                          <article
+                            key={st.id}
+                            className={`rounded-2xl border px-4 py-3 transition ${
+                              isActive
+                                ? 'border-[#1E6ACB] bg-[#1E6ACB]/5 shadow-sm'
+                                : isFocused
+                                  ? 'border-slate-300 bg-white shadow-sm'
+                                  : 'border-slate-200 bg-white'
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fase {idx + 1}</span>
+                                <div className="mt-1 text-sm font-semibold text-slate-800">{st.name}</div>
+                                {isActive ? (
+                                  <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#1E6ACB]/10 px-2 py-0.5 text-[11px] font-medium text-[#0A3D91]">
+                                    ● Mostrando al alumnado
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => { setScriptIndex(idx); ensureCtx(); updateStep(st.id); }}
+                                  className="rounded-full bg-[#1E6ACB] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-90"
+                                >
+                                  Activar y mostrar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setScriptIndex(idx)}
+                                  className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                                    isFocused ? 'border-[#1E6ACB] text-[#0A3D91]' : 'border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
+                                  }`}
+                                >
+                                  Usar como borrador
+                                </button>
+                              </div>
+                            </div>
+                            <textarea
+                              value={value}
+                              onFocus={() => setScriptIndex(idx)}
+                              onChange={(e) => handleScriptTextChange(idx, e.target.value)}
+                              placeholder={st.name || (idx === 0 ? 'Llegada a urgencias...' : 'Texto del evento...')}
+                              rows={2}
+                              className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                            />
+                          </article>
+                        );
+                      })}
                     </div>
-                  ) : null}
-                </div>
-                {steps && steps.length > 0 ? (
-                  <div className="mt-4 space-y-4">
-                    {steps.map((st, idx) => {
-                      const isActive = currentStepId === st.id;
-                      const isFocused = scriptIndex === idx;
-                      const value = scriptTexts[idx] ?? '';
-                      return (
-                        <article
-                          key={st.id}
-                          className={`rounded-2xl border px-4 py-3 transition ${
-                            isActive
-                              ? 'border-[#1E6ACB] bg-[#1E6ACB]/5 shadow-sm'
-                              : isFocused
-                                ? 'border-slate-300 bg-white shadow-sm'
-                                : 'border-slate-200 bg-white'
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fase {idx + 1}</span>
-                              <div className="mt-1 text-sm font-semibold text-slate-800">{st.name}</div>
-                              {isActive ? (
-                                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#1E6ACB]/10 px-2 py-0.5 text-[11px] font-medium text-[#0A3D91]">
-                                  ● Mostrando al alumnado
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => { setScriptIndex(idx); ensureCtx(); updateStep(st.id); }}
-                                className="rounded-full bg-[#1E6ACB] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-90"
-                              >
-                                Activar y mostrar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setScriptIndex(idx)}
-                                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                                  isFocused ? 'border-[#1E6ACB] text-[#0A3D91]' : 'border-slate-200 text-slate-600 hover:border-[#1E6ACB] hover:text-[#0A3D91]'
-                                }`}
-                              >
-                                Usar como borrador
-                              </button>
-                            </div>
-                          </div>
-                          <textarea
-                            value={value}
-                            onFocus={() => setScriptIndex(idx)}
-                            onChange={(e) => handleScriptTextChange(idx, e.target.value)}
-                            placeholder={st.name || (idx === 0 ? 'Llegada a urgencias...' : 'Texto del evento...')}
-                            rows={2}
-                            className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-                          />
-                        </article>
-                      );
-                    })}
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                      Este escenario no tiene fases definidas. Puedes usar el banner manual para comunicarte con el alumnado.
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                    <button onClick={resetScript} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">Reiniciar textos</button>
+                    <button onClick={() => saveScriptLocal(sessionId, id, scriptTexts, scriptIndex)} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Guardar una copia local del guion">Guardar (local)</button>
+                    <button onClick={() => { clearScriptLocal(sessionId, id); }} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Eliminar la copia local del guion">Borrar guardado</button>
                   </div>
-                ) : (
-                  <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                    Este escenario no tiene fases definidas. Puedes usar el banner manual para comunicarte con el alumnado.
-                  </div>
-                )}
-                <div className="mt-5 flex flex-wrap gap-2 text-xs text-slate-500">
-                  <button onClick={resetScript} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]">Reiniciar textos</button>
-                  <button onClick={() => saveScriptLocal(sessionId, id, scriptTexts, scriptIndex)} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Guardar una copia local del guion">Guardar (local)</button>
-                  <button onClick={() => { clearScriptLocal(sessionId, id); }} className="rounded-full border border-slate-200 px-3 py-1.5 font-medium text-slate-600 transition hover:border-slate-400" title="Eliminar la copia local del guion">Borrar guardado</button>
-                </div>
-                <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4">
-                  <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Acciones rápidas</h4>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      onClick={clearAllVariables}
-                      className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
-                      title="Oculta todas las variables reveladas en la pantalla del alumno"
-                    >
-                      Ocultar constantes
-                    </button>
-                    <button
-                      onClick={triggerAlarm}
-                      className="rounded-full border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
-                      title="Emitir una alarma sonora en las pantallas conectadas"
-                    >
-                      🔔 Alarma
-                    </button>
-                    <button
-                      onClick={forceRefresh}
-                      className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
-                      title="Forzar un refresco inmediato en las pantallas conectadas"
-                    >
-                      ⚡ Refrescar pantallas
-                    </button>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4">
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Acciones rápidas</h4>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        onClick={clearAllVariables}
+                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                        title="Oculta todas las variables reveladas en la pantalla del alumno"
+                      >
+                        Ocultar constantes
+                      </button>
+                      <button
+                        onClick={triggerAlarm}
+                        className="rounded-full border border-red-300 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
+                        title="Emitir una alarma sonora en las pantallas conectadas"
+                      >
+                        🔔 Alarma
+                      </button>
+                      <button
+                        onClick={forceRefresh}
+                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                        title="Forzar un refresco inmediato en las pantallas conectadas"
+                      >
+                        ⚡ Refrescar pantallas
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </section>
-
-              <section
+              </CollapsibleCard>
+              <CollapsibleCard
                 ref={variablesRef}
-                className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
+                id="variables"
+                icon="📊"
+                title="Constantes (edición rápida)"
+                collapsed={collapsedCards.variables}
+                onToggle={() => toggleCard('variables')}
+                className={!isRunning ? 'opacity-60' : ''}
+                bodyClassName={`px-6 pb-6 ${!isRunning ? 'pointer-events-none select-none' : ''}`}
+                headerExtra={variables.length ? (
+                  <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                    {variables.length} constantes
+                  </span>
+                ) : null}
               >
-                <h3 className="text-lg font-semibold text-slate-900">Constantes (edición rápida)</h3>
-                <p className="mt-1 text-sm text-slate-600 max-w-2xl">Introduce un valor provisional y, cuando toque mostrarlo, pulsa <span className="font-medium text-slate-800">Mostrar</span>. Si necesitas retirarlo, usa <span className="font-medium text-slate-800">Ocultar</span>.</p>
-                {variables.length === 0 ? (
-                  <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    No hay constantes configuradas para este escenario.
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-4">
-                    {Object.entries(VARIABLE_GROUP_CONFIG).map(([key, cfg]) => {
-                      const items = variablesGrouped[key] || [];
-                      if (!items.length) return null;
-                      return (
-                        <section key={key} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold text-slate-800">{cfg.title}</h4>
-                            <span className="text-xs text-slate-500">{items.length}</span>
-                          </div>
-                          {cfg.description ? (
-                            <p className="mt-1 text-xs text-slate-500">{cfg.description}</p>
-                          ) : null}
-                          <div className={`mt-3 overflow-y-auto pr-1 ${cfg.maxHeight || ''}`}>
-                            <div className={cfg.grid}>{items.map(renderVariableCard)}</div>
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
+                <div className="space-y-4 pt-2">
+                  <p className="text-sm text-slate-600 max-w-2xl">Introduce un valor provisional y, cuando toque mostrarlo, pulsa <span className="font-medium text-slate-800">Mostrar</span>. Si necesitas retirarlo, usa <span className="font-medium text-slate-800">Ocultar</span>.</p>
+                  {variables.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      No hay constantes configuradas para este escenario.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {Object.entries(VARIABLE_GROUP_CONFIG).map(([key, cfg]) => {
+                        const items = variablesGrouped[key] || [];
+                        if (!items.length) return null;
+                        return (
+                          <section key={key} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-semibold text-slate-800">{cfg.title}</h4>
+                              <span className="text-xs text-slate-500">{items.length}</span>
+                            </div>
+                            {cfg.description ? (
+                              <p className="mt-1 text-xs text-slate-500">{cfg.description}</p>
+                            ) : null}
+                            <div className={`mt-3 overflow-y-auto pr-1 ${cfg.maxHeight || ''}`}>
+                              <div className={cfg.grid}>{items.map(renderVariableCard)}</div>
+                            </div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </CollapsibleCard>
               <div className="grid gap-6 lg:grid-cols-2">
-                <section
+                <CollapsibleCard
                   ref={bannerRef}
-                  className="rounded-2xl border border-slate-100 bg-white/95 px-6 py-5 shadow-sm"
+                  id="banner"
+                  icon="📢"
+                  title="Texto en pantalla (banner)"
+                  collapsed={collapsedCards.banner}
+                  onToggle={() => toggleCard('banner')}
+                  className={!isRunning ? 'opacity-60' : ''}
+                  bodyClassName={`px-6 pb-6 pt-2 ${!isRunning ? 'pointer-events-none select-none' : ''}`}
                 >
-                  <h3 className="text-lg font-semibold text-slate-900">Texto en pantalla (banner)</h3>
-                  <p className="mt-1 text-sm text-slate-600">Publica mensajes puntuales en la pantalla del alumnado. Al guardar, se enviará un aviso visual y sonoro.</p>
-                  <textarea
-                    rows={4}
-                    className="mt-3 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
-                    placeholder="Introduce el texto que verán los alumnos (introducción, instrucciones, etc.)"
-                    value={bannerText}
-                    onChange={(e) => setBannerText(e.target.value)}
-                  />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => saveBanner()}
-                      className="rounded-full px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
-                      style={{ background: colors.primary }}
-                      title="Publicar/actualizar el texto en la pantalla del alumno"
-                    >
-                      Publicar en pantalla
-                    </button>
-                    <button
-                      onClick={() => saveBanner("")}
-                      className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400"
-                      title="Vaciar el banner en la pantalla del alumno"
-                    >
-                      Limpiar banner
-                    </button>
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-600">Publica mensajes puntuales en la pantalla del alumnado. Al guardar, se enviará un aviso visual y sonoro.</p>
+                    <textarea
+                      rows={4}
+                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]"
+                      placeholder="Introduce el texto que verán los alumnos (introducción, instrucciones, etc.)"
+                      value={bannerText}
+                      onChange={(e) => setBannerText(e.target.value)}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => saveBanner()}
+                        className="rounded-full px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+                        style={{ background: colors.primary }}
+                        title="Publicar/actualizar el texto en la pantalla del alumno"
+                      >
+                        Publicar en pantalla
+                      </button>
+                      <button
+                        onClick={() => saveBanner('')}
+                        className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600 transition hover:border-slate-400"
+                        title="Vaciar el banner en la pantalla del alumno"
+                      >
+                        Limpiar banner
+                      </button>
+                    </div>
                   </div>
-                </section>
+                </CollapsibleCard>
 
               </div>
             </div>
@@ -2674,75 +2783,67 @@ export default function Presencial_Instructor() {
 
         {/* Ayuda y enlace público */}
         <aside
-          ref={checklistRef}
-          className={`p-6 rounded-2xl bg-white/95 shadow-sm ring-1 ring-slate-200/60 lg:sticky lg:top-24 ${!isRunning ? 'opacity-90' : ''} flex flex-col gap-4`}
+          className={`lg:sticky lg:top-24 ${!isRunning ? 'opacity-90' : ''}`}
         >
-          <h3 className="text-lg font-semibold flex items-center gap-2">Pantalla del alumno <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">pública</span></h3>
-          {publicUrl ? (
-            <div className="mt-3 space-y-4 text-sm">
-              <div>
-                <p className="text-slate-700">Código para la pantalla de alumnos:</p>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-lg tracking-[0.3em] text-slate-900 shadow-inner">
-                    {prettyPublicCode}
-                  </span>
-                  <button
-                    onClick={copyPublicCode}
-                    className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
-                    title="Copiar código"
-                  >
-                    Copiar código
-                  </button>
+          <div className="flex flex-col gap-5">
+            <CollapsibleCard
+              id="share"
+              icon="🔗"
+              title="Pantalla del alumnado"
+              collapsed={collapsedCards.share}
+              onToggle={() => toggleCard('share')}
+              className="ring-1 ring-slate-200/60"
+              bodyClassName="px-6 pb-6 pt-2"
+              headerExtra={(
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">pública</span>
+                  {publicCode ? (
+                    <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-sm tracking-[0.3em] text-slate-900 shadow-inner">
+                      {prettyPublicCode}
+                    </span>
+                  ) : null}
                 </div>
-              </div>
-              <div>
-                <p className="text-slate-700">Enlace directo (por si prefieres compartirlo):</p>
-                <div className="mt-2 space-y-1">
-                  {publicPath && (
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                      <span className="font-mono bg-slate-100 px-2 py-1 rounded border border-slate-200">{publicPath}</span>
-                      <span className="text-slate-400">(ruta corta)</span>
+              )}
+            >
+              <div className="space-y-4 text-sm">
+                {publicUrl ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 font-mono text-sm tracking-[0.3em] text-slate-900 shadow-inner">
+                        {prettyPublicCode}
+                      </span>
+                      <button
+                        onClick={copyPublicCode}
+                        className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:border-[#1E6ACB] hover:text-[#0A3D91]"
+                        title="Copiar código de acceso"
+                      >
+                        Copiar código
+                      </button>
                     </div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <a
-                      href={publicUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="break-all text-[#0A3D91] underline"
-                    >
-                      {publicUrl}
-                    </a>
-                    <button
-                      onClick={copyPublicUrl}
-                      className="px-3 py-1.5 rounded-lg bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-200"
-                      title="Copiar enlace"
-                    >
-                      Copiar enlace
-                    </button>
-                  </div>
-                </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={publicUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-[#0A3D91] underline"
+                      >
+                        {publicUrl}
+                      </a>
+                      <button
+                        onClick={copyPublicUrl}
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-600 transition hover:bg-slate-200"
+                        title="Copiar enlace público"
+                      >
+                        Copiar enlace
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-slate-600">Genera o publica la sesión para obtener un enlace público.</p>
+                )}
               </div>
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-slate-600">
-              La sesión no tiene public_code todavía.
-            </p>
-          )}
-
-          <details className="mt-6">
-            <summary className="font-semibold cursor-pointer select-none">Cómo funciona</summary>
-            <ol className="list-decimal ml-5 text-sm text-slate-700 space-y-1 mt-2">
-              <li>Pulsa <span className="font-medium">Iniciar</span> cuando comience la simulación.</li>
-              <li>Usa el <span className="font-medium">guion</span> para publicar la narración del caso.</li>
-              <li>Publica <span className="font-medium">constantes</span> o muéstralas/ocúltalas cuando proceda.</li>
-              <li>Cambia la <span className="font-medium">fase</span> según el progreso.</li>
-              <li>Al terminar, pulsa <span className="font-medium">Finalizar</span> para cerrar la sesión.</li>
-            </ol>
-          </details>
-
-          {(
-            <section className="mt-6 flex flex-col gap-4 flex-1">
+            </CollapsibleCard>
+            <section className="rounded-2xl bg-white/95 shadow-sm ring-1 ring-slate-200/60 px-6 py-5 flex flex-col gap-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="text-lg font-semibold text-slate-900">Checklist (ABCDE / Patología / Medicación)</h3>
                 {checklist?.length ? (
@@ -2896,7 +2997,18 @@ export default function Presencial_Instructor() {
                 )}
               </div>
             </section>
-          )}
+
+            <details className="rounded-2xl bg-white/90 px-6 py-4 shadow-sm ring-1 ring-slate-200/60">
+              <summary className="font-semibold cursor-pointer select-none">Cómo funciona</summary>
+              <ol className="list-decimal ml-5 text-sm text-slate-700 space-y-1 mt-2">
+                <li>Pulsa <span className="font-medium">Iniciar</span> cuando comience la simulación.</li>
+                <li>Usa el <span className="font-medium">guion</span> para publicar la narración del caso.</li>
+                <li>Publica <span className="font-medium">constantes</span> o muéstralas/ocúltalas cuando proceda.</li>
+                <li>Cambia la <span className="font-medium">fase</span> según el progreso.</li>
+                <li>Al terminar, pulsa <span className="font-medium">Finalizar</span> para cerrar la sesión.</li>
+              </ol>
+            </details>
+          </div>
         </aside>
       </main>
 

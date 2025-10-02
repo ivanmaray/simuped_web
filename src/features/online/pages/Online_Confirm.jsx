@@ -4,6 +4,15 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 
+function renderStars(weight) {
+  // Map numeric weight (e.g., 0-100) to 1-5 stars. Default to 3 if undefined.
+  const w = Number.isFinite(Number(weight)) ? Number(weight) : 60;
+  const stars = Math.max(1, Math.min(5, Math.round(w / 20)));
+  const filled = "★".repeat(stars);
+  const empty = "☆".repeat(5 - stars);
+  return `${filled}${empty}`;
+}
+
 const MAX_ATTEMPTS = 3;
 const DEFAULT_LIMIT_SECS = 900; // 15 minutos por intento
 
@@ -595,11 +604,13 @@ export default function Online_Confirm() {
                             ].filter(Boolean).join(" · ")}
                           </div>
                         </div>
-                        {esAdmin ? (
-                          <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                            Peso: {r.weight ?? 100}
-                          </span>
-                        ) : null}
+                        <span
+                          className="text-xs font-medium text-amber-600"
+                          title={`Relevancia: ${renderStars(r.weight)} (${Number.isFinite(Number(r.weight)) ? Math.max(1, Math.min(5, Math.round(Number(r.weight) / 20))) : 3}/5)`}
+                          aria-label="Relevancia"
+                        >
+                          {renderStars(r.weight)}
+                        </span>
                       </div>
                     </li>
                   ))}
