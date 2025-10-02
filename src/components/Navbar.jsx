@@ -40,7 +40,7 @@ export default function Navbar({ variant = "auto" }) {
                 className="h-12 md:h-14 lg:h-16 w-auto object-contain"
               />
               {/* Hacemos visible el nombre para mejor contraste/SEO */}
-              <span className="text-slate-900 font-semibold tracking-tight">SimuPed</span>
+              <span className="text-[#0F4C81] text-xl md:text-2xl font-bold tracking-tight">SimuPed</span>
             </Link>
 
             {/* Desktop nav */}

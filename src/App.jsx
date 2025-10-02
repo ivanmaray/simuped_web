@@ -109,12 +109,18 @@ useEffect(() => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 justify-all">
       <style>{`
         .reveal { opacity: 0; transform: translateY(8px); transition: opacity .6s ease, transform .6s ease; }
         .reveal-in { opacity: 1; transform: none; }
         .float-blob { animation: floaty 10s ease-in-out infinite; }
         @keyframes floaty { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(10px) } }
+        /* Justificar textos por defecto en áreas de contenido */
+        .justify-all p,
+        .justify-all .justify-text {
+          text-align: justify;
+          text-justify: inter-word;
+        }
       `}</style>
       {/* NAVBAR */}
       <Navbar />
@@ -160,21 +166,6 @@ useEffect(() => {
               Entrena escenarios clínicos, protocolos y toma de decisiones con
               feedback inmediato y evaluación del desempeño.
             </p>
-            <div className="mt-6 flex gap-3 flex-wrap">
-              <a
-                href="#que-es"
-                className="px-4 py-2 rounded-lg font-semibold text-slate-900 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-                style={{ background: colors.primaryLight }}
-              >
-                Cómo funciona
-              </a>
-              <a
-                href="#login"
-                className="px-4 py-2 rounded-lg border border-white/80 text-white hover:bg-white/10 transition hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-              >
-                Entrar
-              </a>
-            </div>
           </div>
 
           {/* Right: login card */}
@@ -256,12 +247,12 @@ useEffect(() => {
                 <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
                 <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
                   <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 5.5A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v8A1.5 1.5 0 0 1 19.5 15h-15A1.5 1.5 0 0 1 3 13.5v-8Z" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 20h6m-9-5h12" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2">Plataforma online (En desarrollo)</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Plataforma online (En desarrollo)</h4>
                   <p className="text-slate-600">Escenarios guiados con casos pediátricos paso a paso, preguntas interactivas y explicaciones detalladas.</p>
                 </div>
               </div>
@@ -270,12 +261,12 @@ useEffect(() => {
               <div className="group relative h-full">
                 <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
                 <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#1E6ACB]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-6" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2">Evaluación del desempeño</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Evaluación del desempeño</h4>
                   <p className="text-slate-600">Métricas por escenario con fortalezas y áreas de mejora personalizadas para orientar la formación.</p>
                 </div>
               </div>
@@ -285,12 +276,12 @@ useEffect(() => {
                 <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
                 <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
                   <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M16 14a4 4 0 1 1 5 3.87V19a2 2 0 0 1-2 2h-3" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 14a4 4 0 1 0-5 3.87V19a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1.13A4 4 0 0 0 9 14Z" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2">Simulación presencial (próximamente)</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial (próximamente)</h4>
                   <p className="text-slate-600">Simulación colaborativa entre médicos, enfermería y farmacia hospitalaria en UCI pediátrica.</p>
                 </div>
               </div>
