@@ -282,7 +282,7 @@ useEffect(() => {
                     </svg>
                   </div>
                   <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial (próximamente)</h4>
-                  <p className="text-slate-600">Simulación colaborativa entre médicos, enfermería y farmacia hospitalaria en UCI pediátrica.</p>
+                  <p className="text-slate-600">Simulación colaborativa entre el personal de medicina, enfermería y farmacia hospitalaria en la UCI pediátrica.</p>
                 </div>
               </div>
             </Reveal>
@@ -298,7 +298,7 @@ useEffect(() => {
             <p className="text-lg text-slate-700 leading-relaxed max-w-5xl mx-auto text-center">
               <strong>SimuPed</strong> nace en el Hospital Universitario Central de Asturias con un objetivo principal:
               <strong> entrenar a los profesionales sanitarios para responder con rapidez y precisión en situaciones clínicas críticas,</strong>
-              donde no hay margen de error ni de demora. Como objetivo transversal, la plataforma impulsa el
+               donde no hay margen de error y el tiempo apremia. Como objetivo transversal, la plataforma impulsa el
               <strong> uso seguro del medicamento</strong> (prescripción, validación y administración) a lo largo de los escenarios.
             </p>
           </Reveal>
@@ -317,8 +317,8 @@ useEffect(() => {
                 <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
                   <h4 className="text-xl font-semibold mb-2 text-slate-900">Plataforma online</h4>
                   <p className="text-slate-700">
-                    Escenarios interactivos con <strong>variantes por rol</strong> (médico, enfermería, farmacia) que plantean decisiones
-                    paso a paso, con preguntas, feedback inmediato y métricas de desempeño.
+                    Escenarios interactivos con <strong>variantes por rol</strong> (medicina, enfermería, farmacia) que plantean decisiones
+                    paso a paso, con preguntas, <em>feedback</em> inmediato y métricas de desempeño.
                   </p>
                 </div>
               </div>
@@ -329,7 +329,7 @@ useEffect(() => {
                 <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
                   <h4 className="text-xl font-semibold mb-2 text-slate-900">Simulación presencial asistida</h4>
                   <p className="text-slate-700">
-                    Entrenamiento en entorno real <strong>asistido por la herramienta SimuPed</strong> y un instructor, con checklist,
+                    Entrenamiento en entorno real <strong>asistido por la herramienta SimuPed</strong> y un instructor, con <em>checklist</em>,
                     cronometraje y <em>debriefing</em> estructurado para consolidar aprendizajes y trabajo coordinado.
                   </p>
                 </div>
@@ -379,7 +379,7 @@ useEffect(() => {
               { foto: "/equipo/andres-concha.jpg",nombre: "Andrés Concha",      rol: "Jefe UCI Pediátrica HUCA" },
               { foto: "/equipo/laina-oyague.jpg", nombre: "Laina Oyague",        rol: "Residente UGC Farmacia HUCA" },
               { foto: "/equipo/mateo-eiroa.jpg",  nombre: "Mateo Eiroa",         rol: "Residente UGC Farmacia HUCA" },
-              { foto: "/equipo/ana-vivanco.jpg",  nombre: "Ana Vivanco",         rol: "Facultativo UCI Pediátrica HUCA" },
+              { foto: "/equipo/ana-vivanco.jpg",  nombre: "Ana Vivanco",         rol: "Facultativa UCI Pediátrica HUCA" },
               { foto: "/equipo/sara-ovalle.jpg",  nombre: "Sara Ovalle",         rol: "Residente UCI Pediátrica HUCA" },
               { foto: "/equipo/susana-perez.jpg", nombre: "Susana Pérez",        rol: "Supervisora UCI Pediátrica HUCA" },
               { foto: "/equipo/ana-lozano.jpg",   nombre: "Ana Lozano",          rol: "Directora UGC Farmacia HUCA" },
@@ -418,7 +418,8 @@ useEffect(() => {
          px-5 py-10">
           <h3 className="text-3xl font-bold mb-6 text-center text-slate-900">Apoyos y colaboración</h3>
           <Reveal>
-            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de UGC Farmacia y UCI Pediátrica, apoyo institucional del SESPA y el Principado de Asturias y fondos del premio Pharmachallange 5.0 otorgado por Bayer.</p>
+            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de la UGC de Farmacia y la UCI Pediátrica, con el apoyo institucional del SESPA y del Principado de Asturias, y financiado con los fondos del premio Pharmachallenge 5.0 otorgado por Bayer.
+.</p>
           </Reveal>
           <Reveal delay={100}>
             <div className="flex flex-col items-center gap-4">
@@ -467,7 +468,7 @@ useEffect(() => {
               <div className="group relative h-full">
                 <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
                 <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Profesionales adjuntos (medicina, enfermería, farmacia)</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Profesionales de medicina, enfermería y farmacia hospitalaria</h4>
                   <p className="text-slate-600 mb-4">
                     Puedes solicitar acceso individual para entrenar en la plataforma online y participar en sesiones presenciales.
                     La aprobación la realiza el equipo administrador de SimuPed.
