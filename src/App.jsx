@@ -225,23 +225,25 @@ useEffect(() => {
         </div>
       </section>
 
-      {/* ¿QUÉ ES? */}
-      <section id="que-es" className="bg-white">
-        <Reveal>
-          <div className="max-w-6xl mx-auto px-5 py-12 text-center">
-            <h3 className="text-3xl font-bold mb-6 text-slate-900">¿Qué es SimuPed?</h3>
-            <p className="text-lg text-slate-700 max-w-3xl mx-auto leading-relaxed">
-              <strong>SimuPed</strong> es una plataforma de simulación clínica pediátrica que permite entrenar decisiones críticas —online y presencial— mediante escenarios interactivos. Nace en el HUCA y reúne a profesionales de UCI pediátrica, enfermería y farmacia hospitalaria con un objetivo claro: <strong>mejorar la seguridad del paciente pediátrico</strong> y la coordinación del equipo.
-            </p>
-          </div>
-        </Reveal>
-      </section>
 
-      {/* ¿QUÉ OFRECE? */}
-      <section id="que-ofrece" className="bg-white">
+      {/* PROYECTO */}
+      <section id="proyecto" className="bg-white">
         <div className="max-w-6xl mx-auto px-5 py-12">
-          <h3 className="text-3xl font-bold mb-10 text-center text-slate-900">¿Qué ofrece SimuPed?</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">El proyecto SimuPed</h3>
+          <Reveal>
+            <p className="text-lg text-slate-700 leading-relaxed max-w-5xl mx-auto text-center">
+              <strong>SimuPed</strong> es una plataforma de <strong>simulación clínica pediátrica</strong> desarrollada en el Hospital Universitario Central de Asturias (HUCA) que combina <strong>entrenamiento online</strong> y <strong>simulación presencial</strong> para entrenar competencias técnicas y no técnicas del equipo. Integra el <strong>diagnóstico y tratamiento</strong> médicos, los <strong>cuidados y protocolos</strong> de enfermería y la <strong>gestión segura del medicamento</strong>, con participación activa del <strong>farmacéutico hospitalario</strong> (prescripción, validación y administración), reforzando la coordinación interprofesional en escenarios críticos.
+            </p>
+          </Reveal>
+
+          <Reveal>
+            <p className="text-base text-slate-700 leading-relaxed max-w-3xl mx-auto text-center mt-4">
+              Galardonado con el <strong>Primer Premio PharmaChallenge 5.0</strong> (Bayer) por su innovación e impacto en seguridad del paciente pediátrico.
+            </p>
+          </Reveal>
+
+          {/* Tres áreas del proyecto: Plataforma, Evaluación, Presencial */}
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
             <Reveal>
               <div className="group relative h-full">
                 <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
@@ -252,7 +254,7 @@ useEffect(() => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 20h6m-9-5h12" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Plataforma online (En desarrollo)</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Plataforma online</h4>
                   <p className="text-slate-600">Escenarios guiados con casos pediátricos paso a paso, preguntas interactivas y explicaciones detalladas.</p>
                 </div>
               </div>
@@ -281,76 +283,63 @@ useEffect(() => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 14a4 4 0 1 0-5 3.87V19a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1.13A4 4 0 0 0 9 14Z" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial (próximamente)</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial</h4>
                   <p className="text-slate-600">Simulación colaborativa entre el personal de medicina, enfermería y farmacia hospitalaria en la UCI pediátrica.</p>
-                </div>
-              </div>
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* PROYECTO */}
-      <section id="proyecto" className="bg-white">
-        <div className="max-w-6xl mx-auto px-5 py-12">
-          <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Proyecto</h3>
-          <Reveal>
-            <p className="text-lg text-slate-700 leading-relaxed max-w-5xl mx-auto text-center">
-              <strong>SimuPed</strong> nace en el Hospital Universitario Central de Asturias con un objetivo principal:
-              <strong> entrenar a los profesionales sanitarios para responder con rapidez y precisión en situaciones clínicas críticas,</strong>
-               donde no hay margen de error y el tiempo apremia. Como objetivo transversal, la plataforma impulsa el
-              <strong> uso seguro del medicamento</strong> (prescripción, validación y administración) a lo largo de los escenarios.
-            </p>
-          </Reveal>
-
-          <Reveal>
-            <p className="text-base text-slate-700 leading-relaxed max-w-3xl mx-auto text-center mt-4">
-              Este trabajo ha sido reconocido con el <strong>Primer Premio en la 5ª edición del PharmaChallenge</strong>, organizado por Bayer, lo que avala su carácter innovador y su impacto en la práctica clínica.
-            </p>
-          </Reveal>
-
-          {/* Dos líneas del proyecto */}
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            <Reveal>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Plataforma online</h4>
-                  <p className="text-slate-700">
-                    Escenarios interactivos con <strong>variantes por rol</strong> (medicina, enfermería, farmacia) que plantean decisiones
-                    paso a paso, con preguntas, <em>feedback</em> inmediato y métricas de desempeño.
-                  </p>
-                </div>
-              </div>
-            </Reveal>
-            <Reveal delay={100}>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Simulación presencial asistida</h4>
-                  <p className="text-slate-700">
-                    Entrenamiento en entorno real <strong>asistido por la herramienta SimuPed</strong> y un instructor, con <em>checklist</em>,
-                    cronometraje y <em>debriefing</em> estructurado para consolidar aprendizajes y trabajo coordinado.
-                  </p>
                 </div>
               </div>
             </Reveal>
           </div>
 
           {/* Etiquetas del proyecto */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3 opacity-90">
-            <span className="text-sm px-3 py-1 rounded border bg-slate-100 border-slate-200">HUCA — UGC Farmacia & UCI Pediátrica</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primary + '14', borderColor: colors.primary }}>Pediatría</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Enfermería</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Farmacia hospitalaria</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primary + '14', borderColor: colors.primary }}>UCI Pediátrica</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Simulación clínica</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Seguridad del paciente</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Uso seguro del medicamento</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Medicamentos de alto riesgo</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primary + '14', borderColor: colors.primary }}>Prescripción</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.primaryLight + '22', borderColor: colors.primaryLight }}>Administración de medicamentos</span>
-            <span className="text-sm px-3 py-1 rounded border" style={{ background: colors.muted, borderColor: '#E2E8F0' }}>Validación farmacéutica</span>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3 opacity-95">
+            {/* Ámbito y metodología */}
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border" style={{ background: colors.primary + '12', borderColor: colors.primary, color: colors.primary }}>
+              Pediatría crítica
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border" style={{ background: colors.primary + '12', borderColor: colors.primary, color: colors.primary }}>
+              Atención urgente
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border" style={{ background: colors.primaryLight + '18', borderColor: colors.primaryLight, color: colors.primary }}>
+              Simulación clínica
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-slate-50 border-slate-200 text-slate-700">
+              Diagnóstico clínico
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-slate-50 border-slate-200 text-slate-700">
+              Entrenamiento interprofesional
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-slate-50 border-slate-200 text-slate-700">
+              Trabajo en equipo
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-slate-50 border-slate-200 text-slate-700">
+              Comunicación clínica
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-slate-50 border-slate-200 text-slate-700">
+              Protocolos
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-slate-50 border-slate-200 text-slate-700">
+              Checklists
+            </span>
+
+            {/* Seguridad del paciente y medicamento */}
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border" style={{ background: colors.primary + '12', borderColor: colors.primary, color: colors.primary }}>
+              Seguridad del paciente
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border" style={{ background: colors.primaryLight + '18', borderColor: colors.primaryLight, color: colors.primary }}>
+              Uso seguro del medicamento
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-white/70 border-slate-200 text-slate-700">
+              Medicamentos de alto riesgo
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-white/70 border-slate-200 text-slate-700">
+              Validación farmacéutica
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-white/70 border-slate-200 text-slate-700">
+              Prescripción
+            </span>
+            <span className="inline-flex items-center text-sm px-3 py-1.5 rounded-full border bg-white/70 border-slate-200 text-slate-700">
+              Administración de medicamentos
+            </span>
           </div>
         </div>
       </section>
@@ -459,71 +448,89 @@ useEffect(() => {
 
       {/* CÓMO PARTICIPAR */}
       <section id="como-participar" className="bg-white">
+        <div aria-hidden className="h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
         <div className="max-w-6xl mx-auto px-5 py-12">
-          <h3 className="text-3xl font-bold mb-10 text-center text-slate-900">¿Cómo participar?</h3>
+          <h3 className="text-[clamp(1.8rem,3vw,2.25rem)] font-bold tracking-tight mb-10 text-center text-slate-900">
+            ¿Cómo participar?
+          </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Profesionales */}
-            <Reveal>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Profesionales de medicina, enfermería y farmacia hospitalaria</h4>
-                  <p className="text-slate-600 mb-4">
-                    Puedes solicitar acceso individual para entrenar en la plataforma online y participar en sesiones presenciales.
-                    La aprobación la realiza el equipo administrador de SimuPed.
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    <a href="/registro" className="px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow" style={{ background: colors.teal }}>
-                      Solicitar acceso
-                    </a>
-                    <a href="#que-ofrece" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white/60 transition">
-                      Qué incluye
-                    </a>
+            <div className="group relative h-full">
+              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
+              <div className="relative h-full p-[1px] rounded-3xl bg-gradient-to-br from-white via-slate-200 to-white/60">
+                <div className="h-full p-6 rounded-[calc(1.5rem-1px)] border border-white/80 bg-white/95 backdrop-blur shadow-sm transition-all duration-500 ease-out group-hover:shadow-xl group-hover:-translate-y-1">
+                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
+                    {/* Cruz médica */}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16M4 12h16" />
+                    </svg>
                   </div>
+                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Profesionales</h4>
+                  <p className="text-slate-600 mb-4">
+                    Solicita acceso individual para entrenar en la plataforma online y participar en sesiones de simulación presencial.
+                  </p>
+                  <a href="/registro" className="inline-block px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow transition hover:-translate-y-[1px]" style={{ background: '#6ED3C2' }}>
+                    Solicitar acceso
+                  </a>
                 </div>
               </div>
-            </Reveal>
-            <Reveal delay={100}>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
+            </div>
+
+            {/* Residentes y estudiantes */}
+            <div className="group relative h-full">
+              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
+              <div className="relative h-full p-[1px] rounded-3xl bg-gradient-to-br from-white via-slate-200 to-white/60">
+                <div className="h-full p-6 rounded-[calc(1.5rem-1px)] border border-white/80 bg-white/95 backdrop-blur shadow-sm transition-all duration-500 ease-out group-hover:shadow-xl group-hover:-translate-y-1">
+                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
+                    {/* Birrete */}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10l9-5 9 5-9 5-9-5z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 12v5a2 2 0 01-2 2H7a2 2 0 01-2-2v-5" />
+                    </svg>
+                  </div>
                   <h4 className="text-xl font-semibold mb-2 text-slate-900">Residentes y estudiantes</h4>
                   <p className="text-slate-600 mb-4">
-                    El alta se tramita a través de tu centro/tutor. Si ya tienes invitación, entra con tus credenciales.
-                    Si aún no la tienes, solicítala a tu responsable o escríbenos.
+                    Si tienes invitación, accede con tus credenciales. Si no, solicítala a tu tutor o centro.
                   </p>
-                  <div className="flex flex-wrap gap-3">
-                    <a href="#login" className="px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow" style={{ background: colors.cyan }}>
-                      Tengo invitación
-                    </a>
-                    <a href="mailto:contacto@simuped.com?subject=Alta%20SimuPed%20(Residentes/Estudiantes)" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white/60 transition">
-                      Pedir invitación
-                    </a>
-                  </div>
+                  <a href="#login" className="inline-block px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow transition hover:-translate-y-[1px]" style={{ background: '#8FD6FF' }}>
+                    Acceder con invitación
+                  </a>
                 </div>
               </div>
-            </Reveal>
-            <Reveal delay={200}>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
+            </div>
+
+            {/* Centros y unidades */}
+            <div className="group relative h-full">
+              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
+              <div className="relative h-full p-[1px] rounded-3xl bg-gradient-to-br from-white via-slate-200 to-white/60">
+                <div className="h-full p-6 rounded-[calc(1.5rem-1px)] border border-white/80 bg-white/95 backdrop-blur shadow-sm transition-all duration-500 ease-out group-hover:shadow-xl group-hover:-translate-y-1">
+                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
+                    {/* Edificio */}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M6 21V7a2 2 0 012-2h8a2 2 0 012 2v14M9 10h2M13 10h2M9 14h2M13 14h2" />
+                    </svg>
+                  </div>
                   <h4 className="text-xl font-semibold mb-2 text-slate-900">Centros y unidades</h4>
                   <p className="text-slate-600 mb-4">
-                    Implanta SimuPed en tu servicio (UCI pediátrica, enfermería, farmacia hospitalaria).
-                    Ofrecemos demo, soporte de implantación, licencias y métricas de resultados.
+                    Implanta SimuPed en tu servicio: demo, soporte de implantación, licencias y métricas.
                   </p>
-                  <div className="flex flex-wrap gap-3">
-                    <a href="mailto:contacto@simuped.com?subject=Solicitar%20demo%20SimuPed" className="px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow" style={{ background: colors.apricot }}>
-                      Solicitar demo
-                    </a>
-                    <a href="#proyecto" className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-white/60 transition">
-                      Ficha técnica
-                    </a>
-                  </div>
+                  <a href="mailto:contacto@simuped.com?subject=Solicitar%20demo%20SimuPed" className="inline-block px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow transition hover:-translate-y-[1px]" style={{ background: '#F9C891' }}>
+                    Próximamente
+                  </a>
                 </div>
               </div>
-            </Reveal>
+            </div>
+          </div>
+
+          {/* CTA final */}
+          <div className="mt-10 text-center">
+            <a
+              href="mailto:contacto@simuped.com?subject=Contacto%20SimuPed"
+              className="inline-block px-5 py-3 rounded-lg font-semibold text-white transition hover:-translate-y-[1px] hover:shadow"
+              style={{ background: '#0A3D91' }}>
+              Contactar con el equipo
+            </a>
           </div>
         </div>
       </section>
