@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useOptionalAuth } from "../auth.jsx";
-import logo from "../assets/logo.png";
+import logo from "../assets/logo-simuped.avif";
 
 export default function Navbar({ variant = "auto" }) {
   const auth = useOptionalAuth();
