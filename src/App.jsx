@@ -255,7 +255,7 @@ useEffect(() => {
                     </svg>
                   </div>
                   <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Plataforma online</h4>
-                  <p className="text-slate-600">Escenarios guiados con casos pediátricos paso a paso, preguntas interactivas y explicaciones detalladas.</p>
+                  <p className="text-slate-600">Entrena con <strong>casos pediátricos interactivos</strong>, guiados paso a paso y adaptados a distintos niveles de complejidad. Cada escenario combina preguntas clínicas, toma de decisiones y explicación razonada de cada respuesta.</p>
                 </div>
               </div>
             </Reveal>
@@ -269,7 +269,7 @@ useEffect(() => {
                     </svg>
                   </div>
                   <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Evaluación del desempeño</h4>
-                  <p className="text-slate-600">Métricas por escenario con fortalezas y áreas de mejora personalizadas para orientar la formación.</p>
+                  <p className="text-slate-600">Recibe <strong>retroalimentación inmediata y personalizada</strong> en cada escenario: fortalezas, áreas de mejora y evolución competencial, con métricas orientadas al aprendizaje y la práctica asistencial.</p>
                 </div>
               </div>
             </Reveal>
@@ -283,8 +283,8 @@ useEffect(() => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 14a4 4 0 1 0-5 3.87V19a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1.13A4 4 0 0 0 9 14Z" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial</h4>
-                  <p className="text-slate-600">Simulación colaborativa entre el personal de medicina, enfermería y farmacia hospitalaria en la UCI pediátrica.</p>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial asistida</h4>
+                  <p className="text-slate-600">Participa en <strong>sesiones colaborativas de simulación clínica</strong> entre profesionales de medicina, enfermería y farmacia hospitalaria, que integran el <strong>diagnóstico, tratamiento, cuidados y gestión segura del medicamento</strong>, fortaleciendo la coordinación y comunicación en el equipo asistencial.</p>
                 </div>
               </div>
             </Reveal>
