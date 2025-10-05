@@ -278,9 +278,13 @@ useEffect(() => {
                 <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
                 <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
                   <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 14a4 4 0 1 1 5 3.87V19a2 2 0 0 1-2 2h-3" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 14a4 4 0 1 0-5 3.87V19a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1.13A4 4 0 0 0 9 14Z" />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      {/* Cabezas */}
+                      <circle cx="8" cy="9" r="3" />
+                      <circle cx="16" cy="9" r="3" />
+                      {/* Hombros/bases */}
+                      <path d="M4 20v-1a4 4 0 0 1 8 0v1H4z" />
+                      <path d="M12 20v-1a4 4 0 0 1 8 0v1h-8z" />
                     </svg>
                   </div>
                   <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial asistida</h4>
