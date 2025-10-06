@@ -575,15 +575,17 @@ export default function Online_Main() {
                 <div className="relative z-10 flex flex-col h-full gap-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="inline-flex items-center gap-2 rounded-full bg-[#0A3D91]/10 px-3 py-1 text-xs font-medium text-[#0A3D91]">
-                        <AcademicCapIcon className="h-4 w-4" />
-                        Escenario clínico
-                      </div>
-                      {isNuevo && (
-                        <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm">
-                          Nuevo
+                      <div className="flex items-center gap-2 whitespace-nowrap sm:flex-nowrap flex-wrap">
+                        <span className="inline-flex items-center gap-2 rounded-full bg-[#0A3D91]/10 px-3 py-1 text-xs font-medium text-[#0A3D91]">
+                          <AcademicCapIcon className="h-4 w-4" />
+                          Escenario clínico
                         </span>
-                      )}
+                        {isNuevo && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm">
+                            Nuevo
+                          </span>
+                        )}
+                      </div>
                       <h3 className="mt-3 text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
                         {esc.title || "Escenario sin título"}
                       </h3>

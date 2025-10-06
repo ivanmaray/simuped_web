@@ -129,7 +129,7 @@ useEffect(() => {
       {/* HERO */}
       <section
         id="inicio"
-        className="w-full overflow-visible md:overflow-hidden"
+        className="w-full overflow-visible md:overflow-hidden scroll-mt-28"
         style={{
           background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryLight} 100%)`,
         }}
@@ -227,7 +227,7 @@ useEffect(() => {
 
 
       {/* PROYECTO */}
-      <section id="proyecto" className="bg-white">
+      <section id="proyecto" className="bg-white scroll-mt-28">
         <div className="max-w-6xl mx-auto px-5 py-12">
           <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">El proyecto SimuPed</h3>
           <Reveal>
@@ -348,7 +348,7 @@ useEffect(() => {
         </div>
       </section>
   {/* EQUIPO */}
-      <section id="equipo" className="bg-white">
+      <section id="equipo" className="bg-white scroll-mt-28">
         <div className="max-w-6xl mx-auto px-5 py-12">
           <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo SimuPed</h3>
           {/* Logos institucionales (HUCA / SESPA) */}
@@ -406,7 +406,7 @@ useEffect(() => {
       </section>
 
       {/* APOYOS */}
-      <section id="apoyos" className="bg-white">
+      <section id="apoyos" className="bg-white scroll-mt-28">
         <div className="max-w-6xl mx-auto
          px-5 py-10">
           <h3 className="text-3xl font-bold mb-6 text-center text-slate-900">Apoyos y colaboración</h3>
@@ -451,7 +451,7 @@ useEffect(() => {
       </section>
 
       {/* CÓMO PARTICIPAR */}
-      <section id="como-participar" className="bg-white">
+      <section id="como-participar" className="bg-white scroll-mt-28">
         <div aria-hidden className="h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
         <div className="max-w-6xl mx-auto px-5 py-12">
           <h3 className="text-[clamp(1.8rem,3vw,2.25rem)] font-bold tracking-tight mb-10 text-center text-slate-900">

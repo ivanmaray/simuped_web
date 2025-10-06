@@ -259,7 +259,7 @@ export default function Evaluacion_Main() {
             // ⚠️ Importante: no hacemos embed a scenarios para evitar restricciones RLS adicionales
             const { data: resRows, error: resErr } = await supabase
               .from("case_resources")
-              .select("id, scenario_id, source, url, year, weight")
+              .select("id, scenario_id, title, source, url, year, weight")
               .in("scenario_id", scenarioIdsStr)
               .order("weight", { ascending: true })
               .order("id", { ascending: true });
@@ -272,7 +272,7 @@ export default function Evaluacion_Main() {
               for (const r of (resRows || [])) {
                 const sid = r.scenario_id;
                 if (!map[sid]) map[sid] = { title: titleByScenario[sid] || `Escenario ${sid}`, items: [] };
-                map[sid].items.push({ id: r.id, source: r.source, url: r.url, year: r.year, access: r.access });
+                map[sid].items.push({ id: r.id, title: r.title, source: r.source, url: r.url, year: r.year, access: r.access });
               }
               console.debug("[Evaluacion] loaded resources:", { scenarioIdsRaw, scenarioIdsStr, count: (resRows || []).length });
               setResourcesByScenario(map);
@@ -965,10 +965,11 @@ export default function Evaluacion_Main() {
                           rel="noreferrer"
                           className="text-[#0A3D91] hover:underline font-medium"
                         >
-                          {item.source || 'Recurso'}
+                          {item.title || item.source || 'Recurso'}
                         </a>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1">
                           {item.year ? <span>Año: {item.year}</span> : null}
+                          {item.source ? <span>Fuente: {item.source}</span> : null}
                           {item.access ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5">
                               {item.access}

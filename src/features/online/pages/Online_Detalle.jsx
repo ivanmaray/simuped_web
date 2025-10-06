@@ -65,9 +65,18 @@ function formatRole(rol) {
 }
 
 function isTimedStep(step) {
-  if (!step?.description) return false;
-  const desc = String(step.description).toLowerCase();
-  return desc.includes("intervención urgente");
+  if (!step) return false;
+  // Si cualquier pregunta del paso tiene time_limit definido, el paso es cronometrado
+  if (Array.isArray(step.questions) && step.questions.some((q) => Number(q?.time_limit) > 0)) {
+    return true;
+  }
+  // Compatibilidad hacia atrás: permitir activar por texto en la descripción
+  const desc = String(step.description || "").toLowerCase();
+  return (
+    desc.includes("intervención urgente") ||
+    desc.includes("tiempo limitado") ||
+    desc.includes("timebox")
+  );
 }
 
 // Normaliza el rol del usuario a 'medico' | 'enfermeria' | 'farmacia'
@@ -108,6 +117,7 @@ function normalizeOptions(opts) {
   return [];
 }
 
+
 function toArray(v) {
   if (Array.isArray(v)) return v;
   if (v == null) return [];
@@ -116,6 +126,24 @@ function toArray(v) {
   }
   if (typeof v === 'object') return Object.values(v);
   return [];
+}
+
+
+function joinItems(val) {
+  if (val == null) return '—';
+  if (Array.isArray(val)) return val.map(String).join('; ');
+  return String(val);
+}
+
+function labelizeKey(k) {
+  const s = String(k || '').trim();
+  if (!s) return '';
+  // Reemplaza guiones/underscores por espacios y capitaliza palabras
+  return s
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b(\p{L})(\p{L}*)/gu, (_, a, b) => a.toUpperCase() + b);
 }
 
 function getOptionLabelByIndex(q, idx) {
@@ -1199,17 +1227,28 @@ export default function Online_Detalle() {
                     {brief.demographics.sex && <Row label="Sexo" value={brief.demographics.sex} />}
                   </>
                 )}
-                {brief?.chief_complaint && <Row label="Motivo" value={brief.chief_complaint} />}
+                {brief?.chief_complaint && (
+                  <p className="text-sm text-slate-800 mb-2">{brief.chief_complaint}</p>
+                )}
               </div>
               <div>
-                {Array.isArray(toArray(brief?.history)) && toArray(brief?.history).length > 0 ? (
-                  <ul className="list-disc pl-5 text-sm text-slate-700">
-                    {toArray(brief?.history).map((h, i) => (
-                      <li key={i}>{h}</li>
-                    ))}
-                  </ul>
-                ) : brief?.history ? (
-                  <p className="text-sm text-slate-700">{String(brief.history)}</p>
+                {brief?.history ? (
+                  typeof brief.history === 'object' && !Array.isArray(brief.history) ? (
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {Object.entries(brief.history).map(([key, val]) => (
+                        <li key={key}>
+                          <span className="font-medium">{labelizeKey(key)}: </span>
+                          {joinItems(val)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : Array.isArray(brief.history) ? (
+                    <ul className="list-disc pl-5 text-sm text-slate-700">
+                      {brief.history.map((item, i) => (<li key={i}>{String(item)}</li>))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-700">{String(brief.history)}</p>
+                  )
                 ) : (
                   <p className="text-slate-500 text-sm">—</p>
                 )}
