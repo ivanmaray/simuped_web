@@ -7,6 +7,24 @@ import Navbar from "../../components/Navbar.jsx";
 const COLORS = { primary: "#1a69b8" };
 const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
 
+// Función para verificar fuerza de contraseña
+function getPasswordStrength(password) {
+  let strength = 0;
+  const checks = {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    number: /\d/.test(password),
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+  };
+
+  strength = Object.values(checks).filter(Boolean).length;
+
+  if (strength <= 2) return { level: "weak", color: "text-red-600", label: "Débil" };
+  if (strength <= 3) return { level: "medium", color: "text-yellow-600", label: "Media" };
+  return { level: "strong", color: "text-green-600", label: "Fuerte" };
+}
+
 // Helpers DNI
 function normalizarDNI(v) {
   return (v || "").toString().toUpperCase().replace(/\s|-/g, "");
@@ -61,6 +79,7 @@ export default function Auth_Registro() {
   const [errorMsg, setErrorMsg] = useState("");
   const [dniError, setDniError] = useState("");
   const [catsError, setCatsError] = useState(false);
+  const [showPasswordStrength, setShowPasswordStrength] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -297,7 +316,8 @@ export default function Auth_Registro() {
     !!apellidos.trim() &&
     validarEmail(emailNormPreview) &&
     !!(password || "").trim() &&
-    password.length >= 6 &&
+    password.length >= 8 &&
+    getPasswordStrength(password).level === 'strong' &&
     password === confirmPassword &&
     !!rol &&
     !!unidad &&
@@ -326,7 +346,7 @@ export default function Auth_Registro() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+        <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm space-y-8">
           {/* Nombre y Apellidos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="block">
@@ -376,10 +396,44 @@ export default function Auth_Registro() {
                 required
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setShowPasswordStrength(e.target.value.length > 0);
+                }}
                 placeholder="Mínimo 6 caracteres"
                 autoComplete="new-password"
               />
+              {showPasswordStrength && password && (
+                <div className="mt-2 text-xs">
+                  <div className={`flex items-center gap-2 ${getPasswordStrength(password).color}`}>
+                    <span className="font-medium">
+                      Fuerza: {getPasswordStrength(password).label}
+                    </span>
+                    <div className="flex gap-1">
+                      <div className={`h-1 w-4 rounded ${getPasswordStrength(password).level === 'weak' ? 'bg-red-400' : getPasswordStrength(password).level === 'medium' ? 'bg-yellow-400' : 'bg-green-400'}`} />
+                      <div className={`h-1 w-4 rounded ${getPasswordStrength(password).level === 'medium' || getPasswordStrength(password).level === 'strong' ? 'bg-yellow-400' : 'bg-gray-300'}`} />
+                      <div className={`h-1 w-4 rounded ${getPasswordStrength(password).level === 'strong' ? 'bg-green-400' : 'bg-gray-300'}`} />
+                    </div>
+                  </div>
+                  <ul className="mt-1 space-y-1 text-slate-600">
+                    <li className={`flex items-center gap-1 ${password.length >= 8 ? 'text-green-600' : 'text-slate-500'}`}>
+                      <span className="text-xs">•</span> 8+ caracteres
+                    </li>
+                    <li className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-green-600' : 'text-slate-500'}`}>
+                      <span className="text-xs">•</span> Mayúscula
+                    </li>
+                    <li className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-green-600' : 'text-slate-500'}`}>
+                      <span className="text-xs">•</span> Minúscula
+                    </li>
+                    <li className={`flex items-center gap-1 ${/\d/.test(password) ? 'text-green-600' : 'text-slate-500'}`}>
+                      <span className="text-xs">•</span> Número
+                    </li>
+                    <li className={`flex items-center gap-1 ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password) ? 'text-green-600' : 'text-slate-500'}`}>
+                      <span className="text-xs">•</span> Carácter especial
+                    </li>
+                  </ul>
+                </div>
+              )}
             </label>
             <label className="block">
               <span className="text-sm text-slate-700">Repite la contraseña</span>
@@ -489,7 +543,7 @@ export default function Auth_Registro() {
                 No hay categorías disponibles.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
                 {categorias.map((cat) => {
                   const checked = areasInteres.includes(cat.name);
                   return (

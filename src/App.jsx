@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Navbar from "./components/Navbar.jsx"
+
+// Hero videos disponibles
+const heroVideos = ['/videohero1.gif', '/videohero2.gif', '/videohero3.gif']
 
 // Paleta SimuPed (alineada al logo)
 const colors = {
@@ -44,8 +47,20 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [mountedUI, setMountedUI] = useState(false)
+  const [heroVideo, setHeroVideo] = useState('/videohero1.gif')
 
-  async function handleLogin(e) {
+  const miembros = useMemo(() => [
+    { foto: "/equipo/ivan-maray.jpg",   nombre: "Iván Maray",         rol: "Facultativo UGC Farmacia HUCA" },
+    { foto: "/equipo/andres-concha.jpg",nombre: "Andrés Concha",      rol: "Jefe UCI Pediátrica HUCA" },
+    { foto: "/equipo/laina-oyague.jpg", nombre: "Laina Oyague",        rol: "Residente UGC Farmacia HUCA" },
+    { foto: "/equipo/mateo-eiroa.jpg",  nombre: "Mateo Eiroa",         rol: "Residente UGC Farmacia HUCA" },
+    { foto: "/equipo/ana-vivanco.jpg",  nombre: "Ana Vivanco",         rol: "Facultativa UCI Pediátrica HUCA" },
+    { foto: "/equipo/sara-ovalle.jpg",  nombre: "Sara Ovalle",         rol: "Residente UCI Pediátrica HUCA" },
+    { foto: "/equipo/susana-perez.jpg", nombre: "Susana Pérez",        rol: "Supervisora UCI Pediátrica HUCA" },
+    { foto: "/equipo/ana-lozano.jpg",   nombre: "Ana Lozano",          rol: "Directora UGC Farmacia HUCA" },
+  ], []);
+
+  const handleLogin = useCallback(async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
@@ -82,7 +97,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [navigate]);
 
 useEffect(() => {
   let mounted = true;
@@ -105,6 +120,10 @@ useEffect(() => {
 }, [navigate]);
 
   useEffect(() => {
+    // Generar un video aleatorio al cargar el componente
+    const randomVideo = heroVideos[Math.floor(Math.random() * heroVideos.length)];
+    setHeroVideo(randomVideo);
+
     setMountedUI(true);
   }, []);
 
@@ -129,12 +148,24 @@ useEffect(() => {
       {/* HERO */}
       <section
         id="inicio"
-        className="w-full overflow-visible md:overflow-hidden scroll-mt-28"
-        style={{
-          background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryLight} 100%)`,
-        }}
+        className="relative w-full overflow-visible md:overflow-hidden scroll-mt-28"
       >
-        <div className="relative max-w-6xl mx-auto px-6 lg:px-8 py-16 sm:py-20 grid gap-10 md:gap-12 xl:gap-16 md:grid-cols-[1.2fr_0.8fr] items-center">
+        {/* Background GIF */}
+        <img
+          src={heroVideo}
+          alt=""
+          aria-hidden
+          className="absolute inset-0 w-full h-full object-cover z-0"
+        />
+        {/* Overlay for contrast */}
+        <div
+          aria-hidden
+          className="absolute inset-0 z-[1]"
+          style={{
+            background: `linear-gradient(135deg, ${colors.primary}BB 0%, ${colors.primaryLight}CC 100%)`
+          }}
+        />
+        <div className="relative z-[2] max-w-6xl mx-auto px-6 lg:px-8 py-16 sm:py-20 grid gap-10 md:gap-12 xl:gap-16 md:grid-cols-[1.2fr_0.8fr] items-center min-h-[50vh]">
           {/* Marca de agua: logo en blanco para hero */}
           <img
             src="/logo-negative.png"
@@ -147,14 +178,14 @@ useEffect(() => {
         -left-[8.6rem] xl:-left-[110.6em] 2xl:-left-[12.6rem]
         w-[20.4vw] xl:w-[18.7vw] 2xl:w-[17vw]
         max-w-none h-auto
-        opacity-15 select-none pointer-events-none z-0
+        opacity-15 select-none pointer-events-none z-[1]
       "
             style={{ filter: 'none' }}
           />
           {/* Decorative background accents */}
-          <div aria-hidden className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full blur-3xl opacity-20 float-blob z-0"
+          <div aria-hidden className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full blur-3xl opacity-20 float-blob z-[1]"
                style={{ background: 'radial-gradient(closest-side, rgba(255,255,255,0.7), rgba(255,255,255,0))' }} />
-          <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full blur-3xl opacity-20 float-blob z-0"
+          <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full blur-3xl opacity-20 float-blob z-[1]"
                style={{ background: 'radial-gradient(closest-side, rgba(255,255,255,0.55), rgba(255,255,255,0))' }} />
 
           {/* Left: headline and actions */}
@@ -366,53 +397,37 @@ useEffect(() => {
               onError={(e) => (e.currentTarget.style.display = 'none')}
             />
           </div>
-          {(() => {
-            const miembros = [
-              { foto: "/equipo/ivan-maray.jpg",   nombre: "Iván Maray",         rol: "Facultativo UGC Farmacia HUCA" },
-              { foto: "/equipo/andres-concha.jpg",nombre: "Andrés Concha",      rol: "Jefe UCI Pediátrica HUCA" },
-              { foto: "/equipo/laina-oyague.jpg", nombre: "Laina Oyague",        rol: "Residente UGC Farmacia HUCA" },
-              { foto: "/equipo/mateo-eiroa.jpg",  nombre: "Mateo Eiroa",         rol: "Residente UGC Farmacia HUCA" },
-              { foto: "/equipo/ana-vivanco.jpg",  nombre: "Ana Vivanco",         rol: "Facultativa UCI Pediátrica HUCA" },
-              { foto: "/equipo/sara-ovalle.jpg",  nombre: "Sara Ovalle",         rol: "Residente UCI Pediátrica HUCA" },
-              { foto: "/equipo/susana-perez.jpg", nombre: "Susana Pérez",        rol: "Supervisora UCI Pediátrica HUCA" },
-              { foto: "/equipo/ana-lozano.jpg",   nombre: "Ana Lozano",          rol: "Directora UGC Farmacia HUCA" },
-            ];
-            return (
-              <Reveal>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {miembros.map((m, idx) => (
-                    <Reveal delay={idx * 60} key={m.nombre}>
-                      <article
-                        className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition"
-                      >
-                        <img
-                          src={m.foto}
-                          alt={m.nombre}
-                          className="h-16 w-16 object-cover bg-slate-200"
-                          onError={(e) => (e.currentTarget.style.display = 'none')}
-                        />
-                        <div>
-                          <h3 className="text-xl font-semibold text-slate-900 leading-tight">{m.nombre}</h3>
-                          <p className="text-slate-600">{m.rol}</p>
-                        </div>
-                      </article>
-                    </Reveal>
-                  ))}
-                </div>
-              </Reveal>
-            );
-          })()}
+          <Reveal>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {miembros.map((m, idx) => (
+                <Reveal delay={idx * 60} key={m.nombre}>
+                  <article
+                    className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition"
+                  >
+                    <img
+                      src={m.foto}
+                      alt={m.nombre}
+                      className="h-16 w-16 object-cover bg-slate-200"
+                      onError={(e) => (e.currentTarget.style.display = 'none')}
+                    />
+                    <div>
+                      <h3 className="text-xl font-semibold text-slate-900 leading-tight">{m.nombre}</h3>
+                      <p className="text-slate-600">{m.rol}</p>
+                    </div>
+                  </article>
+                </Reveal>
+              ))}
+            </div>
+          </Reveal>
         </div>
       </section>
 
       {/* APOYOS */}
       <section id="apoyos" className="bg-white scroll-mt-28">
-        <div className="max-w-6xl mx-auto
-         px-5 py-10">
+        <div className="max-w-6xl mx-auto px-5 py-10">
           <h3 className="text-3xl font-bold mb-6 text-center text-slate-900">Apoyos y colaboración</h3>
           <Reveal>
-            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de la UGC de Farmacia y la UCI Pediátrica, con el apoyo institucional del SESPA y del Principado de Asturias, y financiado con los fondos del premio Pharmachallenge 5.0 otorgado por Bayer.
-.</p>
+            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de la UGC de Farmacia y la UCI Pediátrica, con el apoyo institucional del SESPA y del Principado de Asturias, y financiado con los fondos del premio Pharmachallenge 5.0 otorgado por Bayer.</p>
           </Reveal>
           <Reveal delay={100}>
             <div className="flex flex-col items-center gap-4">
