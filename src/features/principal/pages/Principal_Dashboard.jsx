@@ -335,18 +335,22 @@ export default function Principal_Dashboard() {
                 </span>
               ) : null}
             </div>
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="mt-6 space-y-6">
+            {/* Quick Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <MetricCard
                 icon={ChartBarIcon}
                 label="Online realizados"
                 value={`${stats.onlineAttempted}/${stats.onlineTotal || stats.onlineAttempted || 0}`}
                 helper={stats.onlineAttempted ? `${stats.onlineAttempted} escenarios completados` : "Sin intentos aún"}
+                chart={<ProgressChart progress={stats.onlineTotal ? (stats.onlineAttempted / stats.onlineTotal) * 100 : 0} />}
               />
               <MetricCard
                 icon={UsersIcon}
                 label="Presenciales realizados"
                 value={`${stats.presencialAttempted}/${stats.presencialTotal || stats.presencialAttempted || 0}`}
                 helper={stats.presencialAttempted ? `${stats.presencialAttempted} escenarios completados` : "Sin intentos aún"}
+                chart={<ProgressChart progress={stats.presencialTotal ? (stats.presencialAttempted / stats.presencialTotal) * 100 : 0} />}
               />
               <MetricCard
                 icon={CalendarDaysIcon}
@@ -354,7 +358,11 @@ export default function Principal_Dashboard() {
                 value={stats.recentScenario || "—"}
                 helper={stats.recentDate ? formatDateHuman(stats.recentDate) : "Sin intentos todavía"}
               />
+              <AchievementBadge level={getAchievementLevel(stats.onlineAttempted, stats.presencialAttempted)} />
             </div>
+
+
+          </div>
           </div>
         </section>
 
@@ -422,6 +430,8 @@ export default function Principal_Dashboard() {
                 </div>
 
                 <div className="space-y-4">
+                  <SessionCalendar />
+
                   {isAdmin ? (
                     <div className="rounded-2xl border border-white/70 bg-white/80 backdrop-blur p-5 space-y-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.55)]">
                       <Link
@@ -433,16 +443,32 @@ export default function Principal_Dashboard() {
                       <p className="text-sm text-slate-600">
                         Configura fases, checklist y cronómetro. Al finalizar, comparte el informe desde la consola.
                       </p>
-                      <Link
-                        to="/presencial"
-                        className="block w-full px-4 py-2.5 rounded-xl text-center font-semibold text-[#0A3D91] ring-1 ring-[#0A3D91]/20 bg-white hover:bg-[#0A3D91]/5 hover:-translate-y-0.5 transition"
-                      >
-                        Consola clásica
-                      </Link>
+                      <div className="flex gap-3">
+                        <Link
+                          to="/sesiones-programadas"
+                          className="flex-1 px-4 py-2 rounded-lg text-center font-medium text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow text-sm"
+                        >
+                          Gestión de sesiones
+                        </Link>
+                        <Link
+                          to="/presencial"
+                          className="flex-1 px-4 py-2 rounded-lg text-center font-medium text-[#0A3D91] ring-1 ring-[#0A3D91]/20 bg-white hover:bg-[#0A3D91]/5 hover:-translate-y-0.5 transition text-sm"
+                        >
+                          Consola clásica
+                        </Link>
+                      </div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-600 text-sm">
-                      Si deseas participar en simulaciones presenciales, avisa al equipo y te enviaremos el código cuando haya nuevas sesiones.
+                    <div className="space-y-4">
+                      <Link
+                        to="/sesiones-programadas"
+                        className="block w-full px-4 py-2.5 rounded-lg text-center font-medium text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow"
+                      >
+                        Ver sesiones programadas
+                      </Link>
+                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-600 text-sm">
+                        Si deseas participar en simulaciones presenciales, avisa al equipo y te enviaremos el código cuando haya nuevas sesiones.
+                      </div>
                     </div>
                   )}
                   {!isAdmin && (
@@ -601,17 +627,226 @@ function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon,
   );
 }
 
-function MetricCard({ icon: Icon, label, value, helper }) {
+function MetricCard({ icon: Icon, label, value, helper, chart }) {
   return (
     <div className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm px-4 py-3 shadow-[0_10px_25px_-20px_rgba(15,23,42,0.6)]">
       <div className="flex items-center gap-3">
         <div className="h-9 w-9 shrink-0 rounded-xl bg-white/15 grid place-items-center">
           {Icon ? <Icon className="h-5 w-5 text-white/90" /> : null}
         </div>
-        <div>
+        <div className="flex-1">
           <p className="text-xs uppercase tracking-wide text-white/70">{label}</p>
           <p className="text-lg font-semibold text-white leading-tight">{value}</p>
-          {helper ? <p className="text-[11px] text-white/70 mt-0.5">{helper}</p> : null}
+          {chart && <div className="mt-2">{chart}</div>}
+          {helper && <p className="text-[11px] text-white/70 mt-0.5">{helper}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Progress Chart Component
+function ProgressChart({ progress }) {
+  return (
+    <div className="space-y-1">
+      <div className="w-full bg-white/20 rounded-full h-1.5">
+        <div
+          className="bg-white/70 h-1.5 rounded-full transition-all duration-300"
+          style={{ width: `${Math.min(progress, 100)}%` }}
+        />
+      </div>
+      <p className="text-[10px] text-white/60 text-right">{Math.round(progress)}%</p>
+    </div>
+  );
+}
+
+function getAchievementLevel(onlineAttempted, presencialAttempted) {
+  const total = onlineAttempted + presencialAttempted;
+
+  // Achievement levels - universal for all healthcare professionals
+  if (total >= 25) return {
+    icon: "🏆",
+    title: "Experto Profesional",
+    description: "Especialista multidisciplinar consolidado",
+    color: "bg-yellow-500 text-yellow-900"
+  };
+
+  if (total >= 20) return {
+    icon: "⭐",
+    title: "Coordinador Experto",
+    description: "Gestión avanzada de equipos de crisis",
+    color: "bg-red-500 text-white"
+  };
+
+  if (total >= 15) return {
+    icon: "👨‍💼",
+    title: "Jefe de Equipo",
+    description: "Líder reconocido en simulación multimodal",
+    color: "bg-purple-500 text-purple-900"
+  };
+
+  if (total >= 12) return {
+    icon: "👥",
+    title: "Supervisor Senior",
+    description: "Experiencia en múltiples escenarios críticos",
+    color: "bg-orange-500 text-orange-900"
+  };
+
+  if (total >= 8) return {
+    icon: "🔬",
+    title: "Especialista Avanzado",
+    description: "Dominio en protocolos de alta complejidad",
+    color: "bg-blue-500 text-blue-900"
+  };
+
+  if (total >= 5) return {
+    icon: "⚡",
+    title: "Profesional Competente",
+    description: "Habilidades sólidas en situaciones críticas",
+    color: "bg-green-500 text-green-900"
+  };
+
+  if (total >= 3) return {
+    icon: "📚",
+    title: "Profesional en Formación",
+    description: "Desarrollo de destrezas técnicas avanzadas",
+    color: "bg-indigo-500 text-indigo-900"
+  };
+
+  if (total >= 1) return {
+    icon: "🎯",
+    title: "Nuevos Compromisos",
+    description: "Iniciativa y motivación profesional activa",
+    color: "bg-teal-500 text-teal-900"
+  };
+
+  return {
+    icon: "🌱",
+    title: "Primeros Pasos",
+    description: "Inicio del camino profesional en simulación",
+    color: "bg-gray-500 text-gray-900"
+  };
+}
+
+// Achievement Badge Component
+function AchievementBadge({ level }) {
+  // TODO: We need to get user role from session to customize achievements
+  // For now using a generic set - can be enhanced later with role-specific badges
+  const achievement = getAchievementLevel(level.onlineAttempted, level.presencialAttempted);
+
+  return (
+    <div className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm px-4 py-3 shadow-[0_10px_25px_-20px_rgba(15,23,42,0.6)]">
+      <div className="flex flex-col items-center gap-2">
+        <div className="text-2xl">{achievement.icon}</div>
+        <div className="text-center">
+          <p className="text-xs uppercase tracking-wide text-white/70">Logro</p>
+          <p className="text-sm font-semibold text-white leading-tight text-center">{achievement.title}</p>
+          <p className="text-[10px] text-white/60 text-center">{achievement.description}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Activity Timeline Component
+function ActivityTimeline({ scenarios }) {
+  return (
+    <div className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm p-4 shadow-[0_10px_25px_-20px_rgba(15,23,42,0.6)]">
+      <h3 className="text-lg font-semibold text-white mb-4">Actividad reciente</h3>
+      <div className="space-y-3">
+        {scenarios.length > 0 ? (
+          scenarios.map((scenario, index) => (
+            <div key={scenario.id} className="flex items-start gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition">
+              <div className="shrink-0 w-8 h-8 rounded-full bg-white/15 grid place-items-center text-sm text-white">
+                {index + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-white font-medium text-sm truncate">{scenario.title}</h4>
+                <p className="text-white/70 text-xs">
+                  {formatDateHuman(scenario.last_started_at)}
+                </p>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="text-white/70 text-sm">No hay actividad reciente</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Session Calendar Component
+function SessionCalendar() {
+  const currentDate = new Date();
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfWeek = new Date(year, month, 1).getDay();
+  const days = [];
+
+  // Fill empty cells for the beginning of the month
+  for (let i = 0; i < firstDayOfWeek; i++) {
+    days.push(null);
+  }
+
+  // Fill the days of the month
+  for (let day = 1; day <= daysInMonth; day++) {
+    days.push(day);
+  }
+
+  const dayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+
+  return (
+    <div className="rounded-2xl border border-white/70 bg-white/75 backdrop-blur-sm p-4 shadow-[0_15px_30px_-25px_rgba(15,23,42,0.5)]">
+      <h3 className="text-lg font-semibold text-slate-900 mb-4">Próximas sesiones</h3>
+      <div className="space-y-2">
+        {/* Month header */}
+        <div className="text-center text-sm text-slate-600 font-medium">
+          {currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+        </div>
+
+        {/* Day names */}
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {dayNames.map((day, index) => (
+            <div key={index} className="text-xs text-slate-500 font-bold">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid - only show today highlight, events will come from real data */}
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {days.slice(0, 35).map((day, index) => {
+            const isToday = day === currentDate.getDate();
+
+            return (
+              <div
+                key={index}
+                className={`h-8 w-8 text-xs rounded-full grid place-items-center ${
+                  isToday
+                    ? 'bg-[#0A3D91] text-white font-bold'
+                    : day
+                    ? 'text-slate-700 hover:bg-slate-100'
+                    : 'text-slate-300'
+                }`}
+              >
+                {day}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs">
+            <div className="w-3 h-3 bg-[#1E6ACB] rounded-full"></div>
+            <span className="text-slate-600">Sesiones programadas</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <div className="w-3 h-3 bg-[#0A3D91] rounded-full"></div>
+            <span className="text-slate-600">Día actual</span>
+          </div>
         </div>
       </div>
     </div>

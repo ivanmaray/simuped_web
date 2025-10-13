@@ -1,0 +1,50 @@
+CREATE INDEX IF NOT EXISTS scheduled_sessions_scheduled_at_idx ON public.scheduled_sessions (scheduled_at);
+CREATE INDEX IF NOT EXISTS scheduled_sessions_active_idx ON public.scheduled_sessions (is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS scheduled_sessions_participants_session_id_idx ON public.scheduled_session_participants (session_id);
+CREATE INDEX IF NOT EXISTS scheduled_sessions_participants_user_id_idx ON public.scheduled_session_participants (user_id);
+
+-- 5) RLS (Row Level Security)
+ALTER TABLE public.scheduled_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scheduled_session_participants ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de acceso
+CREATE POLICY "scheduled_sessions_select" ON public.scheduled_sessions
+  FOR SELECT TO authenticated
+  USING (is_active = true);
+
+CREATE POLICY "scheduled_sessions_admin" ON public.scheduled_sessions
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.is_admin = true
+    )
+  );
+
+CREATE POLICY "scheduled_session_participants_manage_own" ON public.scheduled_session_participants
+  FOR ALL TO authenticated
+  USING (user_id = auth.uid());
+
+-- 6) Trigger para updated_at automático
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER handle_scheduled_sessions_updated_at
+    BEFORE UPDATE ON public.scheduled_sessions
+    FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();
+
+-- 7) Función para contar participantes inscritos (útil para queries)
+CREATE OR REPLACE FUNCTION public.get_session_participants_count(session_id uuid)
+RETURNS integer AS $$
+BEGIN
+    RETURN (SELECT COUNT(*) FROM public.scheduled_session_participants WHERE public.scheduled_session_participants.session_id = $1);
+END;
+$$ language 'plpgsql';
+
+-- 8) Verificación: consultas de ejemplo
+/*

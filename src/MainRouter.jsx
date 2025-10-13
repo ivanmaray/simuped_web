@@ -18,6 +18,8 @@ import App from "./App.jsx"; // Landing pública con login/marketing
 import ProtectedRoute from "./ProtectedRoute.jsx";
 
 import Dashboard from "./features/principal/pages/Principal_Dashboard.jsx";
+import ScheduledSessions from "./features/principal/pages/ScheduledSessions.jsx";
+import CreateScheduledSession from "./features/principal/pages/CreateScheduledSession.jsx";
 import Simulacion from "./features/online/pages/Online_Main.jsx";
 import SimulacionDetalle from "./features/online/pages/Online_Detalle.jsx";
 import SimulacionConfirm from "./features/online/pages/Online_Confirm.jsx";
@@ -118,6 +120,10 @@ export default function MainRouter() {
         {/* Requieren usuario autenticado */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/sesiones-programadas" element={<ScheduledSessions />} />
+          <Route element={<RequireAdmin />}>
+            <Route path="/sesiones-programadas/crear" element={<CreateScheduledSession />} />
+          </Route>
 
           {/* Online */}
           <Route path="/simulacion" element={<Simulacion />} />

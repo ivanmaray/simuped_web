@@ -1,0 +1,15 @@
+-- Ver sesiones futuras activas
+SELECT id, title, scheduled_at, location, max_participants,
+       get_session_participants_count(id) as current_participants
+FROM public.scheduled_sessions
+WHERE is_active = true AND scheduled_at > now()
+ORDER BY scheduled_at;
+
+-- Ver participantes de una sesión específica
+SELECT sp.registered_at, u.user_metadata->>'nombre' as nombre,
+       u.user_metadata->>'apellidos' as apellidos, p.rol
+FROM public.scheduled_session_participants sp
+JOIN auth.users u ON sp.user_id = u.id
+LEFT JOIN public.profiles p ON p.id = sp.user_id
+WHERE sp.session_id = '00000000-0000-0000-0000-000000000000';
+*/
