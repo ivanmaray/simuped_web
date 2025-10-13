@@ -166,22 +166,7 @@ useEffect(() => {
           }}
         />
         <div className="relative z-[2] max-w-6xl mx-auto px-6 lg:px-8 py-16 sm:py-20 grid gap-10 md:gap-12 xl:gap-16 md:grid-cols-[1.2fr_0.8fr] items-center min-h-[50vh]">
-          {/* Marca de agua: logo en blanco para hero */}
-          <img
-            src="/logo-negative.png"
-            alt=""
-            aria-hidden
-            className="
-        hidden xl:block
-        absolute
-        top-14 xl:top-20 2xl:top-24
-        -left-[8.6rem] xl:-left-[110.6em] 2xl:-left-[12.6rem]
-        w-[20.4vw] xl:w-[18.7vw] 2xl:w-[17vw]
-        max-w-none h-auto
-        opacity-15 select-none pointer-events-none z-[1]
-      "
-            style={{ filter: 'none' }}
-          />
+
           {/* Decorative background accents */}
           <div aria-hidden className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full blur-3xl opacity-20 float-blob z-[1]"
                style={{ background: 'radial-gradient(closest-side, rgba(255,255,255,0.7), rgba(255,255,255,0))' }} />
