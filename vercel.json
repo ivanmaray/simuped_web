@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.{js,ts}": {
-      "runtime": "nodejs18.x"
+      "runtime": "nodejs22.x"
     }
   },
   "routes": [
