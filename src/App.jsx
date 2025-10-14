@@ -493,7 +493,7 @@ useEffect(() => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M14 12v5a2 2 0 01-2 2H7a2 2 0 01-2-2v-5" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Residentes y estudiantes</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Residentes y estudiantes</h4>
                   <p className="text-slate-600 mb-4">
                     Si tienes invitación, accede con tus credenciales. Si no, solicítala a tu tutor o centro.
                   </p>
@@ -515,7 +515,7 @@ useEffect(() => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M6 21V7a2 2 0 012-2h8a2 2 0 012 2v14M9 10h2M13 10h2M9 14h2M13 14h2" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Centros y unidades</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Centros y unidades</h4>
                   <p className="text-slate-600 mb-4">
                     Implanta SimuPed en tu servicio: demo, soporte de implantación, licencias y métricas.
                   </p>
