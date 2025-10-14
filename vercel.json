@@ -1,22 +1,9 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "functions": {
-    "api/send_session_reminder.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/new-user-email.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/notify_user_approved.js": {
+    "api/**/*.{js,ts}": {
       "runtime": "nodejs18.x"
     }
   },
