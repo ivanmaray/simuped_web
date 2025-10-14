@@ -147,6 +147,39 @@ const ScheduledSessions = () => {
 
       // Reload sessions to update counts
       await fetchSessions();
+
+      // Send notification emails
+      try {
+        const userProfile = await supabase
+          .from("profiles")
+          .select("email, nombre, apellidos")
+          .eq("id", session.user.id)
+          .single();
+
+        if (userProfile.data) {
+          const userEmail = userProfile.data.email;
+          const userName = [userProfile.data.nombre, userProfile.data.apellidos]
+            .filter(Boolean)
+            .join(" ") || "Usuario";
+
+          await fetch("/api/notify_session_registration", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userEmail,
+              userName,
+              sessionName: sessionData.title,
+              sessionDate: sessionData.scheduled_at.toISOString(),
+              sessionLocation: sessionData.location,
+              sessionCode: sessionData.id.substring(0, 6).toUpperCase() // Use first 6 chars as code
+            })
+          });
+        }
+      } catch (emailError) {
+        console.warn("Email notification failed:", emailError);
+        // Don't fail the registration if email fails
+      }
+
       alert("¡Registro completado! Te has apuntado a la sesión.");
     } catch (err) {
       console.error("Error registering for session:", err);
