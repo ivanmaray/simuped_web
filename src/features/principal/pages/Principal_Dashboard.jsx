@@ -465,14 +465,14 @@ export default function Principal_Dashboard() {
               icon={DevicePhoneMobileIcon}
             />
             <Card
-              title="Profesionales Residentes y estudiantes"
+              title="Profesionales, Residentes y estudiantes"
               description="Acceso para residentes, estudiantes de medicina y profesionales."
               to="/evaluacion"
               stateObj={{ forceSelf: true }}
               icon={AcademicCapIcon}
             />
             <Card
-              title="Centros y unidades"
+              title="Centros y Unidades"
               description="Gestión de centros hospitalarios y unidades de simulación."
               to="/centros"
               icon={ChartBarIcon}
