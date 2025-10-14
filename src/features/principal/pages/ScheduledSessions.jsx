@@ -194,6 +194,36 @@ const ScheduledSessions = () => {
     }
   };
 
+  const unregisterFromSession = async (sessionId) => {
+    if (!confirm("¿Estás seguro de que quieres desapuntarte de esta sesión?")) {
+      return;
+    }
+
+    try {
+      const sessionData = sessions.find(s => s.id === sessionId);
+      if (!sessionData?.is_registered) {
+        alert("No estás registrado en esta sesión");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("scheduled_session_participants")
+        .delete()
+        .eq("session_id", sessionId)
+        .eq("user_id", session.user.id);
+
+      if (error) throw error;
+
+      // Reload to update UI
+      await fetchSessions();
+
+      alert("Te has desapuntado de la sesión.");
+    } catch (err) {
+      console.error("Error unregistering from session:", err);
+      alert("Error al desapuntarte. Inténtalo de nuevo.");
+    }
+  };
+
   const createNewSession = () => {
     navigate("/sesiones-programadas/crear");
   };
@@ -326,16 +356,25 @@ const ScheduledSessions = () => {
                       }
                     </span>
                   </div>
-                  <button
-                    onClick={() => registerForSession(session.id)}
-                    disabled={session.registered_count >= session.max_participants}
-                    className="px-4 py-2 bg-[#0A3D91] text-white rounded-lg hover:bg-[#0A3D91]/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {session.registered_count >= session.max_participants
-                      ? 'Completa'
-                      : 'Apuntarme'
-                    }
-                  </button>
+                  {session.is_registered ? (
+                    <button
+                      onClick={() => unregisterFromSession(session.id)}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                    >
+                      Desapuntarme
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => registerForSession(session.id)}
+                      disabled={session.registered_count >= session.max_participants}
+                      className="px-4 py-2 bg-[#0A3D91] text-white rounded-lg hover:bg-[#0A3D91]/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {session.registered_count >= session.max_participants
+                        ? 'Completa'
+                        : 'Apuntarme'
+                      }
+                    </button>
+                  )}
                 </footer>
               </article>
             ))
