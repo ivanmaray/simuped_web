@@ -455,33 +455,21 @@ export default function Principal_Dashboard() {
         <main className="max-w-6xl mx-auto px-5 py-8">
           {/* Accesos rápidos */}
           <h2 className="text-xl font-semibold mb-4 text-slate-800">Accesos rápidos</h2>
-          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card
-              title="Plataforma Online"
-              description="Plataforma de simulación online para estudiantes y profesionales."
+              title="Simulación online"
+              description="Escoge un escenario y practica con casos interactivos."
               to="/simulacion"
               badge="Nuevo"
               badgeColor="bg-emerald-100 text-emerald-700"
               icon={DevicePhoneMobileIcon}
             />
             <Card
-              title="Profesionales, Residentes y estudiantes"
-              description="Acceso para residentes, estudiantes de medicina y profesionales."
-              to="/evaluacion"
-              stateObj={{ forceSelf: true }}
-              icon={AcademicCapIcon}
-            />
-            <Card
-              title="Centros y Unidades"
-              description="Gestión de centros hospitalarios y unidades de simulación."
-              to="/centros"
-              icon={ChartBarIcon}
-            />
-            <Card
               title="Evaluación del desempeño"
               description="Consulta tus resultados y evolución por escenarios."
               to="/evaluacion"
-              icon={UsersIconOutline}
+              stateObj={{ forceSelf: true }}
+              icon={ChartBarIcon}
             />
           </section>
 
