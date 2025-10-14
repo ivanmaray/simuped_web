@@ -119,7 +119,7 @@ const ScheduledSessions = () => {
 
   const registerForSession = async (sessionId) => {
     try {
-      // Check if user is already registered
+      // Check if user is already registered (double-check before insert)
       const sessionData = sessions.find(s => s.id === sessionId);
       if (sessionData?.is_registered) {
         alert("Ya estás registrado en esta sesión");
@@ -134,14 +134,30 @@ const ScheduledSessions = () => {
           registered_at: new Date().toISOString()
         });
 
-      if (error) throw error;
+      if (error) {
+        // Handle duplicate key error specifically
+        if (error.code === '23505') {
+          alert("Ya estás registrado en esta sesión");
+          // Reload to ensure UI is up to date
+          await fetchSessions();
+          return;
+        }
+        throw error;
+      }
 
       // Reload sessions to update counts
       await fetchSessions();
       alert("¡Registro completado! Te has apuntado a la sesión.");
     } catch (err) {
       console.error("Error registering for session:", err);
-      alert("Error al registrar. Inténtalo de nuevo.");
+
+      // Show specific error for already registered
+      if (err.code === '23505' || err.message?.includes('duplicate key')) {
+        alert("Ya estás registrado en esta sesión");
+        await fetchSessions();
+      } else {
+        alert("Error al registrar. Inténtalo de nuevo.");
+      }
     }
   };
 
