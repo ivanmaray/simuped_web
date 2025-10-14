@@ -56,11 +56,7 @@ const ScheduledSessions = () => {
             scenario_id,
             is_active,
             enrollment_deadline,
-            scenarios (
-              title as scenario_title,
-              summary,
-              estimated_minutes
-            )
+            scenarios:scenario_id(title)
           `)
           .eq("is_active", true)
           .gt("scheduled_at", new Date().toISOString())
