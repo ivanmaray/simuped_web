@@ -318,6 +318,10 @@ const ScheduledSessions = () => {
         )}
 
         <div className="space-y-6">
+            <div className="mb-4 text-sm text-slate-600">
+              Debug: Admin={isAdmin ? 'SÍ' : 'NO'}, Auth={ready ? 'LISTO' : 'CARGANDO'}, User={session?.user?.id ? session.user.id.substring(0,8)+'...' : 'SIN USER'}
+            </div>
+
           {sessions.length > 0 ? (
             sessions.map((session) => (
               <article
@@ -361,6 +365,13 @@ const ScheduledSessions = () => {
                           {session.registered_count}/{session.max_participants} participantes
                         </span>
                       </div>
+
+                      {/* Debug info per session */}
+                      {ready && isAdmin && (
+                        <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
+                          Session Debug: RegCount={session.registered_count}, Participants={session.participants?.length || 0}, Registered={session.is_registered ? 'SÍ' : 'NO'}
+                        </div>
+                      )}
                     </div>
                     <div className="flex-shrink-0">
                       <div className="flex items-center gap-2">
