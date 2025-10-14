@@ -64,36 +64,18 @@ const ScheduledSessions = () => {
 
         if (error) throw error;
 
-        // Get participant counts for each session
+        // Get participant info for all sessions (counts and lists for admins)
         const sessionsWithCounts = await Promise.all(
           (data || []).map(async (session) => {
             try {
+              // Always get participant count - this should work for everyone
               const { count } = await supabase
                 .from("scheduled_session_participants")
                 .select("id", { count: "exact" })
                 .eq("session_id", session.id);
 
-              // Get the current user ID from the auth context (simplified)
-              const userId = ready && session ? session.user.id : null;
-
-              // Check if user is already registered
-              let isRegistered = false;
+              // Get participant list for admins (includes detailed info)
               let participants = [];
-              if (userId) {
-                try {
-                  const { data: registration } = await supabase
-                    .from("scheduled_session_participants")
-                    .select("id")
-                    .eq("session_id", session.id)
-                    .eq("user_id", userId)
-                    .single();
-                  isRegistered = !!registration;
-                } catch (regError) {
-                  // Not registered, that's fine
-                }
-              }
-
-              // Get participant list if user is admin
               if (ready && isAdmin) {
                 try {
                   const { data: participantData } = await supabase
@@ -117,6 +99,22 @@ const ScheduledSessions = () => {
                 }
               }
 
+              // Check individual registration status only for authenticated users
+              let isRegistered = false;
+              if (ready && session && session.user && session.user.id) {
+                try {
+                  const { data: registration } = await supabase
+                    .from("scheduled_session_participants")
+                    .select("id")
+                    .eq("session_id", session.id)
+                    .eq("user_id", session.user.id)
+                    .single();
+                  isRegistered = !!registration;
+                } catch (regError) {
+                  // Not registered, that's fine
+                }
+              }
+
               return {
                 ...session,
                 registered_count: count || 0,
@@ -130,6 +128,7 @@ const ScheduledSessions = () => {
                 ...session,
                 registered_count: 0,
                 is_registered: false,
+                participants: [],
                 scheduled_at: new Date(session.scheduled_at)
               };
             }
