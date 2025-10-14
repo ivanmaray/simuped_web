@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
 
     // Platform admin email (send notification about new registration)
-    const PLATFORM_EMAIL = process.env.PLATFORM_EMAIL || "ivanmaray@outlook.es"; // Change to your actual platform email
+    const PLATFORM_EMAIL = process.env.PLATFORM_EMAIL || "simuped@gmail.com"; // Change to your actual platform email
 
     // Email to the user who registered
     const userPayload = {
