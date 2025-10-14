@@ -24,11 +24,12 @@ const ScheduledSessions = () => {
       setError("");
 
       // For now, show empty list - once tables are created, this will work
-      // Verify tables exist by checking a recent migration column
+      // Verify tables exist by checking known table
       let tableExists = true;
       try {
         const { error } = await supabase.from("scheduled_sessions").select("id").limit(1);
-        if (error && error.code === "PGRST301") {
+        if (error) {
+          // Any error likely means table doesn't exist
           tableExists = false;
           console.warn("scheduled_sessions table doesn't exist yet");
         }

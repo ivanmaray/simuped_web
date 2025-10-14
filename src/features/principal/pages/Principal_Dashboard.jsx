@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
+import BadgeDisplay from "../../../components/BadgeDisplay.jsx";
 import { useAuth } from "../../../auth";
 import { reportError, reportWarning } from "../../../utils/reporting.js";
+import { calculateBadgeProgress, MEDICAL_BADGES } from "../../../utils/badgeSystem.js";
 import {
   UsersIcon,
   DevicePhoneMobileIcon,
@@ -14,8 +16,21 @@ import {
   ArrowsRightLeftIcon,
   PlayCircleIcon,
   ChevronRightIcon,
-  CalendarDaysIcon
+  CalendarDaysIcon,
+  TrophyIcon,
+  UsersIcon as UsersIconOutline,
+  BellIcon
 } from "@heroicons/react/24/outline";
+import AdvancedCalendar from "../../../components/AdvancedCalendar.jsx";
+import NotificationSettings from "../../../components/NotificationSettings.jsx";
+import {
+  showToastNotification,
+  getNotificationPreferences,
+  notifyBadgeEarned,
+  notifyFeedbackAvailable,
+  notifyActivityReminder,
+  scheduleNotification
+} from "../../../utils/notificationService.js";
 
 /* -------------------- formatters -------------------- */
 export function formatLevel(level) {
@@ -98,6 +113,9 @@ export default function Principal_Dashboard() {
   // Presencial: avisos por email (sin consultar sesiones hasta que esté el esquema)
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState("");
+  const [scheduledSessions, setScheduledSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -133,7 +151,7 @@ export default function Principal_Dashboard() {
           reportWarning("Dashboard.profile.catch", err, { userId: session.user.id });
         }
 
-        await cargarEscenarios();
+        await Promise.all([cargarEscenarios(), cargarSesionesProgramadas()]);
       } catch (e) {
         reportError("Dashboard.init", e, { userId: session?.user?.id });
         setErrorMsg(e?.message || "Error inicializando el panel");
@@ -142,15 +160,78 @@ export default function Principal_Dashboard() {
       }
     }
 
+    async function cargarSesionesProgramadas() {
+      setLoadingSessions(true);
+      try {
+        // Load upcoming sessions for calendar display
+        const { data: sessions, error } = await supabase
+          .from("scheduled_sessions")
+          .select(`
+            id,
+            title,
+            description,
+            scheduled_at,
+            location,
+            max_participants,
+            mode,
+            scenario_id,
+            is_active,
+            enrollment_deadline,
+            scenarios (
+              title as scenario_title,
+              summary,
+              estimated_minutes
+            )
+          `)
+          .eq("is_active", true)
+          .gte("scheduled_at", new Date().toISOString())
+          .order("scheduled_at", { ascending: true });
+
+        if (error) throw error;
+
+        // Get participant counts for each session
+        const sessionsWithCounts = await Promise.all(
+          (sessions || []).map(async (session) => {
+            try {
+              const { count } = await supabase
+                .from("scheduled_session_participants")
+                .select("id", { count: "exact" })
+                .eq("session_id", session.id);
+
+              return {
+                ...session,
+                registered_count: count || 0,
+                scheduled_at: new Date(session.scheduled_at)
+              };
+            } catch (err) {
+              console.warn("Error getting participants for session:", err);
+              return {
+                ...session,
+                registered_count: 0,
+                scheduled_at: new Date(session.scheduled_at)
+              };
+            }
+          })
+        );
+
+        setScheduledSessions(sessionsWithCounts);
+      } catch (e) {
+        console.warn("Dashboard.cargarSesionesProgramadas:", e);
+        setScheduledSessions([]);
+      } finally {
+        setLoadingSessions(false);
+      }
+    }
+
     async function cargarEscenarios() {
       setLoadingEsc(true);
       setErrorMsg("");
 
       try {
-        const normalizeMode = (mode) => {
-          const arr = Array.isArray(mode) ? mode : mode ? [mode] : [];
-          return arr.map((m) => String(m || '').toLowerCase());
-        };
+    const normalizeMode = (mode) => {
+      const arr = Array.isArray(mode) ? mode : mode ? [mode] : [];
+      return arr.map((m) => String(m || '').toLowerCase());
+    };
 
         const { data: attemptsRaw, error: attemptsError } = await supabase
           .from("attempts")
@@ -358,7 +439,12 @@ export default function Principal_Dashboard() {
                 value={stats.recentScenario || "—"}
                 helper={stats.recentDate ? formatDateHuman(stats.recentDate) : "Sin intentos todavía"}
               />
-              <AchievementBadge level={getAchievementLevel(stats.onlineAttempted, stats.presencialAttempted)} />
+              <MetricCard
+                icon={TrophyIcon}
+                label="Logros"
+                value={getAchievementLevel(stats.onlineAttempted, stats.presencialAttempted).icon + " " + getAchievementLevel(stats.onlineAttempted, stats.presencialAttempted).title}
+                helper={getAchievementLevel(stats.onlineAttempted, stats.presencialAttempted).description}
+              />
             </div>
 
 
@@ -430,7 +516,22 @@ export default function Principal_Dashboard() {
                 </div>
 
                 <div className="space-y-4">
-                  <SessionCalendar />
+                  <AdvancedCalendar
+                    sessions={scheduledSessions}
+                    compact={true}
+                    onDateClick={(date) => console.log('Date clicked:', date)}
+                    onEventClick={(session) => navigate('/sesiones-programadas')}
+                  />
+
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setShowNotificationSettings(true)}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition text-sm"
+                    >
+                      <BellIcon className="w-4 h-4" />
+                      Configurar notificaciones
+                    </button>
+                  </div>
 
                   {isAdmin ? (
                     <div className="rounded-2xl border border-white/70 bg-white/80 backdrop-blur p-5 space-y-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.55)]">
@@ -581,6 +682,16 @@ export default function Principal_Dashboard() {
             </section>
           )}
         </main>
+
+        {/* Notification Settings Modal */}
+        {showNotificationSettings && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <NotificationSettings
+              onClose={() => setShowNotificationSettings(false)}
+              className="w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            />
+          </div>
+        )}
       </div>
     </ErrorBoundary>
   );

@@ -1,21 +1,21 @@
 {
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
-    { "source": "/(.*\\.(?:js|css|png|jpg|jpeg|svg|ico|json|txt|woff2?|woff?|map))", "destination": "/$1" },
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/favicon.ico", "destination": "/favicon.ico" },
-    { "source": "/robots.txt", "destination": "/robots.txt" },
-    { "source": "/site.webmanifest", "destination": "/site.webmanifest" },
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/" }
-  ],
-  "headers": [
-    {
-      "source": "/site.webmanifest",
-      "headers": [
-        { "key": "Content-Type", "value": "application/manifest+json" }
-      ]
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "functions": {
+    "api/send_session_reminder.js": {
+      "runtime": "@vercel/node"
+    },
+    "api/new-user-email.js": {
+      "runtime": "@vercel/node"
+    },
+    "api/notify_user_approved.js": {
+      "runtime": "@vercel/node"
     }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
