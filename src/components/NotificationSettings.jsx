@@ -12,12 +12,14 @@ import {
   requestNotificationPermission,
   testNotifications
 } from '../utils/notificationService';
+import { useAuth } from '../auth';
 
 /**
  * Notification Settings Component
  * Allows users to configure their notification preferences
  */
 export default function NotificationSettings({ onClose, className = "" }) {
+  const { session } = useAuth();
   const [preferences, setPreferencesState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -196,37 +198,31 @@ export default function NotificationSettings({ onClose, className = "" }) {
 
               <button
                 onClick={async () => {
-                  // Import session from auth context
-                  import('../auth.jsx').then(async (authModule) => {
-                    const { useAuth } = authModule;
-                    // This is a simplified approach - in real usage, this would be from the React context
-                    const session = JSON.parse(localStorage.getItem('supabase.auth.token') || '{}');
-                    const userEmail = session?.user?.email || 'test@example.com';
-                    const userName = session?.user?.user_metadata?.nombre || 'Usuario';
+                  const userEmail = session?.user?.email || 'test@example.com';
+                  const userName = session?.user?.user_metadata?.nombre || 'Usuario';
 
-                    try {
-                      const response = await fetch('/api/send_session_reminder', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          email: userEmail,
-                          nombre: userName,
-                          sessionTitle: 'Prueba de Email desde SimuPed',
-                          sessionDate: new Date().toISOString(),
-                          reminderType: 'session_reminder',
-                          minutesBefore: 60
-                        })
-                      });
-                      const data = await response.json();
-                      if (response.ok) {
-                        alert(`✅ Email enviado correctamente!\n\n📧 Revisa: ${userEmail}\n\nResend ID: ${data.data?.id || data.id}`);
-                      } else {
-                        alert('❌ Error al enviar email:\n\n' + JSON.stringify(data, null, 2));
-                      }
-                    } catch (error) {
-                      alert('❌ Error de conexión:\n\n' + error.message);
+                  try {
+                    const response = await fetch('/api/send_session_reminder', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        email: userEmail,
+                        nombre: userName,
+                        sessionTitle: 'Prueba de Email desde SimuPed',
+                        sessionDate: new Date().toISOString(),
+                        reminderType: 'session_reminder',
+                        minutesBefore: 60
+                      })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                      alert(`✅ Email enviado correctamente!\n\n📧 Revisa: ${userEmail}\n\nResend ID: ${data.data?.id || data.id}`);
+                    } else {
+                      alert('❌ Error al enviar email:\n\n' + JSON.stringify(data, null, 2));
                     }
-                  });
+                  } catch (error) {
+                    alert('❌ Error de conexión:\n\n' + error.message);
+                  }
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200 transition"
               >
