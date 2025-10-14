@@ -23,7 +23,6 @@ const ScheduledSessions = () => {
       setLoading(true);
       setError("");
 
-      // For now, show empty list - once tables are created, this will work
       // Verify tables exist by checking known table
       let tableExists = true;
       try {
@@ -39,9 +38,9 @@ const ScheduledSessions = () => {
       }
 
       if (!tableExists) {
-        // Show empty state - tables need to be created
+        // Show setup error - tables need to be created
         setSessions([]);
-        setError("");
+        setError("Las tablas de sesiones programadas no están creadas. Ejecuta las migraciones SQL primero.");
       } else {
         // Get scheduled sessions with participant counts
         const { data, error } = await supabase

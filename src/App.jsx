@@ -458,9 +458,9 @@ useEffect(() => {
             ¿Cómo participar?
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 snap-x snap-mandatory overflow-x-auto">
             {/* Profesionales */}
-            <div className="group relative h-full">
+            <div className="group relative h-full snap-center">
               <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
               <div className="relative h-full p-[1px] rounded-3xl bg-gradient-to-br from-white via-slate-200 to-white/60">
                 <div className="h-full p-6 rounded-[calc(1.5rem-1px)] border border-white/80 bg-white/95 backdrop-blur shadow-sm transition-all duration-500 ease-out group-hover:shadow-xl group-hover:-translate-y-1">
@@ -470,7 +470,7 @@ useEffect(() => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16M4 12h16" />
                     </svg>
                   </div>
-                  <h4 className="text-xl font-semibold mb-2 text-slate-900">Profesionales</h4>
+                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Profesionales</h4>
                   <p className="text-slate-600 mb-4">
                     Solicita acceso individual para entrenar en la plataforma online y participar en sesiones de simulación presencial.
                   </p>
