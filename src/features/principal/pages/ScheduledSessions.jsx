@@ -6,17 +6,17 @@ import Navbar from "../../../components/Navbar.jsx";
 
 const ScheduledSessions = () => {
   const navigate = useNavigate();
-  const { ready, session, isAdmin } = useAuth();
+  const { ready, session: authSession, isAdmin } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showSetupInfo, setShowSetupInfo] = useState(false);
 
   useEffect(() => {
-    if (!ready || !session) return;
+    if (!ready) return;
 
     fetchSessions();
-  }, [ready, session]);
+  }, [ready]);
 
   const fetchSessions = async () => {
     try {
@@ -78,22 +78,53 @@ const ScheduledSessions = () => {
               let participants = [];
               if (ready && isAdmin) {
                 try {
-                  const { data: participantData } = await supabase
+                  console.log("ADMIN MODE: Fetching participants for session:", session.id);
+
+                  // First try to get the raw participant data
+                  const { data: rawParticipants, error: rawError } = await supabase
                     .from("scheduled_session_participants")
-                    .select(`
-                      id,
-                      registered_at,
-                      profiles:profiles!inner(
-                        id,
-                        nombre,
-                        apellidos,
-                        rol,
-                        email
-                      )
-                    `)
+                    .select("id, user_id, registered_at")
                     .eq("session_id", session.id);
 
-                  participants = participantData || [];
+                  console.log("Raw participants data:", rawParticipants, "Error:", rawError);
+
+                  if (rawParticipants && rawParticipants.length > 0) {
+                    // Then get profile info for those users
+                    const userIds = rawParticipants.map(p => p.user_id);
+                    console.log("User IDs to fetch profiles for:", userIds);
+
+                    const { data: profileData, error: profileError } = await supabase
+                      .from("profiles")
+                      .select("id, nombre, apellidos, rol, email")
+                      .in("id", userIds);
+
+                    console.log("Profile data:", profileData, "Error:", profileError);
+
+                    // Combine the data
+                    participants = rawParticipants.map(participant => {
+                      const profile = profileData?.find(p => p.id === participant.user_id);
+                      console.log("Participant:", participant, "Profile found:", profile);
+
+                      const completeProfile = profile || {
+                        id: participant.user_id,
+                        nombre: "Usuario",
+                        apellidos: "Registrado",
+                        rol: "desconocido",
+                        email: "usuario@simuped.com"
+                      };
+
+                      return {
+                        id: participant.id,
+                        registered_at: participant.registered_at,
+                        profiles: completeProfile
+                      };
+                    });
+
+                    console.log("Final participants data:", participants);
+                  } else {
+                    console.log("No raw participants found");
+                  }
+
                 } catch (participantError) {
                   console.warn("Error fetching participants:", participantError);
                 }
@@ -101,13 +132,13 @@ const ScheduledSessions = () => {
 
               // Check individual registration status only for authenticated users
               let isRegistered = false;
-              if (ready && session && session.user && session.user.id) {
+              if (ready && authSession && authSession.user && authSession.user.id) {
                 try {
                   const { data: registration } = await supabase
                     .from("scheduled_session_participants")
                     .select("id")
                     .eq("session_id", session.id)
-                    .eq("user_id", session.user.id)
+                    .eq("user_id", authSession.user.id)
                     .single();
                   isRegistered = !!registration;
                 } catch (regError) {
@@ -159,7 +190,7 @@ const ScheduledSessions = () => {
         .from("scheduled_session_participants")
         .insert({
           session_id: sessionId,
-          user_id: session.user.id,
+          user_id: authSession.user.id,
           registered_at: new Date().toISOString()
         });
 
@@ -182,7 +213,7 @@ const ScheduledSessions = () => {
         const userProfile = await supabase
           .from("profiles")
           .select("email, nombre, apellidos")
-          .eq("id", session.user.id)
+          .eq("id", authSession.user.id)
           .single();
 
         if (userProfile.data) {
@@ -239,7 +270,7 @@ const ScheduledSessions = () => {
         .from("scheduled_session_participants")
         .delete()
         .eq("session_id", sessionId)
-        .eq("user_id", session.user.id);
+        .eq("user_id", authSession.user.id);
 
       if (error) throw error;
 
@@ -318,9 +349,7 @@ const ScheduledSessions = () => {
         )}
 
         <div className="space-y-6">
-            <div className="mb-4 text-sm text-slate-600">
-              Debug: Admin={isAdmin ? 'SÍ' : 'NO'}, Auth={ready ? 'LISTO' : 'CARGANDO'}, User={session?.user?.id ? session.user.id.substring(0,8)+'...' : 'SIN USER'}
-            </div>
+
 
           {sessions.length > 0 ? (
             sessions.map((session) => (
@@ -367,9 +396,36 @@ const ScheduledSessions = () => {
                       </div>
 
                       {/* Debug info per session */}
-                      {ready && isAdmin && (
+                      {ready && isAdmin && true && (
                         <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
                           Session Debug: RegCount={session.registered_count}, Participants={session.participants?.length || 0}, Registered={session.is_registered ? 'SÍ' : 'NO'}
+                        </div>
+                      )}
+
+                      {/* Show participants if admin */}
+                      {ready && isAdmin && session.participants && session.participants.length > 0 && (
+                        <div className="mt-2">
+                          <details className="text-xs">
+                            <summary className="cursor-pointer hover:text-slate-800 underline text-slate-600">
+                              Ver participantes ({session.participants.length})
+                            </summary>
+                            <div className="mt-2 space-y-1 max-w-md">
+                              {session.participants.map((participant) => {
+                                const name = [participant.profiles.nombre, participant.profiles.apellidos]
+                                  .filter(Boolean)
+                                  .join(" ") || "Sin nombre";
+                                const registeredDate = new Date(participant.registered_at).toLocaleDateString('es-ES');
+                                return (
+                                  <div key={participant.id} className="flex items-center justify-between bg-slate-50 px-2 py-1 rounded text-xs">
+                                    <span className="truncate max-w-32" title={participant.profiles.email || name}>
+                                      {name}
+                                    </span>
+                                    <span className="text-slate-500 ml-2">{registeredDate}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </details>
                         </div>
                       )}
                     </div>
