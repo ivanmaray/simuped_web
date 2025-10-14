@@ -7,21 +7,6 @@
       "config": {
         "distDir": "dist"
       }
-    },
-    {
-      "src": "api/send_session_reminder.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["api/send_session_reminder.js"]
-      }
-    },
-    {
-      "src": "api/new-user-email.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "api/notify_user_approved.js",
-      "use": "@vercel/node"
     }
   ],
   "functions": {
