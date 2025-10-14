@@ -73,25 +73,55 @@ const ScheduledSessions = () => {
                 .select("id", { count: "exact" })
                 .eq("session_id", session.id);
 
-              // Get the current user ID from the auth context
-              const userId = (
-                typeof session === 'object' && session.stream && session.stream.user
-                  ? session.stream.user.id
-                  : session?.user?.id || null
-              );
+              // Get the current user ID from the auth context (simplified)
+              const userId = ready && session ? session.user.id : null;
 
               // Check if user is already registered
-              const { data: registration } = await supabase
-                .from("scheduled_session_participants")
-                .select("id")
-                .eq("session_id", session.id)
-                .eq("user_id", userId)
-                .single();
+              let isRegistered = false;
+              let participants = [];
+              if (userId) {
+                try {
+                  const { data: registration } = await supabase
+                    .from("scheduled_session_participants")
+                    .select("id")
+                    .eq("session_id", session.id)
+                    .eq("user_id", userId)
+                    .single();
+                  isRegistered = !!registration;
+                } catch (regError) {
+                  // Not registered, that's fine
+                }
+              }
+
+              // Get participant list if user is admin
+              if (ready && isAdmin) {
+                try {
+                  const { data: participantData } = await supabase
+                    .from("scheduled_session_participants")
+                    .select(`
+                      id,
+                      registered_at,
+                      profiles:profiles!inner(
+                        id,
+                        nombre,
+                        apellidos,
+                        rol,
+                        email
+                      )
+                    `)
+                    .eq("session_id", session.id);
+
+                  participants = participantData || [];
+                } catch (participantError) {
+                  console.warn("Error fetching participants:", participantError);
+                }
+              }
 
               return {
                 ...session,
                 registered_count: count || 0,
-                is_registered: !!registration,
+                is_registered: isRegistered,
+                participants: participants,
                 scheduled_at: new Date(session.scheduled_at)
               };
             } catch (err) {
@@ -356,6 +386,34 @@ const ScheduledSessions = () => {
                       }
                     </span>
                   </div>
+
+                  {/* Admin participant list */}
+                  {ready && isAdmin && session.participants && session.participants.length > 0 && (
+                    <div className="text-xs text-slate-600 mr-4">
+                      <details>
+                        <summary className="cursor-pointer hover:text-slate-800 underline">
+                          Ver participantes ({session.participants.length})
+                        </summary>
+                        <div className="mt-2 space-y-1 max-w-md">
+                          {session.participants.map((participant) => {
+                            const name = [participant.profiles.nombre, participant.profiles.apellidos]
+                              .filter(Boolean)
+                              .join(" ") || "Sin nombre";
+                            const registeredDate = new Date(participant.registered_at).toLocaleDateString('es-ES');
+                            return (
+                              <div key={participant.id} className="flex items-center justify-between bg-slate-50 px-2 py-1 rounded">
+                                <span className="truncate max-w-32" title={participant.profiles.email || name}>
+                                  {name}
+                                </span>
+                                <span className="text-slate-500 ml-2">{registeredDate}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </details>
+                    </div>
+                  )}
+
                   {session.is_registered ? (
                     <button
                       onClick={() => unregisterFromSession(session.id)}
