@@ -184,8 +184,9 @@ export default function Principal_Dashboard() {
             )
           `)
           .eq("is_active", true)
-          .gte("scheduled_at", new Date().toISOString())
-          .order("scheduled_at", { ascending: true });
+        .gte("scheduled_at", new Date().toISOString())
+        .order("scheduled_at", { ascending: true })
+        .limit(10); // Limitar resultados para performance
 
         if (error) throw error;
 
