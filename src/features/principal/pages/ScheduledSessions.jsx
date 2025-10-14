@@ -395,12 +395,7 @@ const ScheduledSessions = () => {
                         </span>
                       </div>
 
-                      {/* Debug info per session */}
-                      {ready && isAdmin && true && (
-                        <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
-                          Session Debug: RegCount={session.registered_count}, Participants={session.participants?.length || 0}, Registered={session.is_registered ? 'SÍ' : 'NO'}
-                        </div>
-                      )}
+
 
                       {/* Show participants if admin */}
                       {ready && isAdmin && session.participants && session.participants.length > 0 && (
