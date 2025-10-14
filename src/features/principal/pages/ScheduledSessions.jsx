@@ -73,12 +73,19 @@ const ScheduledSessions = () => {
                 .select("id", { count: "exact" })
                 .eq("session_id", session.id);
 
+              // Get the current user ID from the auth context
+              const userId = (
+                typeof session === 'object' && session.stream && session.stream.user
+                  ? session.stream.user.id
+                  : session?.user?.id || null
+              );
+
               // Check if user is already registered
               const { data: registration } = await supabase
                 .from("scheduled_session_participants")
                 .select("id")
                 .eq("session_id", session.id)
-                .eq("user_id", session.user_id)
+                .eq("user_id", userId)
                 .single();
 
               return {
@@ -123,7 +130,7 @@ const ScheduledSessions = () => {
         .from("scheduled_session_participants")
         .insert({
           session_id: sessionId,
-          user_id: session.user_id,
+          user_id: session.user.id,
           registered_at: new Date().toISOString()
         });
 

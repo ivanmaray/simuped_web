@@ -1,1 +1,16 @@
-{}
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "dist/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/((?!api/).*)",
+      "dest": "/dist/index.html"
+    }
+  ],
+  "outputDirectory": "dist"
+}
