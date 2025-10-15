@@ -40,9 +40,10 @@ function getDni(u) {
   return String(value).trim();
 }
 
-function StatusPills({ verified, approved, notifiedAt, verifiedAt }) {
+function StatusPills({ verified, approved, notifiedAt, verifiedAt, isAdmin = false }) {
   return (
-    <div className="flex flex-col gap-1 min-w-[100px]">
+    <div className="flex flex-col gap-1 min-w-[110px]">
+      {isAdmin ? <Badge tone="info" icon="A" labelTrue="Admin" /> : null}
       <Badge ok={!!verified} labelTrue="Verif." labelFalse="Sin verif." />
       <Badge ok={!!approved} labelTrue="Aprob." labelFalse="Pend." />
       <span className="text-[11px] text-slate-500">{verifiedAt ? `Verif. ${fmtDateShort(verifiedAt)}` : "Verif. —"}</span>
@@ -51,10 +52,23 @@ function StatusPills({ verified, approved, notifiedAt, verifiedAt }) {
   );
 }
 
-function Badge({ ok, labelTrue = "Verificado", labelFalse = "No verificado" }) {
-  const okCls = ok
-    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-    : "bg-amber-50 text-amber-700 border-amber-200";
+function Badge({ ok, labelTrue = "Verificado", labelFalse = "No verificado", tone = null, icon }) {
+  const palette = {
+    success: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    warning: "bg-amber-50 text-amber-700 border-amber-200",
+    info: "bg-sky-50 text-sky-700 border-sky-200",
+  };
+
+  if (tone) {
+    const toneCls = palette[tone] || palette.success;
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border ${toneCls}`}>
+        {(icon ?? (tone === "info" ? "i" : "✔"))} {labelTrue}
+      </span>
+    );
+  }
+
+  const okCls = ok ? palette.success : palette.warning;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border ${okCls}`}>
       {ok ? "✔" : "!"} {ok ? labelTrue : labelFalse}
@@ -117,6 +131,7 @@ export default function Admin_Usuarios() {
   const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified via our API }
   const [rolFilter, setRolFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");
+  const [adminFilter, setAdminFilter] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -215,6 +230,7 @@ export default function Admin_Usuarios() {
         const rl = norm(r?.rol);
         const un = norm(r?.unidad);
         const dn = norm(getDni(r));
+        const isAdminUser = !!r?.is_admin;
         const matchText = !query || em.includes(query) || nm.includes(query) || ap.includes(query) || rl.includes(query) || un.includes(query) || dn.includes(query);
         if (!matchText) return false;
         if (rolFilter) {
@@ -225,13 +241,15 @@ export default function Admin_Usuarios() {
           if (verifiedFilter === 'verified' && !isVerified) return false;
           if (verifiedFilter === 'unverified' && isVerified) return false;
         }
+        if (adminFilter === 'admins' && !isAdminUser) return false;
+        if (adminFilter === 'nonadmins' && isAdminUser) return false;
         return true;
       });
 
     const pend = filt(rows.filter((r) => !isApprovedUser(r)));
     const apr = filt(rows.filter((r) => isApprovedUser(r)));
     return { pendientes: pend, aprobados: apr };
-  }, [rows, dq, rolFilter, verifiedFilter]);
+  }, [rows, dq, rolFilter, verifiedFilter, adminFilter]);
 
   const heroMetrics = useMemo(() => {
     const total = rows.length;
@@ -423,11 +441,11 @@ export default function Admin_Usuarios() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold">Filtrar usuarios</h2>
-                <p className="text-sm text-slate-500">Refina la búsqueda por rol y estado de verificación.</p>
+                <p className="text-sm text-slate-500">Refina la búsqueda por rol, estado, verificación y tipo de usuario.</p>
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr_1fr] gap-4 px-5 py-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_1fr] gap-4 px-5 py-5">
             <label className="block text-sm text-slate-600">
               <span className="text-xs uppercase tracking-wide text-slate-400">Buscar</span>
               <div className="mt-1 relative flex items-center">
@@ -466,6 +484,18 @@ export default function Admin_Usuarios() {
                 <option value="unverified">Sin verificar</option>
               </select>
             </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Tipo de usuario</span>
+              <select
+                value={adminFilter}
+                onChange={(e) => setAdminFilter(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+              >
+                <option value="">Todos</option>
+                <option value="admins">Solo administradores</option>
+                <option value="nonadmins">Solo no administradores</option>
+              </select>
+            </label>
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4 text-xs text-slate-500">
             <span>Usuarios mostrados: {pendientes.length + aprobados.length}</span>
@@ -475,6 +505,7 @@ export default function Admin_Usuarios() {
                 setQ("");
                 setRolFilter("");
                 setVerifiedFilter("");
+                setAdminFilter("");
               }}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
             >
@@ -540,6 +571,7 @@ export default function Admin_Usuarios() {
                             approved={false}
                             notifiedAt={null}
                             verifiedAt={verifiedTimestamp(u)}
+                            isAdmin={!!u.is_admin}
                           />
                         </td>
                         <td className="px-3 py-2">
@@ -633,6 +665,7 @@ export default function Admin_Usuarios() {
                             approved={true}
                             notifiedAt={notifiedTimestamp(u, mailTime[u.id])}
                             verifiedAt={verifiedTimestamp(u)}
+                            isAdmin={!!u.is_admin}
                           />
                         </td>
                         <td className="px-3 py-2">

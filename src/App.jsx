@@ -553,6 +553,18 @@ useEffect(() => {
               >
                 contacto@simuped.com
               </a>
+              <Link
+                to="/privacidad"
+                className="text-[#0A3D91] hover:underline"
+              >
+                Privacidad
+              </Link>
+              <Link
+                to="/cookies"
+                className="text-[#0A3D91] hover:underline"
+              >
+                Cookies
+              </Link>
               <a
                 href="#inicio"
                 className="text-[#0A3D91] hover:underline"

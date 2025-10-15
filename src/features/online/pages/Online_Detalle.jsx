@@ -3,20 +3,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
+import { getNowUtcCached } from "../../../utils/supabaseCache.js";
 import Navbar from "../../../components/Navbar.jsx";
+import Spinner from "../../../components/Spinner.jsx";
+import FadeTransition from "../../../components/FadeTransition.jsx";
+import ErrorModal from "../../../components/ErrorModal.jsx";
 import { reportWarning } from "../../../utils/reporting.js";
+import { getProfileCached, getScenarioCached, getCaseBriefCached } from "../../../utils/supabaseCache.js";
+import { formatLevel, formatMode, formatRole } from "../../../utils/formatUtils.js";
 
 
 const HINT_PENALTY_POINTS = 5; // puntos que se restan por cada pista usada (puedes ajustar)
 
 // Sync client with server time (drift correction)
-function useServerTime() {
+function useServerTime(opts = {}) {
   const [driftMs, setDriftMs] = useState(0);
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await supabase.rpc('now_utc');
+        const data = await getNowUtcCached(supabase);
         if (!mounted) return;
         if (data) {
           const server = new Date(data).getTime();
@@ -24,18 +30,20 @@ function useServerTime() {
           setDriftMs(server - client);
         }
       } catch (error) {
+        try { opts.onError?.('Error sincronizando hora con el servidor'); } catch {}
         reportWarning('OnlineDetalle.nowUtc.initial', error);
       }
     })();
     const id = setInterval(async () => {
       try {
-        const { data } = await supabase.rpc('now_utc');
+        const data = await getNowUtcCached(supabase);
         if (data) {
           const server = new Date(data).getTime();
           const client = Date.now();
           setDriftMs(server - client);
         }
       } catch (error) {
+        try { opts.onError?.('Error sincronizando hora con el servidor'); } catch {}
         reportWarning('OnlineDetalle.nowUtc.interval', error);
       }
     }, 120000); // cada 2 min
@@ -45,24 +53,7 @@ function useServerTime() {
   return { driftMs, now };
 }
 
-function formatLevel(level) {
-  const key = String(level || "").toLowerCase();
-  const map = { basico: "Básico", básico: "Básico", medio: "Medio", avanzado: "Avanzado" };
-  return map[key] || (key ? key[0].toUpperCase() + key.slice(1) : "");
-}
-function formatMode(mode) {
-  const key = String(mode || "").toLowerCase();
-  const map = { online: "Online", presencial: "Presencial" };
-  return map[key] || (key ? key[0].toUpperCase() + key.slice(1) : "");
-}
-
-function formatRole(rol) {
-  const k = String(rol || "").toLowerCase();
-  if (k.includes("medic")) return "Médico";
-  if (k.includes("enfer")) return "Enfermería";
-  if (k.includes("farm")) return "Farmacia";
-  return k ? k[0].toUpperCase() + k.slice(1) : "";
-}
+// ...existing code...
 
 function isTimedStep(step) {
   if (!step) return false;
@@ -295,7 +286,7 @@ function Sk({ w = "100%", h = 12, className = "" }) {
 }
 
 // Triángulo de Evaluación Pediátrica (TEP) como SVG (más visible, nunca recortado)
-function TEPTriangle({ appearance, breathing, circulation }) {
+function TEPTriangle({ appearance, breathing, circulation, onToggle }) {
   function norm(v) {
     const k = String(v || '').toLowerCase();
     if (['verde', 'green', 'normal'].includes(k)) return 'green';
@@ -321,9 +312,9 @@ function TEPTriangle({ appearance, breathing, circulation }) {
   };
 
   // Más área útil para que no se recorten textos
-  const width = 820;      // sólo afecta al viewBox (responsive)
-  const height = 500;     // espacio extra bajo para los rótulos de la base
-  const padding = 100;    // margen interno generoso
+  const width = 840;      // sólo afecta al viewBox (responsive)
+  const height = 540;     // espacio extra bajo para los rótulos de la base
+  const padding = 110;    // margen interno generoso
   const top = { x: width / 2, y: padding };
   const left = { x: padding, y: height - padding };
   const right = { x: width - padding, y: height - padding };
@@ -331,16 +322,40 @@ function TEPTriangle({ appearance, breathing, circulation }) {
   const NODE_R = 22;      // tamaño del nodo
   const NODE_DOT = 5;     // punto interior
   const FONT = 18;        // tamaño de letra de las etiquetas
+  const LABEL_OFFSET = 36; // desplaza etiquetas de los extremos hacia dentro
 
-  function dot({ x, y }, status) {
+  function node({ x, y }, status, label, keyName) {
     const fill = colorMapFill[status ?? 'null'];
     const stroke = colorMapStroke[status ?? 'null'];
-    const tr = { transition: "fill .25s ease, stroke .25s ease" };
+    const has = status !== null;
+    const ringR = NODE_R + 4;
+    const ringAnim = `${ringR};${ringR + 2};${ringR}`;
+    const statusText = status === 'green' ? 'Normal' : status === 'amber' ? 'Sospechoso' : status === 'red' ? 'Alterado' : 'Sin seleccionar';
+    const coreFill = status === 'green' ? 'url(#coreGreen)' : status === 'amber' ? 'url(#coreAmber)' : status === 'red' ? 'url(#coreRed)' : '#fff';
+    const ringWidth = has ? 4 : 3;
+    const dotSize = has ? NODE_DOT + 1.5 : NODE_DOT;
+    const handle = () => { if (typeof onToggle === 'function' && keyName) onToggle(keyName); };
+    const onKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handle(); } };
     return (
-      <>
-        <circle cx={x} cy={y} r={NODE_R} fill={fill} stroke={stroke} strokeWidth="3" style={tr} />
-        <circle cx={x} cy={y} r={NODE_DOT} fill={stroke} style={tr} />
-      </>
+      <g onClick={handle} onKeyDown={onKey} role={onToggle ? 'button' : undefined} tabIndex={onToggle ? 0 : undefined} style={{ cursor: onToggle ? 'pointer' : 'default' }}>
+        <title>{`${label}: ${statusText}`}</title>
+        {has && (
+          <g>
+            <circle cx={x} cy={y} r={NODE_R + 16} fill={fill} opacity="0.35" filter="url(#halo)">
+              <animate attributeName="opacity" values="0.35;0.18;0.35" dur="2s" repeatCount="indefinite" />
+            </circle>
+            {/* halo de trazo para reforzar el color */}
+            <circle cx={x} cy={y} r={ringR + 7} fill="none" stroke={stroke} strokeOpacity="0.22" strokeWidth="8">
+              <animate attributeName="stroke-opacity" values="0.22;0.12;0.22" dur="2.4s" repeatCount="indefinite" />
+            </circle>
+          </g>
+        )}
+        <circle cx={x} cy={y} r={ringR} fill="#fff" stroke={stroke} strokeWidth={ringWidth}>
+          {has && <animate attributeName="r" values={ringAnim} dur="2.4s" repeatCount="indefinite" />}
+        </circle>
+        <circle cx={x} cy={y} r={NODE_R} fill={coreFill} stroke="#e2e8f0" strokeWidth="1.5" />
+        <circle cx={x} cy={y} r={dotSize} fill={stroke} />
+      </g>
     );
   }
 
@@ -354,43 +369,71 @@ function TEPTriangle({ appearance, breathing, circulation }) {
         aria-label="Triángulo de Evaluación Pediátrica"
         preserveAspectRatio="xMidYMid meet"
       >
+        <defs>
+          <filter id="tepShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#94a3b8" floodOpacity="0.35" />
+          </filter>
+          <filter id="halo" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="8" />
+          </filter>
+          <linearGradient id="triGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+            <stop offset="100%" stopColor="#eaf4ff" stopOpacity="0.9" />
+          </linearGradient>
+          {/* Gradientes para el núcleo según estado */}
+          <radialGradient id="coreGreen" cx="50%" cy="50%" r="65%">
+            <stop offset="0%" stopColor="#a7f3d0" />
+            <stop offset="100%" stopColor="#d1fae5" />
+          </radialGradient>
+          <radialGradient id="coreAmber" cx="50%" cy="50%" r="65%">
+            <stop offset="0%" stopColor="#fde68a" />
+            <stop offset="100%" stopColor="#fef3c7" />
+          </radialGradient>
+          <radialGradient id="coreRed" cx="50%" cy="50%" r="65%">
+            <stop offset="0%" stopColor="#fecaca" />
+            <stop offset="100%" stopColor="#fee2e2" />
+          </radialGradient>
+        </defs>
         {/* triángulo base */}
         <polygon
           points={`${top.x},${top.y} ${left.x},${left.y} ${right.x},${right.y}`}
-          fill="#ffffff"
+          fill="url(#triGrad)"
           stroke="#cbd5e1"
           strokeWidth="2"
+          filter="url(#tepShadow)"
         />
-        {/* vértices coloreados */}
-        {dot(top, A)}
-        {dot(left, B)}
-        {dot(right, C)}
+  {/* vértices modernos */}
+  {node(top, A, 'Apariencia', 'appearance')}
+  {node(left, B, 'Respiración', 'breathing')}
+  {node(right, C, 'Circulación cutánea', 'circulation')}
 
-        {/* etiquetas (posicionadas dentro del área para evitar recortes) */}
-        <text x={top.x} y={top.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
+        {/* etiquetas (posicionadas y divididas en líneas para evitar recortes) */}
+        <text x={top.x} y={top.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill={A ? colorMapStroke[A] : "#334155"}>
           Apariencia
         </text>
-        <text x={left.x} y={left.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
-          Respiración / Trabajo resp.
+        <text textAnchor="start" fontSize={FONT} fontWeight="700" fill={B ? colorMapStroke[B] : "#334155"}>
+          <tspan x={left.x + LABEL_OFFSET} y={left.y + NODE_R + 18}>Respiración</tspan>
+          <tspan x={left.x + LABEL_OFFSET} dy={22}>Trabajo resp.</tspan>
         </text>
-        <text x={right.x} y={right.y + NODE_R + 26} textAnchor="middle" fontSize={FONT} fontWeight="700" fill="#334155">
-          Circulación cutánea
+        <text textAnchor="end" fontSize={FONT} fontWeight="700" fill={C ? colorMapStroke[C] : "#334155"}>
+          <tspan x={right.x - LABEL_OFFSET} y={right.y + NODE_R + 18}>Circulación</tspan>
+          <tspan x={right.x - LABEL_OFFSET} dy={22}>cutánea</tspan>
         </text>
       </svg>
 
-      {/* leyenda un poco más grande */}
-      <div className="mt-2 flex items-center gap-4 text-sm text-slate-700">
-        <span className="inline-flex items-center gap-2">
-          <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: colorMapFill.green, border: `2px solid ${colorMapStroke.green}` }}></span>
+      {/* leyenda moderna */}
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px] text-slate-700">
+        <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full ring-1 ring-emerald-200 bg-emerald-50">
+          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.green, border: `2px solid ${colorMapStroke.green}` }}></span>
           Normal
         </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: colorMapFill.amber, border: `2px solid ${colorMapStroke.amber}` }}></span>
+        <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full ring-1 ring-amber-200 bg-amber-50">
+          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.amber, border: `2px solid ${colorMapStroke.amber}` }}></span>
           Sospechoso
         </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: colorMapFill.red, border: `2px solid ${colorMapStroke.red}` }}></span>
-          Anormal
+        <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full ring-1 ring-rose-200 bg-rose-50">
+          <span className="inline-block w-3 h-3 rounded-full" style={{ background: colorMapFill.red, border: `2px solid ${colorMapStroke.red}` }}></span>
+          Alterado
         </span>
       </div>
     </div>
@@ -399,7 +442,9 @@ function TEPTriangle({ appearance, breathing, circulation }) {
 
 // Mensaje por defecto si no hay motivo específico en el briefing
 export default function Online_Detalle() {
-  const { now: nowDrifted } = useServerTime();
+  const [errorMsg, setErrorMsg] = useState("");
+  const [showError, setShowError] = useState(false);
+  const { now: nowDrifted } = useServerTime({ onError: (msg) => { setErrorMsg(msg); setShowError(true); } });
   const { id, attemptId: attemptParam } = useParams(); // id de escenario y (opcional) attemptId por ruta /resumen/:attemptId
   const scenarioIdParam = String(id ?? "");
   const scenarioIdNumeric = /^\d+$/.test(scenarioIdParam) ? Number(scenarioIdParam) : null;
@@ -579,17 +624,20 @@ export default function Online_Detalle() {
   // Arrancamos el contador al entrar al briefing si hay límite y aún no existe expires_at.
   useEffect(() => {
     if (loading) return;
-    if (!showBriefing) return;       // solo cuando se muestra el briefing
+    if (showSummary) return;
+    if (!showBriefing) return;         // solo cuando se muestra el briefing
     if (!attemptId) return;
-    if (expiresAt) return;           // ya había contador arrancado
-    // Si ya existía expires_at (intento reanudado), no hacemos nada: el otro efecto lo respetará.
-    if (initialExpiresAt) return;
-    if (attemptTimeLimit && Number(attemptTimeLimit) > 0) {
-      // inicia el contador ahora para que el pre-quiz cuente
-      startAttemptCountdown();
-      setRemainingSecs((prev) => (prev == null && Number(attemptTimeLimit) > 0 ? Number(attemptTimeLimit) : prev));
+    if (expiresAt) return;             // ya había contador arrancado en memoria
+
+    const hasServerExpiry = !!initialExpiresAt;
+    const hasTimeLimit = Number(attemptTimeLimit) > 0;
+    if (!hasServerExpiry && !hasTimeLimit) return;
+
+    startAttemptCountdown();
+    if (!hasServerExpiry && hasTimeLimit) {
+      setRemainingSecs((prev) => (prev == null ? Number(attemptTimeLimit) : prev));
     }
-  }, [loading, showBriefing, attemptId, attemptTimeLimit, expiresAt, initialExpiresAt, startAttemptCountdown]);
+  }, [loading, showSummary, showBriefing, attemptId, attemptTimeLimit, expiresAt, initialExpiresAt, startAttemptCountdown]);
 
   const currentStep = steps[currentIdx] || null;
 
@@ -750,27 +798,13 @@ export default function Online_Detalle() {
       // Rol del usuario
       let userRole = "";
       if (sess?.user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("rol")
-          .eq("id", sess.user.id)
-          .maybeSingle();
-        userRole = normalizeRole(prof?.rol ?? sess.user?.user_metadata?.rol);
+        const prof = await getProfileCached(supabase, sess.user.id);
+        userRole = normalizeRole((prof?.rol) ?? sess.user?.user_metadata?.rol);
       }
       setRol(userRole);
 
       // Cargar escenario
-      const { data: esc, error: e1 } = await supabase
-        .from("scenarios")
-        .select("id, title, summary, level, mode, estimated_minutes, created_at")
-        .eq("id", scenarioIdNumeric ?? scenarioIdParam)
-        .maybeSingle();
-
-      if (e1) {
-        setErr(e1.message || "Error cargando escenario");
-        setLoading(false);
-        return;
-      }
+      const esc = await getScenarioCached(supabase, scenarioIdNumeric ?? scenarioIdParam);
       if (!esc) {
         setErr("Escenario no encontrado");
         setLoading(false);
@@ -779,14 +813,8 @@ export default function Online_Detalle() {
       setScenario(esc);
       // Cargar briefing del caso (Pantalla 0)
       try {
-        const { data: b, error: bErr } = await supabase
-          .from("case_briefs")
-          .select(
-            "id, scenario_id, title, context, chips, demographics, chief_complaint, history, triangle, vitals, exam, quick_labs, imaging, red_flags, estimated_minutes, level, critical_actions, learning_objective"
-          )
-          .eq("scenario_id", esc.id)
-          .maybeSingle();
-        if (!bErr && b) {
+        const b = await getCaseBriefCached(supabase, esc.id);
+        if (b) {
           setBrief(b);
           setShowBriefing(true);
         } else {
@@ -1093,6 +1121,15 @@ export default function Online_Detalle() {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900">
         <Navbar />
+        <ErrorModal message={showError ? errorMsg : ""} onClose={() => setShowError(false)} />
+        {loading && (
+          <FadeTransition>
+      <div className="min-h-screen flex items-center justify-center md:px-10 md:py-24 px-5 py-16" role="main" aria-label="Detalle de simulación">
+              <Spinner size={48} />
+              <div className="text-slate-600 mt-4">Cargando…</div>
+            </div>
+          </FadeTransition>
+        )}
         <main className="max-w-6xl mx-auto px-5 py-6 mt-2 grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Sidebar skeleton */}
           <aside className="md:col-span-1">
@@ -1168,7 +1205,8 @@ export default function Online_Detalle() {
   if (!showSummary && showBriefing) {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-900">
-        <Navbar />
+  <Navbar />
+  <ErrorModal message={showError ? errorMsg : ""} onClose={() => setShowError(false)} />
         <main className="max-w-6xl mx-auto px-5 py-6 mt-2">
           {/* HERO */}
           <div className="rounded-2xl bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] p-6 text-white shadow-sm">
@@ -1269,12 +1307,34 @@ export default function Online_Detalle() {
                   appearance={tepAnswer.appearance}
                   breathing={tepAnswer.breathing}
                   circulation={tepAnswer.circulation}
+                  onToggle={(k) => {
+                    setTepAnswer((t) => {
+                      const current = t[k];
+                      const next = current === null ? 'green' : current === 'green' ? 'amber' : current === 'amber' ? 'red' : null;
+                      return { ...t, [k]: next };
+                    });
+                    setTepChecked(false);
+                  }}
                 />
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
                 <div className="font-semibold text-slate-700 mb-2">Selecciona tu valoración</div>
                 <div className="text-xs text-slate-500 mb-2">
                   El triángulo se muestra en gris hasta que elijas una opción. Marca cada vértice (Apariencia, Respiración, Circulación) y luego pulsa <strong>Comprobar</strong>.
+                </div>
+                <div className="mb-3 flex items-center gap-2">
+                  {tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation ? (
+                    <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">TEP completo ✅</span>
+                  ) : (
+                    <span className="text-xs text-slate-500">Pulsa en cada vértice o usa los botones.</span>
+                  )}
+                  <button
+                    type="button"
+                    className="ml-auto text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
+                    onClick={() => { setTepAnswer({ appearance: null, breathing: null, circulation: null }); setTepChecked(false); }}
+                  >
+                    Reset TEP
+                  </button>
                 </div>
                 {(["appearance", "breathing", "circulation"]).map((k) => (
                   <div key={k} className="mb-3">
@@ -1451,7 +1511,8 @@ export default function Online_Detalle() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <Navbar />
+  <Navbar />
+  <ErrorModal message={showError ? errorMsg : ""} onClose={() => setShowError(false)} />
 
       {showSummary ? (
         <section className="max-w-6xl mx-auto px-5 py-6">

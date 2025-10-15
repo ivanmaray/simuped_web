@@ -1,14 +1,138 @@
 // src/pages/Perfil.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { TrophyIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
+import { MEDICAL_BADGES, BADGE_CATEGORIES } from "../../../utils/badgeSystem.js";
 
 const COLORS = {
   primary: "#1E6ACB",
 };
 
 const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
+
+const BADGE_LOOKUP = Object.values(MEDICAL_BADGES).reduce((acc, badge) => {
+  acc[badge.id] = badge;
+  return acc;
+}, {});
+
+const DEFAULT_BADGE_STYLES = "bg-slate-200 text-slate-700";
+
+function mapEarnedBadge(row) {
+  const joined = row?.badges || row?.badge || null;
+  const meta = BADGE_LOOKUP[row?.badge_id] || null;
+  const title = joined?.title || meta?.title || row?.badge_id || "Logro sin nombre";
+  const description = joined?.description || meta?.description || row?.earned_for || "";
+  const icon = joined?.icon || meta?.icon || "🏅";
+  const category = joined?.category || meta?.category || "achievement";
+  const type = joined?.type || meta?.type || "";
+  const colorClass = joined?.color || meta?.color || DEFAULT_BADGE_STYLES;
+
+  return {
+    badgeId: row?.badge_id || "",
+    title,
+    description,
+    icon,
+    category,
+    type,
+    colorClass,
+    earnedDate: row?.earned_date || null,
+    earnedFor: row?.earned_for || "",
+  };
+}
+
+function getAchievementLevelDescriptor(onlineAttempted, presencialAttempted) {
+  const total = onlineAttempted + presencialAttempted;
+
+  if (total >= 25) {
+    return {
+      id: "achievement_level_experto_profesional",
+      icon: "🏆",
+      title: "Experto Profesional",
+      description: "Especialista multidisciplinar consolidado",
+      color: "bg-yellow-500 text-yellow-900",
+    };
+  }
+
+  if (total >= 20) {
+    return {
+      id: "achievement_level_coordinador_experto",
+      icon: "⭐",
+      title: "Coordinador Experto",
+      description: "Gestión avanzada de equipos de crisis",
+      color: "bg-red-500 text-white",
+    };
+  }
+
+  if (total >= 15) {
+    return {
+      id: "achievement_level_jefe_equipo",
+      icon: "👨‍💼",
+      title: "Jefe de Equipo",
+      description: "Líder reconocido en simulación multimodal",
+      color: "bg-purple-500 text-purple-900",
+    };
+  }
+
+  if (total >= 12) {
+    return {
+      id: "achievement_level_supervisor_senior",
+      icon: "👥",
+      title: "Supervisor Senior",
+      description: "Experiencia en múltiples escenarios críticos",
+      color: "bg-orange-500 text-orange-900",
+    };
+  }
+
+  if (total >= 8) {
+    return {
+      id: "achievement_level_especialista_avanzado",
+      icon: "🔬",
+      title: "Especialista Avanzado",
+      description: "Dominio en protocolos de alta complejidad",
+      color: "bg-blue-500 text-blue-900",
+    };
+  }
+
+  if (total >= 5) {
+    return {
+      id: "achievement_level_profesional_competente",
+      icon: "⚡",
+      title: "Profesional Competente",
+      description: "Habilidades sólidas en situaciones críticas",
+      color: "bg-green-500 text-green-900",
+    };
+  }
+
+  if (total >= 3) {
+    return {
+      id: "achievement_level_profesional_formacion",
+      icon: "📚",
+      title: "Profesional en Formación",
+      description: "Desarrollo de destrezas técnicas avanzadas",
+      color: "bg-indigo-500 text-indigo-900",
+    };
+  }
+
+  if (total >= 1) {
+    return {
+      id: "achievement_level_nuevos_compromisos",
+      icon: "🎯",
+      title: "Nuevos Compromisos",
+      description: "Iniciativa y motivación profesional activa",
+      color: "bg-teal-500 text-teal-900",
+    };
+  }
+
+  return {
+    id: "achievement_level_primeros_pasos",
+    icon: "🌱",
+    title: "Primeros Pasos",
+    description: "Inicio del camino profesional en simulación",
+    color: "bg-gray-500 text-gray-900",
+  };
+}
 
 function formatRoleLabel(rol) {
   const key = String(rol || "").toLowerCase();
@@ -106,6 +230,8 @@ export default function Principal_Perfil() {
     notified: false,
     notifiedAt: null,
   });
+  const [achievements, setAchievements] = useState([]);
+  const [loadingAchievements, setLoadingAchievements] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -122,6 +248,7 @@ export default function Principal_Perfil() {
       setSession(sess);
       if (!sess) {
         setLoading(false);
+        setLoadingAchievements(false);
         navigate("/", { replace: true });
         return;
       }
@@ -237,6 +364,7 @@ export default function Principal_Perfil() {
         .from("categories")
         .select("id, name")
         .order("name", { ascending: true });
+      if (!mounted) return;
       if (cErr) {
         console.error("[Perfil] error cargando categorías:", cErr);
         setCategorias([]);
@@ -244,7 +372,113 @@ export default function Principal_Perfil() {
         setCategorias(cats || []);
       }
 
-      setLoading(false);
+      setLoadingAchievements(true);
+
+      const normalizeMode = (mode) => {
+        const arr = Array.isArray(mode) ? mode : mode ? [mode] : [];
+        return arr.map((m) => String(m || "").toLowerCase());
+      };
+
+      let earnedList = [];
+      try {
+        const { data: badgeRows, error: badgeErr } = await supabase
+          .from("user_badges")
+          .select(
+            "badge_id, earned_date, earned_for"
+          )
+          .eq("user_id", sess.user.id)
+          .order("earned_date", { ascending: false });
+
+        if (badgeErr) throw badgeErr;
+        earnedList = (badgeRows || []).map(mapEarnedBadge);
+      } catch (achErr) {
+        console.warn("[Perfil] error cargando logros:", achErr);
+        earnedList = [];
+      }
+
+      let derivedList = [];
+      try {
+        const { data: attemptsRaw, error: attemptsError } = await supabase
+          .from("attempts")
+          .select(
+            `scenario_id, started_at, finished_at, scenarios (mode)`
+          )
+          .eq("user_id", sess.user.id)
+          .order("started_at", { ascending: false });
+
+        if (attemptsError) throw attemptsError;
+
+        const attemptsByScenario = new Map();
+        for (const row of attemptsRaw || []) {
+          const scenarioId = row?.scenario_id;
+          if (!scenarioId) continue;
+          const modeNormalized = normalizeMode(row?.scenarios?.mode);
+          if (!attemptsByScenario.has(scenarioId)) {
+            attemptsByScenario.set(scenarioId, {
+              mode_normalized: modeNormalized,
+              last_started_at: row?.started_at || row?.finished_at || null,
+            });
+          } else {
+            const entry = attemptsByScenario.get(scenarioId);
+            const attemptTime = row?.started_at || row?.finished_at || null;
+            if (attemptTime) {
+              const current = entry.last_started_at ? new Date(entry.last_started_at).getTime() : 0;
+              const next = new Date(attemptTime).getTime();
+              if (next > current) entry.last_started_at = attemptTime;
+            }
+            entry.mode_normalized = modeNormalized;
+          }
+        }
+
+        const attemptsWithData = Array.from(attemptsByScenario.values()).sort((a, b) => {
+          const aDate = a.last_started_at ? new Date(a.last_started_at).getTime() : 0;
+          const bDate = b.last_started_at ? new Date(b.last_started_at).getTime() : 0;
+          return bDate - aDate;
+        });
+
+        const onlineAttempted = attemptsWithData.filter((row) => (row.mode_normalized || []).includes("online")).length;
+        const presencialAttempted = attemptsWithData.filter((row) => (row.mode_normalized || []).includes("presencial")).length;
+        const totalUnique = onlineAttempted + presencialAttempted;
+
+        if (totalUnique > 0) {
+          const levelBadge = getAchievementLevelDescriptor(onlineAttempted, presencialAttempted);
+          derivedList.push({
+            badgeId: levelBadge.id,
+            title: levelBadge.title,
+            description: levelBadge.description,
+            icon: levelBadge.icon,
+            category: "achievement",
+            type: "nivel",
+            colorClass: levelBadge.color,
+            earnedDate: attemptsWithData[0]?.last_started_at || null,
+            earnedFor: `Simulaciones completadas: ${totalUnique}`,
+          });
+        }
+      } catch (attemptErr) {
+        console.warn("[Perfil] no se pudieron calcular logros derivados:", attemptErr);
+      }
+
+      if (mounted) {
+        const combined = [...earnedList];
+        const seen = new Set(combined.map((item) => item.badgeId));
+        for (const derived of derivedList) {
+          if (!seen.has(derived.badgeId)) {
+            combined.push(derived);
+            seen.add(derived.badgeId);
+          }
+        }
+        combined.sort((a, b) => {
+          const aTime = a.earnedDate ? new Date(a.earnedDate).getTime() : 0;
+          const bTime = b.earnedDate ? new Date(b.earnedDate).getTime() : 0;
+          return bTime - aTime;
+        });
+        setAchievements(combined);
+        setLoadingAchievements(false);
+      }
+
+      if (mounted) {
+        setLoading(false);
+      }
     }
 
     init();
@@ -447,6 +681,72 @@ export default function Principal_Perfil() {
             {errorMsg || okMsg}
           </div>
         )}
+
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.35)] px-6 py-6 space-y-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  <TrophyIcon className="h-5 w-5" />
+                </span>
+                Logros conquistados
+              </h2>
+              <p className="text-sm text-slate-600">Repaso de los badges que has desbloqueado en SimuPed.</p>
+            </div>
+            <span className="text-sm text-slate-500">
+              {loadingAchievements ? "Cargando logros…" : `${achievements.length} logro${achievements.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
+
+          {loadingAchievements ? (
+            <div className="text-sm text-slate-500">Estamos recuperando tus logros.</div>
+          ) : achievements.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+              Aún no has desbloqueado logros. Completa simulaciones para conseguir tu primer badge.
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {achievements.map((badge) => {
+                const categoryLabel = BADGE_CATEGORIES[badge.category]?.label || "Logro";
+                const dateLabel = badge.earnedDate ? formatDateShort(badge.earnedDate) : "Sin fecha";
+                return (
+                  <li
+                    key={`${badge.badgeId}-${badge.earnedDate || "na"}`}
+                    className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  >
+                    <div className={`mt-0.5 h-10 w-10 shrink-0 rounded-xl grid place-items-center text-base ${badge.colorClass}`}>
+                      <span>{badge.icon}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                        <h3 className="text-sm font-semibold text-slate-900 truncate">{badge.title}</h3>
+                        <span className="text-xs text-slate-500">Conseguido {dateLabel}</span>
+                      </div>
+                      {badge.description ? (
+                        <p className="text-sm text-slate-600 mt-1 leading-relaxed">{badge.description}</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700">
+                          {categoryLabel}
+                        </span>
+                        {badge.type ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5">
+                            {badge.type}
+                          </span>
+                        ) : null}
+                        {badge.earnedFor ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-slate-500">
+                            {badge.earnedFor}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
 
         <form
           onSubmit={handleGuardar}

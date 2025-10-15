@@ -20,6 +20,8 @@ import ProtectedRoute from "./ProtectedRoute.jsx";
 import Dashboard from "./features/principal/pages/Principal_Dashboard.jsx";
 import ScheduledSessions from "./features/principal/pages/ScheduledSessions.jsx";
 import CreateScheduledSession from "./features/principal/pages/CreateScheduledSession.jsx";
+import LegalPrivacidad from "./features/principal/pages/Legal_Privacidad.jsx";
+import LegalCookies from "./features/principal/pages/Legal_Cookies.jsx";
 import Simulacion from "./features/online/pages/Online_Main.jsx";
 import SimulacionDetalle from "./features/online/pages/Online_Detalle.jsx";
 import SimulacionConfirm from "./features/online/pages/Online_Confirm.jsx";
@@ -112,6 +114,8 @@ export default function MainRouter() {
         <Route path="/registro" element={<Registro />} />
         <Route path="/pendiente" element={<Pendiente />} />
         <Route path="/presencial-info" element={<PresencialInfo />} />
+  <Route path="/privacidad" element={<LegalPrivacidad />} />
+  <Route path="/cookies" element={<LegalCookies />} />
 
         {/* Pantalla pública de alumnos por código */}
         <Route path="/presencial/alumno/:code" element={<PresencialAlumno />} />
