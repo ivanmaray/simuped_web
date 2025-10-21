@@ -124,12 +124,12 @@ export default function MainRouter() {
         {/* Pantalla pública de alumnos por código */}
   <Route path="/presencial/alumno/:code" element={<Suspense fallback={<Spinner centered />}><PresencialAlumno /></Suspense>} />
   <Route path="/presencial-alumno/:code" element={<Suspense fallback={<Spinner centered />}><PresencialAlumno /></Suspense>} />
+  <Route path="/confirm-invite" element={<Suspense fallback={<Spinner centered />}><ConfirmInvite /></Suspense>} />
 
         {/* Requieren usuario autenticado */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Suspense fallback={<Spinner centered />}><Dashboard /></Suspense>} />
           <Route path="/sesiones-programadas" element={<Suspense fallback={<Spinner centered />}><ScheduledSessions /></Suspense>} />
-          <Route path="/confirm-invite" element={<Suspense fallback={<Spinner centered />}><ConfirmInvite /></Suspense>} />
           <Route element={<RequireAdmin />}>
             <Route path="/sesiones-programadas/crear" element={<Suspense fallback={<Spinner centered />}><CreateScheduledSession /></Suspense>} />
           </Route>

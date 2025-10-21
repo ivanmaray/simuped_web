@@ -17,9 +17,13 @@ function verifyToken(tokenBase64, secret) {
 }
 
 export default async function handler(req, res) {
-  const INVITE_SECRET = process.env.INVITE_TOKEN_SECRET;
+  const INVITE_SECRET =
+    process.env.INVITE_TOKEN_SECRET ||
+    process.env.INVITE_FALLBACK_SECRET ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY;
   const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_KEY = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+  const SUPABASE_SERVICE_KEY = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
   if (!INVITE_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) return res.status(500).send('Server not configured');
 
   try {

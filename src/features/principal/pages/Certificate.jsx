@@ -20,25 +20,74 @@ export default function Certificate() {
   const [loading, setLoading] = useState(true);
   const [eligible, setEligible] = useState(false);
   const [message, setMessage] = useState('');
+  const [profileDetails, setProfileDetails] = useState(null);
+  const [onlineSummaries, setOnlineSummaries] = useState([]);
+  const [presencialSummaries, setPresencialSummaries] = useState([]);
+  const [signatureVisibility, setSignatureVisibility] = useState({ ivan: true, andres: true });
+  const [signatureSources, setSignatureSources] = useState({
+    ivan: '/firma_ivan_maray.avif',
+    andres: '/firma_andres_concha.avif'
+  });
+  const initialLogoSrc = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_CERT_LOGO_PATH)
+    ? import.meta.env.VITE_CERT_LOGO_PATH
+    : '/logo-simuped-Dtpd4WLf.avif';
+  const [logoState, setLogoState] = useState({
+    src: initialLogoSrc,
+    visible: true
+  });
   const isPreview = searchParams.has('prueba');
 
+  useEffect(() => {
+    // Ensure print exports use landscape A4 and hide surrounding chrome
+    const styleTag = document.createElement('style');
+    styleTag.setAttribute('data-cert-print', 'true');
+    styleTag.innerHTML = `
+      @page {
+        size: A4 landscape;
+        margin: 12mm;
+      }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+          background: #fff !important;
+        }
+        #certificate-root {
+          box-shadow: none !important;
+          border: none !important;
+          border-radius: 0 !important;
+          margin: 0 !important;
+          width: 100% !important;
+        }
+      }
+    `;
+    document.head.appendChild(styleTag);
+    return () => {
+      document.head.removeChild(styleTag);
+    };
+  }, []);
+
+  const resolvedProfile = profileDetails || profile;
+
   const fullName = useMemo(() => {
-    const pieces = [profile?.nombre, profile?.apellidos].filter(Boolean);
+    const pieces = [resolvedProfile?.nombre, resolvedProfile?.apellidos].filter(Boolean);
     if (pieces.length > 0) return pieces.join(' ');
     const metaPieces = [session?.user?.user_metadata?.nombre, session?.user?.user_metadata?.apellidos].filter(Boolean);
     if (metaPieces.length > 0) return metaPieces.join(' ');
     return session?.user?.email || 'Participante SimuPed';
   }, [
-    profile?.nombre,
-    profile?.apellidos,
+    resolvedProfile?.nombre,
+    resolvedProfile?.apellidos,
     session?.user?.user_metadata?.nombre,
     session?.user?.user_metadata?.apellidos,
     session?.user?.email
   ]);
 
   const dniValue = useMemo(() => {
-    return profile?.dni || session?.user?.user_metadata?.dni || '—';
-  }, [profile?.dni, session?.user?.user_metadata?.dni]);
+    const raw = resolvedProfile?.dni || session?.user?.user_metadata?.dni;
+    if (!raw) return 'No disponible';
+    return String(raw).toUpperCase();
+  }, [resolvedProfile?.dni, session?.user?.user_metadata?.dni]);
 
   useEffect(() => {
     let mounted = true;
@@ -58,17 +107,41 @@ export default function Certificate() {
         return;
       }
 
-      // Load scenarios and user attempts
+      // Load scenarios, profile details and user attempts
       try {
-        const { data: scenarios } = await supabase.from('scenarios').select('id, title, mode');
+        const normalizeMode = (mode) => {
+          const arr = Array.isArray(mode) ? mode : mode ? [mode] : [];
+          return arr.map((m) => String(m || '').toLowerCase());
+        };
 
-        const { data: attempts } = await supabase
-          .from('attempts')
-          .select('scenario_id, started_at, finished_at, scenarios (mode)')
-          .eq('user_id', session.user.id);
+        const [profileResponse, scenariosResponse, attemptsResponse] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('id, nombre, apellidos, dni')
+            .eq('id', session.user.id)
+            .maybeSingle(),
+          supabase.from('scenarios').select('id, title, mode'),
+          supabase
+            .from('attempts')
+            .select('scenario_id, score, started_at, finished_at, scenarios (id, title, mode)')
+            .eq('user_id', session.user.id)
+        ]);
 
+        if (profileResponse?.data && mounted) {
+          setProfileDetails(profileResponse.data);
+        }
+        if (profileResponse?.error) {
+          console.warn('Error cargando perfil para certificado', profileResponse.error);
+        }
+
+        const scenarios = scenariosResponse?.data || [];
         const scenarioMap = new Map();
-        (scenarios || []).forEach(s => scenarioMap.set(s.id, s));
+        scenarios.forEach(s => scenarioMap.set(s.id, s));
+
+        const attempts = attemptsResponse?.data || [];
+        if (attemptsResponse?.error) {
+          console.warn('Error cargando intentos para certificado', attemptsResponse.error);
+        }
 
         // Determine online scenarios list and presencial list
         const onlineScenarios = (scenarios || []).filter(s => {
@@ -83,15 +156,31 @@ export default function Certificate() {
 
         // Build set of scenario_ids attempted by user per mode
         const attemptedByMode = { online: new Set(), presencial: new Set() };
+        const scenarioStats = new Map();
         (attempts || []).forEach(a => {
-          // if attempt includes mode inside joined scenarios
-          const mode = a?.scenarios?.mode || null;
-          const normalized = Array.isArray(mode) ? mode : mode ? [mode] : [];
-          const scenId = a.scenario_id;
-          (normalized || []).forEach(m => {
-            const mm = String(m || '').toLowerCase();
-            if (mm.includes('online')) attemptedByMode.online.add(scenId);
-            if (mm.includes('presencial')) attemptedByMode.presencial.add(scenId);
+          const scenId = a?.scenario_id;
+          if (!scenId) return;
+          const scenario = scenarioMap.get(scenId) || a?.scenarios || null;
+          const normalized = normalizeMode(scenario?.mode);
+          if (!scenarioStats.has(scenId)) {
+            scenarioStats.set(scenId, {
+              scenarioId: scenId,
+              title: scenario?.title || `Escenario ${scenId}`,
+              modes: normalized,
+              attempts: []
+            });
+          }
+          const entry = scenarioStats.get(scenId);
+          entry.modes = normalized.length ? normalized : entry.modes;
+          entry.attempts.push({
+            score: typeof a?.score === 'number' ? a.score : (a?.score != null ? Number(a.score) : null),
+            finished_at: a?.finished_at || null,
+            started_at: a?.started_at || null
+          });
+
+          normalized.forEach((m) => {
+            if (m.includes('online')) attemptedByMode.online.add(scenId);
+            if (m.includes('presencial')) attemptedByMode.presencial.add(scenId);
           });
         });
 
@@ -112,6 +201,44 @@ export default function Certificate() {
             if (presencialDone < presencialRequired) reasons.push(`Necesitas al menos ${presencialRequired} sesiones presenciales (has ${presencialDone}).`);
             setMessage(reasons.join(' '));
           }
+          const onlineAggregates = [];
+          const presencialAggregates = [];
+          scenarioStats.forEach((entry) => {
+            if (!entry || entry.attempts.length === 0) return;
+            const attemptsList = entry.attempts;
+            const scoreValues = attemptsList
+              .map((item) => (typeof item.score === 'number' && !Number.isNaN(item.score) ? item.score : null))
+              .filter((val) => val !== null);
+            const lastCompleted = attemptsList.reduce((acc, item) => {
+              const candidate = item.finished_at || item.started_at;
+              if (!candidate) return acc;
+              const candidateTime = new Date(candidate).getTime();
+              if (!acc) return candidate;
+              return candidateTime > new Date(acc).getTime() ? candidate : acc;
+            }, null);
+
+            if (entry.modes.some((m) => m.includes('online'))) {
+              onlineAggregates.push({
+                scenarioId: entry.scenarioId,
+                title: entry.title,
+                attemptCount: attemptsList.length,
+                averageScore: scoreValues.length > 0 ? scoreValues.reduce((sum, val) => sum + val, 0) / scoreValues.length : null,
+                lastCompleted
+              });
+            }
+
+            if (entry.modes.some((m) => m.includes('presencial'))) {
+              presencialAggregates.push({
+                scenarioId: entry.scenarioId,
+                title: entry.title,
+                participationCount: attemptsList.length,
+                lastCompleted
+              });
+            }
+          });
+
+          setOnlineSummaries(onlineAggregates.sort((a, b) => a.title.localeCompare(b.title)));
+          setPresencialSummaries(presencialAggregates.sort((a, b) => a.title.localeCompare(b.title)));
         }
       } catch (e) {
         console.error('Error comprobando elegibilidad del certificado', e);
@@ -128,15 +255,17 @@ export default function Certificate() {
   if (!ready) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navbar />
-      <main className="max-w-4xl mx-auto p-6">
-        <h1 className="text-2xl font-semibold mb-4">Certificado de Finalización</h1>
+    <div className="min-h-screen bg-slate-50 print:bg-white">
+      <div className="print:hidden">
+        <Navbar />
+      </div>
+      <main className="max-w-4xl mx-auto p-6 print:max-w-none print:px-0 print:py-0">
+        <h1 className="text-2xl font-semibold mb-4 print:hidden">Certificado de Finalización</h1>
 
         {loading ? (
-          <div>Cargando comprobación de elegibilidad…</div>
+          <div className="print:hidden">Cargando comprobación de elegibilidad…</div>
         ) : !eligible ? (
-          <div className="bg-white p-6 rounded shadow">
+          <div className="bg-white p-6 rounded shadow print:hidden">
             <p className="text-red-600 font-medium">No eres elegible para el certificado</p>
             <p className="mt-3 text-slate-700">{message}</p>
             <div className="mt-4">
@@ -146,8 +275,8 @@ export default function Certificate() {
         ) : (
           <div>
             <div
-              id="certificate"
-              className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:p-0 print:border-0"
+              id="certificate-root"
+              className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:shadow-none print:border-0 print:rounded-none"
               style={{ pageBreakInside: 'avoid' }}
             >
               <div
@@ -164,7 +293,21 @@ export default function Certificate() {
                     <h2 className="text-3xl font-bold tracking-tight">SimuPed</h2>
                     <p className="text-sm uppercase tracking-[0.35em] text-sky-100">Hospital Universitario Central de Asturias</p>
                   </div>
-                  <img src={logoSimuped} alt="SimuPed" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
+                  {logoState.visible ? (
+                    <img
+                      src={logoState.src}
+                      alt="SimuPed"
+                      className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl"
+                      onError={() => {
+                        setLogoState((prev) => {
+                          if (prev.src !== logoSimuped) {
+                            return { ...prev, src: logoSimuped };
+                          }
+                          return { ...prev, visible: false };
+                        });
+                      }}
+                    />
+                  ) : null}
                 </div>
               </div>
 
@@ -187,6 +330,64 @@ export default function Certificate() {
                   ha completado la formación requerida en la plataforma <strong>SimuPed</strong>, cumpliendo la totalidad de simulaciones online y alcanzando el mínimo de participación presencial estipulado por la Dirección de Simulación Pediátrica del HUCA.
                 </p>
 
+                {(onlineSummaries.length > 0 || presencialSummaries.length > 0) && (
+                  <div className="mt-12 border border-slate-200 rounded-3xl bg-slate-50 px-8 py-7">
+                    <h4 className="text-center text-sm uppercase tracking-[0.25em] text-slate-500">Resumen de participación</h4>
+                    <div className="mt-7 grid gap-8 md:grid-cols-2">
+                      <section>
+                        <header className="flex items-center justify-between mb-3">
+                          <p className="text-sm font-semibold text-slate-800">Simulaciones online completadas</p>
+                          <span className="text-xs text-slate-500">Media por escenario</span>
+                        </header>
+                        <ul className="space-y-3 text-sm text-slate-600">
+                          {onlineSummaries.length === 0 ? (
+                            <li className="text-slate-400">Sin simulaciones online registradas</li>
+                          ) : (
+                            onlineSummaries.map((row) => (
+                              <li key={`online-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
+                                  <span className="text-[#0A3D91] font-semibold">
+                                    {row.averageScore != null ? `${Math.round(row.averageScore)}%` : 'S/N'}
+                                  </span>
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center justify-between text-xs text-slate-500">
+                                  <span>{row.attemptCount} intento{row.attemptCount === 1 ? '' : 's'}</span>
+                                  {row.lastCompleted && <span>Última: {formatDate(row.lastCompleted)}</span>}
+                                </div>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      </section>
+
+                      <section>
+                        <header className="flex items-center justify-between mb-3">
+                          <p className="text-sm font-semibold text-slate-800">Participaciones presenciales</p>
+                          <span className="text-xs text-slate-500">Una entrada por escenario</span>
+                        </header>
+                        <ul className="space-y-3 text-sm text-slate-600">
+                          {presencialSummaries.length === 0 ? (
+                            <li className="text-slate-400">Sin registros presenciales</li>
+                          ) : (
+                            presencialSummaries.map((row) => (
+                              <li key={`presencial-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
+                                  <span className="text-slate-500">{row.participationCount} sesión{row.participationCount === 1 ? '' : 'es'}</span>
+                                </div>
+                                {row.lastCompleted && (
+                                  <div className="mt-1 text-xs text-slate-500 text-right">Última: {formatDate(row.lastCompleted)}</div>
+                                )}
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      </section>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-14 grid gap-10 md:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5 text-left">
                     <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Fecha de emisión</p>
@@ -202,7 +403,24 @@ export default function Certificate() {
                 <div className="mt-14 grid gap-12 md:grid-cols-2">
                   <div className="text-center">
                     <div className="h-24 flex items-center justify-center mb-4">
-                      <img src="/firma_ivan_maray.avif" alt="Firma Ivan Maray" className="h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      {signatureVisibility.ivan ? (
+                        <img
+                          src={signatureSources.ivan}
+                          alt="Firma Iván Maray"
+                          className="h-full object-contain"
+                          onError={() => {
+                            setSignatureSources((prev) => {
+                              if (prev.ivan !== '/firma_ivan_maray.png') {
+                                return { ...prev, ivan: '/firma_ivan_maray.png' };
+                              }
+                              setSignatureVisibility((visibility) => ({ ...visibility, ivan: false }));
+                              return prev;
+                            });
+                          }}
+                        />
+                      ) : (
+                        <span className="text-3xl font-semibold text-slate-600" style={{ fontFamily: 'cursive' }}>Iván Maray</span>
+                      )}
                     </div>
                     <div className="border-t border-slate-300 mx-auto w-56" />
                     <p className="mt-3 font-semibold text-slate-800">Iván Maray</p>
@@ -210,7 +428,24 @@ export default function Certificate() {
                   </div>
                   <div className="text-center">
                     <div className="h-24 flex items-center justify-center mb-4">
-                      <img src="/firma_andres_concha.avif" alt="Firma Andrés Concha" className="h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      {signatureVisibility.andres ? (
+                        <img
+                          src={signatureSources.andres}
+                          alt="Firma Andrés Concha"
+                          className="h-full object-contain"
+                          onError={() => {
+                            setSignatureSources((prev) => {
+                              if (prev.andres !== '/firma_andres_concha.png') {
+                                return { ...prev, andres: '/firma_andres_concha.png' };
+                              }
+                              setSignatureVisibility((visibility) => ({ ...visibility, andres: false }));
+                              return prev;
+                            });
+                          }}
+                        />
+                      ) : (
+                        <span className="text-3xl font-semibold text-slate-600" style={{ fontFamily: 'cursive' }}>Andrés Concha Torre</span>
+                      )}
                     </div>
                     <div className="border-t border-slate-300 mx-auto w-56" />
                     <p className="mt-3 font-semibold text-slate-800">Andrés Concha Torre</p>
@@ -220,7 +455,7 @@ export default function Certificate() {
               </div>
             </div>
 
-            <div className="mt-6 space-x-3">
+            <div className="mt-6 space-x-3 print:hidden">
               <button
                 className="px-4 py-2 rounded bg-blue-600 text-white"
                 onClick={() => window.print()}

@@ -77,6 +77,7 @@ const ScheduledSessions = () => {
 
               // Get participant list for admins (includes detailed info)
               let participants = [];
+              let confirmedCount = null;
               if (ready && isAdmin) {
                 try {
                   console.log("ADMIN MODE: Fetching participants for session:", session.id);
@@ -90,6 +91,7 @@ const ScheduledSessions = () => {
                   console.log("Raw participants data:", rawParticipants, "Error:", rawError);
 
                   if (rawParticipants && rawParticipants.length > 0) {
+                    confirmedCount = rawParticipants.filter((p) => !!p.confirmed_at).length;
                     // Then get profile info for those users
                     const userIds = rawParticipants.map(p => p.user_id);
                     console.log("User IDs to fetch profiles for:", userIds);
@@ -134,15 +136,19 @@ const ScheduledSessions = () => {
 
               // Check individual registration status only for authenticated users
               let isRegistered = false;
+              let userRegistration = null;
               if (ready && authSession && authSession.user && authSession.user.id) {
                 try {
                   const { data: registration } = await supabase
                     .from("scheduled_session_participants")
-                    .select("id")
+                    .select("id, registered_at, confirmed_at")
                     .eq("session_id", session.id)
                     .eq("user_id", authSession.user.id)
                     .maybeSingle();
-                  isRegistered = !!registration;
+                  if (registration) {
+                    isRegistered = true;
+                    userRegistration = registration;
+                  }
                 } catch (regError) {
                   // Not registered, that's fine
                 }
@@ -152,6 +158,8 @@ const ScheduledSessions = () => {
                 ...session,
                 registered_count: count || 0,
                 is_registered: isRegistered,
+                user_registration: userRegistration,
+                confirmed_count: confirmedCount,
                 participants: participants,
                 scheduled_at: new Date(session.scheduled_at)
               };
@@ -440,6 +448,14 @@ const ScheduledSessions = () => {
                           </svg>
                           {session.registered_count}/{session.max_participants} participantes
                         </span>
+                        {isAdmin && typeof session.confirmed_count === 'number' && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            {session.confirmed_count} confirmados
+                          </span>
+                        )}
                       </div>
 
 
@@ -449,39 +465,69 @@ const ScheduledSessions = () => {
                         <div className="mt-2">
                           <details className="text-xs">
                             <summary className="cursor-pointer hover:text-slate-800 underline text-slate-600">
-                              Ver participantes ({session.participants.length})
+                              Ver participantes ({session.participants.length}) · Confirmados {session.confirmed_count ?? 0}
                             </summary>
-                            <div className="mt-2 space-y-1 max-w-md">
+                            <div className="mt-2 space-y-2 max-w-xl">
                               {session.participants.map((participant) => {
                                 const name = [participant.profiles.nombre, participant.profiles.apellidos]
                                   .filter(Boolean)
                                   .join(" ") || "Sin nombre";
-                                const registeredDate = new Date(participant.registered_at).toLocaleDateString('es-ES');
+                                const registeredDate = new Date(participant.registered_at).toLocaleString('es-ES', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                });
+                                const confirmedDate = participant.confirmed_at
+                                  ? new Date(participant.confirmed_at).toLocaleString('es-ES', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })
+                                  : null;
                                 return (
-                                  <div key={participant.id} className="flex items-center justify-between bg-slate-50 px-2 py-1 rounded text-xs">
-                                    <span className="truncate max-w-32" title={participant.profiles.email || name}>
-                                      {name}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-slate-500">{registeredDate}</span>
-                                      {!participant.confirmed_at && (
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              await fetch('/api/resend_session_invite', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ session_id: session.id, user_id: participant.profiles.id, session_name: session.title, session_date: session.scheduled_at, session_location: session.location })
-                                              });
-                                              alert('Invitación reenviada');
-                                            } catch (e) {
-                                              console.warn('Resend failed', e);
-                                              alert('Error reenviando invitación');
-                                            }
-                                          }}
-                                          className="px-2 py-1 text-xs rounded border bg-white hover:bg-slate-50"
-                                        >Reenviar invitación</button>
-                                      )}
+                                  <div key={participant.id} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="truncate" title={participant.profiles.email || name}>
+                                          {name}
+                                        </span>
+                                        <span
+                                          className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${
+                                            participant.confirmed_at
+                                              ? 'bg-emerald-100 text-emerald-700'
+                                              : 'bg-amber-100 text-amber-700'
+                                          }`}
+                                        >
+                                          {participant.confirmed_at ? 'Confirmado' : 'Pendiente'}
+                                        </span>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                                        <span>Registro: {registeredDate}</span>
+                                        {confirmedDate ? (
+                                          <span className="text-emerald-600">Confirmó: {confirmedDate}</span>
+                                        ) : (
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                await fetch('/api/resend_session_invite', {
+                                                  method: 'POST',
+                                                  headers: { 'Content-Type': 'application/json' },
+                                                  body: JSON.stringify({ session_id: session.id, user_id: participant.profiles.id, session_name: session.title, session_date: session.scheduled_at, session_location: session.location })
+                                                });
+                                                alert('Invitación reenviada');
+                                              } catch (e) {
+                                                console.warn('Resend failed', e);
+                                                alert('Error reenviando invitación');
+                                              }
+                                            }}
+                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-50"
+                                          >
+                                            Reenviar invitación
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
                                 );
@@ -523,34 +569,25 @@ const ScheduledSessions = () => {
                         : 'Completa'
                       }
                     </span>
+                    {session.user_registration && (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                          session.user_registration.confirmed_at
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {session.user_registration.confirmed_at
+                          ? `Asistencia confirmada · ${new Date(session.user_registration.confirmed_at).toLocaleString('es-ES', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}`
+                          : 'Registro pendiente de confirmación'}
+                      </span>
+                    )}
                   </div>
-
-                  {/* Admin participant list */}
-                  {ready && isAdmin && session.participants && session.participants.length > 0 && (
-                    <div className="text-xs text-slate-600 mr-4">
-                      <details>
-                        <summary className="cursor-pointer hover:text-slate-800 underline">
-                          Ver participantes ({session.participants.length})
-                        </summary>
-                        <div className="mt-2 space-y-1 max-w-md">
-                          {session.participants.map((participant) => {
-                            const name = [participant.profiles.nombre, participant.profiles.apellidos]
-                              .filter(Boolean)
-                              .join(" ") || "Sin nombre";
-                            const registeredDate = new Date(participant.registered_at).toLocaleDateString('es-ES');
-                            return (
-                              <div key={participant.id} className="flex items-center justify-between bg-slate-50 px-2 py-1 rounded">
-                                <span className="truncate max-w-32" title={participant.profiles.email || name}>
-                                  {name}
-                                </span>
-                                <span className="text-slate-500 ml-2">{registeredDate}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </details>
-                    </div>
-                  )}
 
                   {session.is_registered ? (
                     <button
