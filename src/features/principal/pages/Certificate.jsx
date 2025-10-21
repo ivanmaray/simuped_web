@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { useAuth } from '../../../auth';
@@ -37,6 +37,82 @@ export default function Certificate() {
   });
   const hasSummary = (onlineSummaries.length > 0 || presencialSummaries.length > 0);
   const isPreview = searchParams.has('prueba');
+  const certContainerRef = useRef(null);
+  const certHeroRef = useRef(null);
+  const certScaleRef = useRef(null);
+  const summaryContainerRef = useRef(null);
+  const summaryHeroRef = useRef(null);
+  const summaryScaleRef = useRef(null);
+  const [scaleCert, setScaleCert] = useState(1);
+  const [scaleSummary, setScaleSummary] = useState(1);
+  const wrapperRef = useRef(null);
+
+  async function loadHtml2Pdf() {
+    if (typeof window !== 'undefined' && window.html2pdf) return window.html2pdf;
+    return new Promise((resolve, reject) => {
+      try {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.async = true;
+        script.onload = () => resolve(window.html2pdf);
+        script.onerror = (e) => reject(e);
+        document.head.appendChild(script);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  const handleDownloadPdf = async () => {
+    try {
+      const html2pdf = await loadHtml2Pdf();
+      if (!html2pdf || !wrapperRef.current) return;
+
+      // Disable on-screen transforms while capturing
+      document.body.classList.add('exporting-pdf');
+      setScaleCert(1);
+      setScaleSummary(1);
+      await new Promise((r) => requestAnimationFrame(r));
+
+      // Override styles that use unsupported color functions
+      const bgWhite10Elements = wrapperRef.current.querySelectorAll('.bg-white\\/10');
+      bgWhite10Elements.forEach(el => {
+        el.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+      });
+      const gradientElements = wrapperRef.current.querySelectorAll('.bg-gradient-to-b');
+      gradientElements.forEach(el => {
+        el.style.backgroundImage = 'linear-gradient(to bottom, #f8fafc 0%, #e2e8f0 100%)';
+      });
+
+      // Build friendly filename: Certificado-SimuPed-[Nombre-Apellido]-YYYY-MM-DD.pdf
+      const safe = (str) =>
+        String(str || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '') // strip diacritics
+          .replace(/[^a-zA-Z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .toLowerCase();
+      const nameSlug = safe(fullName);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `Certificado-SimuPed-${nameSlug || 'participante'}-${dateStr}.pdf`;
+
+      const opt = {
+        margin: 10,
+        filename: fileName,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['css'], before: '#certificate-summary' }
+      };
+
+      await html2pdf().set(opt).from(wrapperRef.current).save();
+    } catch (e) {
+      console.warn('Error exportando PDF', e);
+      alert('No se pudo exportar el PDF. Inténtalo de nuevo.');
+    } finally {
+      document.body.classList.remove('exporting-pdf');
+    }
+  };
 
   useEffect(() => {
     // Ensure print exports use landscape A4 and hide surrounding chrome
@@ -70,6 +146,142 @@ export default function Certificate() {
         #certificate-summary {
           page-break-before: always !important;
         }
+        /* Ensure any on-screen scaling is disabled in print */
+        #certificate-root .cert-content-scale,
+        #certificate-summary .cert-content-scale {
+          transform: none !important;
+        }
+        /* Reduce hero visual height only in print (avoid clipping content) */
+        #certificate-root .hero-section {
+          overflow: visible !important;
+        }
+        #certificate-root .hero-section .hero-bg {
+          top: 0 !important;
+          bottom: auto !important;
+          height: 28mm !important;
+          background-size: cover !important;
+          background-position: top center !important;
+        }
+        #certificate-root .hero-section .hero-content {
+          padding-top: 8mm !important;
+          padding-bottom: 8mm !important;
+        }
+        #certificate-root .hero-section img {
+          height: 44px !important;
+        }
+        #certificate-root .hero-section h2 {
+          font-size: 1.6rem !important;
+        }
+        #certificate-root .hero-section p {
+          font-size: 0.7rem !important;
+        }
+      }
+      /* PDF export (html2pdf) should not apply transforms */
+      body.exporting-pdf .cert-content-scale { transform: none !important; }
+
+      /* During html2pdf export, override Tailwind v4 OKLCH/OKLAB variables with sRGB hex fallbacks
+         to avoid html2canvas "unsupported color function oklch/oklab" parsing errors */
+      body.exporting-pdf {
+        /* Slate scale */
+        --color-slate-50: #f8fafc;
+        --color-slate-100: #f1f5f9;
+        --color-slate-200: #e2e8f0;
+        --color-slate-300: #cbd5e1;
+        --color-slate-400: #94a3b8;
+        --color-slate-500: #64748b;
+        --color-slate-600: #475569;
+        --color-slate-700: #334155;
+        --color-slate-800: #1e293b;
+        --color-slate-900: #0f172a;
+
+        /* Blue scale */
+        --color-blue-50: #eff6ff;
+        --color-blue-100: #dbeafe;
+        --color-blue-200: #bfdbfe;
+        --color-blue-300: #93c5fd;
+        --color-blue-400: #60a5fa;
+        --color-blue-500: #3b82f6;
+        --color-blue-600: #2563eb;
+        --color-blue-700: #1d4ed8;
+        --color-blue-800: #1e40af;
+        --color-blue-900: #1e3a8a;
+
+        /* Emerald scale */
+        --color-emerald-50: #ecfdf5;
+        --color-emerald-100: #d1fae5;
+        --color-emerald-200: #a7f3d0;
+        --color-emerald-300: #6ee7b7;
+        --color-emerald-500: #10b981;
+        --color-emerald-600: #059669;
+        --color-emerald-700: #047857;
+        --color-emerald-800: #065f46;
+
+        /* Sky scale */
+        --color-sky-50: #f0f9ff;
+        --color-sky-100: #e0f2fe;
+        --color-sky-200: #bae6fd;
+        --color-sky-300: #7dd3fc;
+        --color-sky-700: #0369a1;
+        --color-sky-800: #075985;
+        --color-sky-900: #0c4a6e;
+
+        /* Orange scale */
+        --color-orange-500: #f97316;
+
+        /* Gray scale */
+        --color-gray-100: #f3f4f6;
+        --color-gray-300: #d1d5db;
+        --color-gray-500: #6b7280;
+        --color-gray-800: #1f2937;
+        --color-gray-900: #111827;
+
+        /* White and black */
+        --color-white: #ffffff;
+        --color-black: #000000;
+
+        /* Override gradient positions to avoid oklab */
+        --tw-gradient-position: initial;
+      }
+
+      /* Override opacity backgrounds that use color-mix with oklab */
+      body.exporting-pdf .bg-white\/10 {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+      }
+
+      /* Override gradient color spaces */
+      body.exporting-pdf .bg-gradient-to-b {
+        --tw-gradient-position: to bottom;
+      }
+
+      /* Fix hero section for PDF export */
+      body.exporting-pdf #certificate-root {
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+      }
+      body.exporting-pdf .hero-section {
+        padding: 0 !important;
+        height: 70mm !important;
+        background: linear-gradient(135deg, #0A3D91 0%, #1E6ACB 100%) !important;
+        display: flex !important;
+        align-items: center !important;
+      }
+      body.exporting-pdf .hero-bg {
+        display: none !important;
+      }
+      body.exporting-pdf .hero-content {
+        position: relative !important;
+        padding: 24px 32px !important;
+        width: 100% !important;
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: center !important;
+        align-items: center !important;
+        gap: 32px !important;
+      }
+      body.exporting-pdf .hero-content > img,
+      body.exporting-pdf .hero-content img {
+        height: 64px !important;
       }
     `;
     document.head.appendChild(styleTag);
@@ -77,6 +289,47 @@ export default function Certificate() {
       document.head.removeChild(styleTag);
     };
   }, []);
+
+  // Screen-only autoscale to fit content into fixed A4 height
+  useEffect(() => {
+    function recompute() {
+      try {
+        const container = certContainerRef.current;
+        const hero = certHeroRef.current;
+        const scaleEl = certScaleRef.current;
+        if (container && scaleEl) {
+          const totalH = container.clientHeight || 0;
+          const heroH = hero?.offsetHeight || 0;
+          const avail = Math.max(0, totalH - heroH);
+          const needed = scaleEl.scrollHeight || 0;
+          let s = 1;
+          if (needed > avail && avail > 0) {
+            s = Math.max(0.82, Math.min(1, avail / needed));
+          }
+          setScaleCert(s);
+        }
+        const sContainer = summaryContainerRef.current;
+        const sHero = summaryHeroRef.current;
+        const sScale = summaryScaleRef.current;
+        if (sContainer && sScale) {
+          const totalH2 = sContainer.clientHeight || 0;
+          const heroH2 = sHero?.offsetHeight || 0;
+          const avail2 = Math.max(0, totalH2 - heroH2);
+          const needed2 = sScale.scrollHeight || 0;
+          let s2 = 1;
+          if (needed2 > avail2 && avail2 > 0) {
+            s2 = Math.max(0.82, Math.min(1, avail2 / needed2));
+          }
+          setScaleSummary(s2);
+        }
+      } catch {}
+    }
+
+    const r = () => requestAnimationFrame(recompute);
+    r();
+    window.addEventListener('resize', r);
+    return () => window.removeEventListener('resize', r);
+  }, [loading, eligible, onlineSummaries.length, presencialSummaries.length]);
 
   const resolvedProfile = profileDetails || profile;
 
@@ -108,8 +361,24 @@ export default function Certificate() {
       if (isPreview) {
         if (mounted) {
           setEligible(true);
-          setLoading(false);
           setMessage('');
+        }
+        // En modo prueba, carga el perfil si hay sesión para mostrar DNI/nombre reales
+        try {
+          if (session?.user) {
+            const { data: prof, error: profErr } = await supabase
+              .from('profiles')
+              .select('id, nombre, apellidos, dni')
+              .eq('id', session.user.id)
+              .maybeSingle();
+            if (!profErr && prof && mounted) {
+              setProfileDetails(prof);
+            }
+          }
+        } catch (e) {
+          console.warn('Preview: error cargando perfil', e);
+        } finally {
+          if (mounted) setLoading(false);
         }
         return;
       }
@@ -270,7 +539,7 @@ export default function Certificate() {
       <div className="print:hidden">
         <Navbar />
       </div>
-      <main className="certificate-page max-w-5xl mx-auto px-6 py-8 print:max-w-none print:px-0 print:py-0">
+  <main className="certificate-page max-w-none mx-auto px-6 py-8 print:max-w-none print:px-0 print:py-0">
         <h1 className="text-2xl font-semibold mb-4 print:hidden">Certificado de Finalización</h1>
 
         {loading ? (
@@ -284,29 +553,35 @@ export default function Certificate() {
             </div>
           </div>
         ) : (
-          <div>
-            <div className="flex justify-center">
+          <div ref={wrapperRef}>
+            <div className="flex w-full justify-center overflow-x-auto">
               <div
                 id="certificate-root"
                 className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:shadow-none print:border-0 print:rounded-none"
                 style={{
                   pageBreakInside: 'avoid',
-                  width: 'min(92vw, 1120px)',
-                  minHeight: '794px',
+                  width: '297mm',
+                  minWidth: '297mm',
+                  maxWidth: '297mm',
+                  height: '210mm',
+                  minHeight: '210mm',
+                  boxSizing: 'border-box',
                   margin: '0 auto',
                   display: 'flex',
                   flexDirection: 'column'
                 }}
+                ref={certContainerRef}
               >
                 <div
-                  className="relative"
+                  className="relative hero-section"
                   style={{
                     background: 'linear-gradient(135deg,#0A3D91,#1E6ACB)',
                     color: '#fff'
                   }}
+                  ref={certHeroRef}
                 >
-                  <div className="absolute inset-0 opacity-25" style={{ backgroundImage: 'url(/videohero3.gif)', backgroundSize: 'cover', backgroundPosition: 'center' }} />
-                  <div className="relative px-10 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
+                  <div className="absolute inset-0 opacity-25 hero-bg" style={{ backgroundImage: 'url(/videohero3.gif)', backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                  <div className="relative hero-content px-10 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
                     <img src="/logos/huca.png" alt="HUCA" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
                     <div className="text-center flex-1">
                       <h2 className="text-3xl font-bold tracking-tight">SimuPed</h2>
@@ -330,6 +605,7 @@ export default function Certificate() {
                   </div>
                 </div>
 
+                <div className="cert-content-scale" style={{ transform: `scale(${scaleCert})`, transformOrigin: 'top center' }} ref={certScaleRef}>
                 <div className="px-8 py-10 md:px-14 md:py-12">
                   {isPreview ? (
                     <div className="text-center mb-4 uppercase text-orange-500 text-xs font-semibold tracking-[0.45em]">Certificado de prueba</div>
@@ -413,22 +689,30 @@ export default function Certificate() {
                     <p className="text-sm text-slate-500">Dirección de Simulación HUCA</p>
                   </div>
                 </div>
+                </div>
               </div>
             </div>
           </div>
 
           {hasSummary && (
-            <div className="mt-12 flex justify-center print:mt-0">
+            <>
+            <div className="html2pdf__page-break" />
+            <div className="mt-12 flex w-full justify-center overflow-x-auto print:mt-0">
               <div
                 id="certificate-summary"
                 className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:shadow-none print:border-0 print:rounded-none"
                 style={{
-                  width: 'min(92vw, 1120px)',
-                  minHeight: '794px',
+                  width: '297mm',
+                  minWidth: '297mm',
+                  maxWidth: '297mm',
+                  height: '210mm',
+                  minHeight: '210mm',
+                  boxSizing: 'border-box',
                   margin: '0 auto',
                   display: 'flex',
                   flexDirection: 'column'
                 }}
+                ref={summaryContainerRef}
               >
                 <div
                   className="relative"
@@ -436,6 +720,7 @@ export default function Certificate() {
                     background: 'linear-gradient(135deg,#0A3D91,#1E6ACB)',
                     color: '#fff'
                   }}
+                  ref={summaryHeroRef}
                 >
                   <div className="relative px-10 py-6 flex flex-col md:flex-row items-center gap-6 md:gap-10">
                     <img src="/logos/huca.png" alt="HUCA" className="h-14 md:h-16 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
@@ -461,6 +746,7 @@ export default function Certificate() {
                   </div>
                 </div>
 
+                <div className="cert-content-scale" style={{ transform: `scale(${scaleSummary})`, transformOrigin: 'top center' }} ref={summaryScaleRef}>
                 <div className="flex-1 px-8 py-10 md:px-12 md:py-12">
                   <p className="text-center text-sm text-slate-500 max-w-3xl mx-auto">
                     Este anexo resume la participación de <strong>{fullName}</strong> en la plataforma SimuPed. Las medias se calculan por escenario completado.
@@ -524,8 +810,10 @@ export default function Certificate() {
                     </p>
                   </div>
                 </div>
+                </div>
               </div>
             </div>
+            </>
           )}
 
             <div className="mt-6 space-x-3 print:hidden">
@@ -533,6 +821,10 @@ export default function Certificate() {
                 className="px-4 py-2 rounded bg-blue-600 text-white"
                 onClick={() => window.print()}
               >Imprimir / Guardar como PDF</button>
+              <button
+                className="px-4 py-2 rounded bg-emerald-600 text-white"
+                onClick={handleDownloadPdf}
+              >Descargar PDF</button>
               <a className="px-4 py-2 rounded border" href="/perfil">Volver al perfil</a>
             </div>
           </div>

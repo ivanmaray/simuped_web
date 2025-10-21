@@ -702,6 +702,9 @@ export default function Principal_Perfil() {
                 href="/certificado?prueba=1"
                 className="inline-block px-3 py-2 rounded bg-white text-slate-600 text-sm border border-dashed"
               >Descargar prueba</a>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                En pruebas · pendiente optimizar PDF
+              </span>
             </div>
             <span className="text-sm text-slate-500">
               {loadingAchievements ? "Cargando logros…" : `${achievements.length} logro${achievements.length === 1 ? "" : "s"}`}
