@@ -30,6 +30,7 @@ const SimulacionDetalle = React.lazy(() => import("./features/online/pages/Onlin
 const SimulacionConfirm = React.lazy(() => import("./features/online/pages/Online_Confirm.jsx"));
 const Evaluacion = React.lazy(() => import("./features/evaluacion/pages/Evaluacion_Main.jsx"));
 const Perfil = React.lazy(() => import("./features/principal/pages/Principal_Perfil.jsx"));
+const Certificate = React.lazy(() => import("./features/principal/pages/Certificate.jsx"));
 const Registro = React.lazy(() => import("./auth/pages/Auth_Registro.jsx"));
 const Pendiente = React.lazy(() => import("./auth/pages/Auth_Pendiente.jsx"));
 const AttemptReview = React.lazy(() => import("./features/online/pages/Online_AttemptReview.jsx"));
@@ -154,6 +155,7 @@ export default function MainRouter() {
 
           {/* Perfil */}
           <Route path="/perfil" element={<Suspense fallback={<Spinner centered />}><Perfil /></Suspense>} />
+          <Route path="/certificado" element={<Suspense fallback={<Spinner centered />}><Certificate /></Suspense>} />
 
           {/* Presencial (1 pantalla) - NO admin */}
           <Route path="/presencial" element={<Suspense fallback={<Spinner centered />}><PresencialListado /></Suspense>} />

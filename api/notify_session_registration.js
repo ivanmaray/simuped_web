@@ -11,9 +11,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Faltan datos requeridos" });
     }
 
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    const MAIL_FROM = process.env.MAIL_FROM;
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  const MAIL_FROM = process.env.MAIL_FROM || 'onboarding@resend.dev';
     const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME;
+
+    if (!RESEND_API_KEY) {
+      console.error('[notify_session_registration] MISSING RESEND_API_KEY');
+      return res.status(500).json({ error: 'missing_resend_api_key' });
+    }
 
     // Email configuration
     const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
@@ -132,10 +137,13 @@ export default async function handler(req, res) {
       })
     ]);
 
-    const [userData, adminData] = await Promise.all([
-      userResponse.json(),
-      adminResponse.json()
+    const [userText, adminText] = await Promise.all([
+      userResponse.text().catch(() => null),
+      adminResponse.text().catch(() => null),
     ]);
+    let userData = null, adminData = null;
+    try { userData = userText ? JSON.parse(userText) : null; } catch { userData = null; }
+    try { adminData = adminText ? JSON.parse(adminText) : null; } catch { adminData = null; }
 
     // Check if both emails sent successfully
     const userOk = userResponse.ok;
@@ -143,8 +151,10 @@ export default async function handler(req, res) {
 
     if (!userOk || !adminOk) {
       const errors = [];
-      if (!userOk) errors.push({ type: "user", details: userData });
-      if (!adminOk) errors.push({ type: "admin", details: adminData });
+      if (!userOk) errors.push({ type: "user", status: userResponse.status, raw: userText, details: userData });
+      if (!adminOk) errors.push({ type: "admin", status: adminResponse.status, raw: adminText, details: adminData });
+
+      console.warn('[notify_session_registration] resend errors', errors);
 
       return res.status(500).json({
         error: "Error enviando uno o más correos",
@@ -152,12 +162,9 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json({
-      ok: true,
-      userEmail: userOk,
-      adminEmail: adminOk,
-      data: { userData, adminData }
-    });
+    console.log('[notify_session_registration] emails sent', { user: userData, admin: adminData });
+
+    return res.status(200).json({ ok: true, data: { userData, adminData } });
   } catch (err) {
     console.error("[notify_session_registration] Error:", err);
     return res.status(500).json({ error: "Error enviando correos" });

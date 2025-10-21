@@ -693,6 +693,12 @@ export default function Principal_Perfil() {
               </h2>
               <p className="text-sm text-slate-600">Repaso de los badges que has desbloqueado en SimuPed.</p>
             </div>
+            <div className="flex items-center gap-3">
+              <a
+                href="/certificado"
+                className="inline-block px-3 py-2 rounded bg-slate-100 text-slate-700 text-sm border"
+              >Ver certificado</a>
+            </div>
             <span className="text-sm text-slate-500">
               {loadingAchievements ? "Cargando logros…" : `${achievements.length} logro${achievements.length === 1 ? "" : "s"}`}
             </span>

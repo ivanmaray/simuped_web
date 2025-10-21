@@ -20,8 +20,15 @@ export default async function handler(req, res) {
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { fetch });
 
-    const INVITE_SECRET = process.env.INVITE_TOKEN_SECRET;
-    if (!INVITE_SECRET) return res.status(500).json({ ok: false, error: 'Missing INVITE_TOKEN_SECRET' });
+    const INVITE_SECRET =
+      process.env.INVITE_TOKEN_SECRET ||
+      process.env.INVITE_FALLBACK_SECRET ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_KEY;
+    if (!INVITE_SECRET) {
+      console.error('[invite_session_participants] Missing invite secret configuration');
+      return res.status(500).json({ ok: false, error: 'missing_invite_secret' });
+    }
 
     const results = [];
     for (const uid of user_ids) {
@@ -55,7 +62,7 @@ export default async function handler(req, res) {
         // Send invitation email directly via Resend API
         try {
           const RESEND_API_KEY = process.env.RESEND_API_KEY;
-          const MAIL_FROM = process.env.MAIL_FROM || 'notificaciones@simuped.com';
+          const MAIL_FROM = process.env.MAIL_FROM || 'onboarding@resend.dev';
           const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'SimuPed';
           const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
           const inviteLink = `${process.env.VITE_APP_URL || ''}/confirm-invite?token=${encodeURIComponent(token)}`;
@@ -72,17 +79,33 @@ export default async function handler(req, res) {
             </div>
           `;
 
+          if (!RESEND_API_KEY) {
+            console.error('[invite_session_participants] MISSING RESEND_API_KEY');
+            results.push({ user_id: uid, ok: false, error: 'missing_resend_api_key' });
+            continue;
+          }
+          if (!RESEND_API_KEY) {
+            console.error('[invite_session_participants] Missing RESEND_API_KEY');
+            results.push({ user_id: uid, ok: false, error: 'missing_resend_api_key' });
+            continue;
+          }
+
           const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_API_KEY}` },
             body: JSON.stringify({ from, to: userEmail, subject: `Invitación: ${req.body.session_name || 'Sesión SimuPed'}`, html })
           });
+          const respText = await resp.text().catch(() => null);
+          let respJson = null;
+          try { respJson = respText ? JSON.parse(respText) : null; } catch (e) { respJson = null; }
           if (!resp.ok) {
-            const errBody = await resp.text().catch(() => 'no-body');
-            console.warn('[invite_session_participants] resend send failed', resp.status, errBody);
-            results.push({ user_id: uid, ok: false, error: 'email_send_failed', detail: errBody });
+            console.warn('[invite_session_participants] resend send failed', resp.status, respText);
+            results.push({ user_id: uid, ok: false, error: 'email_send_failed', detail: respText, status: resp.status, resend: respJson });
             continue;
           }
+          console.log('[invite_session_participants] resend send success', resp.status, respJson);
+          results.push({ user_id: uid, ok: true, resend: respJson || respText });
+          continue;
         } catch (e) {
           console.warn('[invite_session_participants] email error', e);
           results.push({ user_id: uid, ok: false, error: 'email_exception', detail: String(e) });

@@ -140,7 +140,7 @@ const ScheduledSessions = () => {
                     .select("id")
                     .eq("session_id", session.id)
                     .eq("user_id", authSession.user.id)
-                    .single();
+                    .maybeSingle();
                   isRegistered = !!registration;
                 } catch (regError) {
                   // Not registered, that's fine
@@ -212,15 +212,15 @@ const ScheduledSessions = () => {
         finalError = insErr;
       }
 
-      if (error) {
+      if (finalError) {
         // Handle duplicate key error specifically
-        if (error.code === '23505') {
+        if (finalError.code === '23505') {
           alert("Ya estás registrado en esta sesión");
           // Reload to ensure UI is up to date
           await fetchSessions();
           return;
         }
-        throw error;
+        throw finalError;
       }
 
       // Reload sessions to update counts

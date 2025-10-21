@@ -186,7 +186,7 @@ const CreateScheduledSession = () => {
       try {
         const registeredUserIds = (form.participants || []).filter(p => p.user_id).map(p => p.user_id);
         if (registeredUserIds.length > 0) {
-          await fetch('/api/invite_session_participants', {
+          const resp = await fetch('/api/invite_session_participants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -198,6 +198,19 @@ const CreateScheduledSession = () => {
               session_location: form.location
             })
           });
+          if (!resp.ok) {
+            const payload = await resp.json().catch(() => null);
+            console.warn('Invite endpoint error', resp.status, payload);
+            const detail = payload?.error || payload?.results?.find?.((r) => !r.ok)?.error || 'Error desconocido';
+            alert(`Sesión creada, pero las invitaciones fallaron (${detail}). Revisa la configuración de correo.`);
+          } else {
+            const payload = await resp.json().catch(() => null);
+            const failed = payload?.results?.filter?.((r) => !r.ok) || [];
+            if (failed.length > 0) {
+              const first = failed[0];
+              alert(`Sesión creada, pero algunas invitaciones fallaron (${first.error || 'error desconocido'}). Consulta los logs.`);
+            }
+          }
         }
       } catch (e) {
         console.warn('Error inviting registered users:', e);
