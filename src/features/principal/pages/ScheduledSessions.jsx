@@ -83,7 +83,7 @@ const ScheduledSessions = () => {
                   // First try to get the raw participant data
                   const { data: rawParticipants, error: rawError } = await supabase
                     .from("scheduled_session_participants")
-                    .select("id, user_id, registered_at")
+                    .select("id, user_id, registered_at, confirmed_at")
                     .eq("session_id", session.id);
 
                   console.log("Raw participants data:", rawParticipants, "Error:", rawError);
@@ -116,6 +116,7 @@ const ScheduledSessions = () => {
                       return {
                         id: participant.id,
                         registered_at: participant.registered_at,
+                        confirmed_at: participant.confirmed_at,
                         profiles: completeProfile
                       };
                     });
@@ -186,13 +187,30 @@ const ScheduledSessions = () => {
         return;
       }
 
-      const { error } = await supabase
+      // Try to update an existing invited row (set confirmed_at) first
+      // If none exists, insert a new row with confirmed_at = now()
+      const now = new Date().toISOString();
+      // Attempt to update an existing invited row and get updated rows
+      const { data: updatedRows, error: updateErr } = await supabase
         .from("scheduled_session_participants")
-        .insert({
-          session_id: sessionId,
-          user_id: authSession.user.id,
-          registered_at: new Date().toISOString()
-        });
+        .update({ confirmed_at: now })
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('user_id', authSession.user.id);
+
+      let finalError = updateErr;
+      // If update succeeded but no rows were updated, insert a new confirmed row
+      if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+        const { error: insErr } = await supabase
+          .from("scheduled_session_participants")
+          .insert({
+            session_id: sessionId,
+            user_id: authSession.user.id,
+            registered_at: now,
+            confirmed_at: now
+          });
+        finalError = insErr;
+      }
 
       if (error) {
         // Handle duplicate key error specifically
@@ -415,7 +433,27 @@ const ScheduledSessions = () => {
                                     <span className="truncate max-w-32" title={participant.profiles.email || name}>
                                       {name}
                                     </span>
-                                    <span className="text-slate-500 ml-2">{registeredDate}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-slate-500">{registeredDate}</span>
+                                      {!participant.confirmed_at && (
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              await fetch('/api/resend_session_invite', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ session_id: session.id, user_id: participant.profiles.id, session_name: session.title, session_date: session.scheduled_at, session_location: session.location })
+                                              });
+                                              alert('Invitación reenviada');
+                                            } catch (e) {
+                                              console.warn('Resend failed', e);
+                                              alert('Error reenviando invitación');
+                                            }
+                                          }}
+                                          className="px-2 py-1 text-xs rounded border bg-white hover:bg-slate-50"
+                                        >Reenviar invitación</button>
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })}

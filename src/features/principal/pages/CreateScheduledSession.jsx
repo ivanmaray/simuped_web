@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import { useAuth } from "../../../auth";
 import Navbar from "../../../components/Navbar.jsx";
-import InviteResultModal from "../../../components/InviteResultModal.jsx";
+// Invite-by-email feature removed: no external invitations will be sent
 
 const CreateScheduledSession = () => {
   const navigate = useNavigate();
@@ -12,7 +12,7 @@ const CreateScheduledSession = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingScenarios, setLoadingScenarios] = useState(true);
-  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   const [form, setForm] = useState({
     title: "",
@@ -26,17 +26,17 @@ const CreateScheduledSession = () => {
     participants: [] // Array de objetos {user_id, user_name, user_email, user_role}
   });
 
-  // Temp input for adding invitations
-  const [inviteInput, setInviteInput] = useState({ name: '', email: '', role: '' });
-
   const [availableRoles] = useState([
     { value: 'medico', label: 'Médico', color: 'bg-blue-500' },
     { value: 'enfermeria', label: 'Enfermería', color: 'bg-green-500' },
     { value: 'farmacia', label: 'Farmacia', color: 'bg-purple-500' },
     { value: 'otro', label: 'Otro', color: 'bg-gray-500' }
   ]);
-  const [inviteResults, setInviteResults] = useState([]);
-  const [showInviteResults, setShowInviteResults] = useState(false);
+  // inviteResults and showInviteResults removed since external invites are disabled
+
+  // Para selección de participantes como en Presencial_Confirm
+  const [roleToAdd, setRoleToAdd] = useState('medico');
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     if (!ready || !session) return;
@@ -46,6 +46,7 @@ const CreateScheduledSession = () => {
     }
 
     fetchScenarios();
+    fetchUsers();
   }, [ready, session, isAdmin, navigate]);
 
   const fetchScenarios = async () => {
@@ -64,6 +65,81 @@ const CreateScheduledSession = () => {
       setLoadingScenarios(false);
     }
   };
+
+  const fetchUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nombre, apellidos, email, rol")
+        .eq("approved", true)
+        .order("nombre", { ascending: true });
+
+      if (error) throw error;
+      // Crear full_name y role, y normalizar
+      const processedUsers = (data || []).map(u => ({
+        id: u.id,
+        full_name: [u.nombre, u.apellidos].filter(Boolean).join(" "),
+        email: u.email,
+        role: normalizeRole(u.rol),
+        rol: u.rol // mantener original
+      }));
+      setUsers(processedUsers);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // Normaliza textos de rol a valores canónicos sin tildes
+  function normalizeRole(txt) {
+    const s = String(txt || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+    if (!s) return '';
+    if (s.includes('medic')) return 'medico';          // medico, médica, médico
+    if (s.includes('enfer')) return 'enfermeria';      // enfermera, enfermería
+    if (s.includes('farm')) return 'farmacia';         // farmacia, farmacéutic-
+    if (s.includes('instr') || s.includes('tutor') || s.includes('docent')) return 'instructor';
+    return 'otro';
+  }
+
+  function usersForRole(role) {
+    const r = normalizeRole(role);
+    return users.filter(u => u.role === r);
+  }
+
+  function addParticipantFromSearch() {
+    if (!searchText.trim()) return;
+    const pool = usersForRole(roleToAdd);
+    const found = pool.find(u => (u.full_name || '').toLowerCase() === searchText.toLowerCase());
+    if (found) {
+      // Usuario existente
+      setForm(prev => ({
+        ...prev,
+        participants: [...prev.participants, {
+          user_id: found.id,
+          user_name: found.full_name,
+          user_email: found.email,
+          user_role: found.role
+        }]
+      }));
+    } else {
+      // Nombre manual - añadir como invitación
+      setForm(prev => ({
+        ...prev,
+        participants: [...prev.participants, {
+          user_name: searchText.trim(),
+          user_email: '',
+          user_role: roleToAdd
+        }]
+      }));
+    }
+    setSearchText('');
+  }
 
   const handleChange = (field, value) => {
     setForm(prev => ({
@@ -106,37 +182,26 @@ const CreateScheduledSession = () => {
 
       if (error) throw error;
 
-      // If there are participants to invite, send them in a single request to the backend
-      let inviteResults = [];
-      if (Array.isArray(form.participants) && form.participants.length > 0) {
-        try {
-          const invites = form.participants.map((p) => ({ email: p.user_email || p.email || p.userEmail || p.email_address, name: p.user_name || p.name || '', role: p.user_role || p.role || '' }));
-          const resp = await fetch('/api/send_session_invites', {
+      // Invite registered users (those with user_id) via server endpoint
+      try {
+        const registeredUserIds = (form.participants || []).filter(p => p.user_id).map(p => p.user_id);
+        if (registeredUserIds.length > 0) {
+          await fetch('/api/invite_session_participants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: data.id, invites, inviter_id: session.user_id })
+            body: JSON.stringify({
+              session_id: data.id,
+              user_ids: registeredUserIds,
+              inviter_id: session.user_id,
+              session_name: form.title,
+              session_date: form.scheduled_at,
+              session_location: form.location
+            })
           });
-          if (resp.ok) {
-            const json = await resp.json();
-            inviteResults = (json.results || []).map(r => ({ email: r.email || '', ok: !!r.ok, message: r.error || (r.resp || '') }));
-          } else {
-            const text = await resp.text().catch(() => 'Error desconocido');
-            inviteResults = [{ email: 'N/A', ok: false, message: text }];
-          }
-        } catch (e) {
-          console.warn('Error sending invites batch', e);
-          inviteResults = [{ email: 'N/A', ok: false, message: e.message }];
         }
+      } catch (e) {
+        console.warn('Error inviting registered users:', e);
       }
-
-      // Show invite results modal if we attempted invites
-      if (inviteResults.length > 0) {
-        setInviteResults(inviteResults);
-        setShowInviteResults(true);
-        // Wait for the modal to be closed by the user; the modal will call onClose which will set showInviteResults=false and then we navigate
-        return;
-      }
-
       alert("Sesión programada creada exitosamente");
       navigate("/sesiones-programadas");
 
@@ -294,70 +359,62 @@ const CreateScheduledSession = () => {
 
           {/* Invitaciones por correo */}
           <div className="border-t pt-6">
-            <h3 className="text-sm font-semibold text-slate-800 mb-2">Invitar participantes (opcional)</h3>
-            <p className="text-sm text-slate-500 mb-3">Puedes añadir direcciones de correo para que reciban una invitación automática.</p>
+            <h3 className="text-sm font-semibold text-slate-800 mb-2">Seleccionar participantes</h3>
+            <p className="text-sm text-slate-500 mb-3">Elige usuarios registrados o escribe nombres manualmente para invitar por correo.</p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-              <label className="block">
-                <span className="text-xs text-slate-600 block">Nombre</span>
-                <input
-                  type="text"
-                  value={inviteInput.name}
-                  onChange={(e) => setInviteInput((s) => ({ ...s, name: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-2 py-2"
-                  placeholder="Nombre completo (opcional)"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-slate-600 block">Correo electrónico</span>
-                <input
-                  type="email"
-                  value={inviteInput.email}
-                  onChange={(e) => setInviteInput((s) => ({ ...s, email: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-2 py-2"
-                  placeholder="ejemplo@hospital.es"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-slate-600 block">Rol</span>
-                <select
-                  value={inviteInput.role}
-                  onChange={(e) => setInviteInput((s) => ({ ...s, role: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-2 py-2"
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-4">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Selecciona el rol a añadir">
+                {availableRoles.map((r) => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setRoleToAdd(r.value)}
+                    className={`px-3 py-1 rounded-full text-sm ring-1 transition ${
+                      roleToAdd === r.value ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-end gap-3">
+                <div className="flex-1">
+                  <input
+                    list={`users-${roleToAdd}`}
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder={`Escribe un nombre o elige un usuario de ${availableRoles.find(r => r.value === roleToAdd)?.label.toLowerCase()}`}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
+                  />
+                  <datalist id={`users-${roleToAdd}`}>
+                    {usersForRole(roleToAdd).map((u) => (
+                      <option key={u.id} value={u.full_name} />
+                    ))}
+                  </datalist>
+                </div>
+                <button
+                  type="button"
+                  onClick={addParticipantFromSearch}
+                  className="px-3 py-2 rounded-lg font-semibold text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition"
                 >
-                  <option value="">Seleccionar rol (opcional)</option>
-                  {availableRoles.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!inviteInput.email || inviteInput.email.trim() === '') {
-                    alert('Introduce un correo válido para invitar');
-                    return;
-                  }
-                  setForm((prev) => ({ ...prev, participants: (prev.participants || []).concat({ user_name: inviteInput.name, user_email: inviteInput.email, user_role: inviteInput.role }) }));
-                  setInviteInput({ name: '', email: '', role: '' });
-                }}
-                className="px-3 py-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-700"
-              >
-                Añadir invitado
-              </button>
-              <div className="text-sm text-slate-500 self-center">{form.participants.length} invitado(s) añadidos</div>
+                  Añadir
+                </button>
+              </div>
             </div>
 
             {form.participants.length > 0 && (
-              <ul className="mt-4 space-y-2">
+              <div className="mt-4 space-y-2">
+                <h4 className="text-sm font-medium text-slate-700">Participantes añadidos ({form.participants.length})</h4>
                 {form.participants.map((p, idx) => (
-                  <li key={`${p.user_email}-${idx}`} className="flex items-center justify-between gap-3 rounded-lg border p-2">
+                  <div key={`${p.user_email || p.user_name}-${idx}`} className="flex items-center justify-between gap-3 rounded-lg border p-3">
                     <div>
                       <div className="text-sm font-medium">{p.user_name || p.user_email}</div>
-                      <div className="text-xs text-slate-500">{p.user_email} {p.user_role ? `· ${p.user_role}` : ''}</div>
+                      <div className="text-xs text-slate-500">
+                        {p.user_email && p.user_email !== p.user_name ? `${p.user_email} · ` : ''}
+                        {availableRoles.find(r => r.value === p.user_role)?.label || p.user_role}
+                        {p.user_id ? '' : ' (invitación pendiente)'}
+                      </div>
                     </div>
                     <div>
                       <button
@@ -366,10 +423,12 @@ const CreateScheduledSession = () => {
                         className="px-2 py-1 text-sm rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
                       >Eliminar</button>
                     </div>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
+
+              {/* External-invite-by-email UI removed: we don't allow inviting external emails */}
           </div>
           {/* Botones */}
           <div className="flex items-center gap-3 pt-6">
@@ -391,11 +450,7 @@ const CreateScheduledSession = () => {
         </form>
       </main>
 
-      <InviteResultModal isOpen={showInviteResults} results={inviteResults} onClose={() => {
-        setShowInviteResults(false);
-        // after closing, navigate to sessions list
-        navigate('/sesiones-programadas');
-      }} />
+      {/* InviteResultModal removed (external invites disabled) */}
     </div>
   );
 };

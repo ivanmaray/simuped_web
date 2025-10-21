@@ -22,6 +22,7 @@ import Spinner from "./components/Spinner.jsx";
 const Dashboard = React.lazy(() => import("./features/principal/pages/Principal_Dashboard.jsx"));
 const ScheduledSessions = React.lazy(() => import("./features/principal/pages/ScheduledSessions.jsx"));
 const CreateScheduledSession = React.lazy(() => import("./features/principal/pages/CreateScheduledSession.jsx"));
+const ConfirmInvite = React.lazy(() => import("./features/principal/pages/ConfirmInvite.jsx"));
 const LegalPrivacidad = React.lazy(() => import("./features/principal/pages/Legal_Privacidad.jsx"));
 const LegalCookies = React.lazy(() => import("./features/principal/pages/Legal_Cookies.jsx"));
 const Simulacion = React.lazy(() => import("./features/online/pages/Online_Main.jsx"));
@@ -127,6 +128,7 @@ export default function MainRouter() {
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Suspense fallback={<Spinner />}><Dashboard /></Suspense>} />
           <Route path="/sesiones-programadas" element={<Suspense fallback={<Spinner />}><ScheduledSessions /></Suspense>} />
+          <Route path="/confirm-invite" element={<Suspense fallback={<Spinner />}><ConfirmInvite /></Suspense>} />
           <Route element={<RequireAdmin />}>
             <Route path="/sesiones-programadas/crear" element={<Suspense fallback={<Spinner />}><CreateScheduledSession /></Suspense>} />
           </Route>

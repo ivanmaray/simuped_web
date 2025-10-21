@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userEmail, userName, sessionName, sessionDate, sessionLocation, sessionCode } = req.body;
+  const { userEmail, userName, sessionName, sessionDate, sessionLocation, sessionCode, inviteLink } = req.body;
 
     if (!userEmail || !sessionName || !sessionDate || !sessionLocation) {
       return res.status(400).json({ error: "Faltan datos requeridos" });
@@ -53,10 +53,17 @@ export default async function handler(req, res) {
           </p>
 
           <div style="margin: 30px 0;">
-            <a href="https://www.simuped.com/dashboard"
-               style="background:#1a69b8;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">
-               Ir a mi panel
-            </a>
+        ${inviteLink ? `
+        <a href="${inviteLink}"
+          style="background:#1a69b8;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">
+          Confirmar asistencia
+        </a>
+        ` : `
+        <a href="https://www.simuped.com/dashboard"
+          style="background:#1a69b8;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;">
+          Ir a mi panel
+        </a>
+        `}
           </div>
 
           <p style="color: #6c757d; font-size: 14px;">
