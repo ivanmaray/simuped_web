@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { useAuth } from '../../../auth';
 import Navbar from '../../../components/Navbar.jsx';
+import logoSimuped from '../../../assets/logo-simuped.avif';
 
 function formatDate(value) {
   if (!value) return '';
@@ -20,6 +21,24 @@ export default function Certificate() {
   const [eligible, setEligible] = useState(false);
   const [message, setMessage] = useState('');
   const isPreview = searchParams.has('prueba');
+
+  const fullName = useMemo(() => {
+    const pieces = [profile?.nombre, profile?.apellidos].filter(Boolean);
+    if (pieces.length > 0) return pieces.join(' ');
+    const metaPieces = [session?.user?.user_metadata?.nombre, session?.user?.user_metadata?.apellidos].filter(Boolean);
+    if (metaPieces.length > 0) return metaPieces.join(' ');
+    return session?.user?.email || 'Participante SimuPed';
+  }, [
+    profile?.nombre,
+    profile?.apellidos,
+    session?.user?.user_metadata?.nombre,
+    session?.user?.user_metadata?.apellidos,
+    session?.user?.email
+  ]);
+
+  const dniValue = useMemo(() => {
+    return profile?.dni || session?.user?.user_metadata?.dni || '—';
+  }, [profile?.dni, session?.user?.user_metadata?.dni]);
 
   useEffect(() => {
     let mounted = true;
@@ -126,40 +145,77 @@ export default function Certificate() {
           </div>
         ) : (
           <div>
-            <div id="certificate" className="bg-white border p-8 rounded shadow print:p-0 print:border-0" style={{pageBreakInside:'avoid'}}>
-              <div className="flex items-center justify-between mb-8">
-                <img src="/logos/huca.png" alt="HUCA" style={{height:64}} />
-                <div className="text-center">
-                  <h2 className="text-xl font-bold">SimuPed</h2>
-                  <p className="text-sm">Hospital Universitario Central de Asturias (HUCA)</p>
+            <div
+              id="certificate"
+              className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:p-0 print:border-0"
+              style={{ pageBreakInside: 'avoid' }}
+            >
+              <div
+                className="relative"
+                style={{
+                  background: 'linear-gradient(135deg,#0A3D91,#1E6ACB)',
+                  color: '#fff'
+                }}
+              >
+                <div className="absolute inset-0 opacity-25" style={{ backgroundImage: 'url(/videohero3.gif)', backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                <div className="relative px-10 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
+                  <img src="/logos/huca.png" alt="HUCA" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
+                  <div className="text-center flex-1">
+                    <h2 className="text-3xl font-bold tracking-tight">SimuPed</h2>
+                    <p className="text-sm uppercase tracking-[0.35em] text-sky-100">Hospital Universitario Central de Asturias</p>
+                  </div>
+                  <img src={logoSimuped} alt="SimuPed" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
                 </div>
-                <img src="/assets/logo-simuped.avif" alt="SimuPed" style={{height:64}} />
               </div>
 
-              {isPreview ? (
-                <div className="text-center mb-4 uppercase text-red-500 text-sm font-semibold">Certificado de prueba</div>
-              ) : null}
+              <div className="px-10 py-12 md:px-16 md:py-14">
+                {isPreview ? (
+                  <div className="text-center mb-4 uppercase text-orange-500 text-xs font-semibold tracking-[0.45em]">Certificado de prueba</div>
+                ) : null}
 
-              <h3 className="text-center text-2xl font-semibold mb-6">Certificado de Finalización</h3>
-
-              <p className="text-center text-slate-700 mb-6">Se certifica que</p>
-
-              <div className="text-center mb-6">
-                <p className="text-2xl font-semibold">{profile?.nombre || session?.user?.user_metadata?.nombre || session?.user?.email}</p>
-                <p className="text-sm text-slate-600">DNI: {profile?.dni || session?.user?.user_metadata?.dni || '—'}</p>
-              </div>
-
-              <p className="text-center text-slate-700 mb-6">ha completado la formación requerida en la plataforma SimuPed, alcanzando la cobertura de simulaciones online y el mínimo de participación presencial exigido.</p>
-
-              <div className="mt-8 flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-slate-600">Fecha de emisión</p>
-                  <p className="font-medium">{formatDate(new Date().toISOString())}</p>
+                <div className="text-center mb-10">
+                  <h3 className="text-3xl font-semibold text-slate-900">Certificado de Finalización</h3>
+                  <p className="mt-4 text-base text-slate-600">Se certifica que</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-slate-600">Firma</p>
-                  <div className="mt-2 border-t w-48" />
-                  <p className="text-xs text-slate-500">Dirección de Simulación HUCA</p>
+
+                <div className="text-center mb-10">
+                  <p className="text-[32px] leading-tight font-semibold text-slate-900">{fullName}</p>
+                  <p className="mt-3 text-base text-slate-500">DNI: <span className="font-medium text-slate-700">{dniValue}</span></p>
+                </div>
+
+                <p className="text-center text-lg text-slate-700 max-w-3xl mx-auto leading-relaxed">
+                  ha completado la formación requerida en la plataforma <strong>SimuPed</strong>, cumpliendo la totalidad de simulaciones online y alcanzando el mínimo de participación presencial estipulado por la Dirección de Simulación Pediátrica del HUCA.
+                </p>
+
+                <div className="mt-14 grid gap-10 md:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5 text-left">
+                    <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Fecha de emisión</p>
+                    <p className="mt-3 text-xl font-semibold text-slate-800">{formatDate(new Date().toISOString())}</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5 text-left">
+                    <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Número de registro</p>
+                    <p className="mt-3 text-xl font-semibold text-slate-800">SIMUPED-{(session?.user?.id || profile?.id || 'PREVIEW').slice(0, 8).toUpperCase()}</p>
+                  </div>
+                </div>
+
+                <div className="mt-14 grid gap-12 md:grid-cols-2">
+                  <div className="text-center">
+                    <div className="h-24 flex items-center justify-center mb-4">
+                      <img src="/firma_ivan_maray.avif" alt="Firma Ivan Maray" className="h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    </div>
+                    <div className="border-t border-slate-300 mx-auto w-56" />
+                    <p className="mt-3 font-semibold text-slate-800">Iván Maray</p>
+                    <p className="text-sm text-slate-500">Coordinador SimuPed</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="h-24 flex items-center justify-center mb-4">
+                      <img src="/firma_andres_concha.avif" alt="Firma Andrés Concha" className="h-full object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    </div>
+                    <div className="border-t border-slate-300 mx-auto w-56" />
+                    <p className="mt-3 font-semibold text-slate-800">Andrés Concha Torre</p>
+                    <p className="text-sm text-slate-500">Dirección de Simulación HUCA</p>
+                  </div>
                 </div>
               </div>
             </div>

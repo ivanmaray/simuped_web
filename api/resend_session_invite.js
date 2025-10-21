@@ -104,6 +104,30 @@ function getAssetBaseUrl(appBaseUrl) {
   return appBaseUrl ? appBaseUrl.replace(/\/$/, '') : '';
 }
 
+function resolveAssetUrl(baseUrl, assetPath) {
+  if (!assetPath) return null;
+  if (/^https?:\/\//i.test(assetPath)) return assetPath;
+  const normalized = assetPath.startsWith('/') ? assetPath : `/${assetPath}`;
+  if (!baseUrl) return normalized;
+  return `${baseUrl}${normalized}`;
+}
+
+function getLogoUrl(baseUrl, assetBaseUrl) {
+  const host = assetBaseUrl || baseUrl || '';
+  const candidates = [
+    process.env.SIMUPED_LOGO_PATH,
+    process.env.LOGO_ASSET_PATH,
+    'assets/logo-simuped-Dtpd4WLf.avif',
+    'logo-negative.png'
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = resolveAssetUrl(host, candidate);
+    if (resolved) return resolved;
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
@@ -136,7 +160,7 @@ export default async function handler(req, res) {
     const token = Buffer.from(JSON.stringify({ payload: tokenPayload, sig })).toString('base64');
     const baseUrl = getAppBaseUrl();
     const assetBaseUrl = getAssetBaseUrl(baseUrl);
-    const logoUrl = assetBaseUrl ? `${assetBaseUrl}/logo-negative.png` : null;
+    const logoUrl = getLogoUrl(baseUrl, assetBaseUrl);
     const inviteLink = `${baseUrl}/confirm-invite?token=${encodeURIComponent(token)}`;
 
     // Send email directly via Resend
@@ -158,10 +182,10 @@ export default async function handler(req, res) {
       console.error('[resend_session_invite] Missing RESEND_API_KEY');
       return res.status(500).json({ ok: false, error: 'missing_resend_api_key' });
     }
-      const resp = await fetch('https://api.resend.com/emails', {
+    const resp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_API_KEY}` },
-        body: JSON.stringify({ from, to: profile.email, subject: `Invitación: ${session_name || 'Sesión SimuPed'}`, html })
+      body: JSON.stringify({ from, to: profile.email, subject: `Invitación: ${session_name || 'Sesión SimuPed'}`, html })
     });
     const respText = await resp.text().catch(() => null);
     let respJson = null;
