@@ -23,14 +23,17 @@ function formatInviteDate(value) {
   }
 }
 
-function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation, inviteLink }) {
+function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation, inviteLink, logoUrl }) {
   const formattedDate = formatInviteDate(sessionDate);
   return `
   <div style="background-color:#f5f7fb;padding:32px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(15,23,42,0.12);">
       <tr>
         <td style="background:linear-gradient(135deg,#0A3D91,#1E6ACB);padding:32px;text-align:center;color:#ffffff;">
-          <div style="font-size:26px;font-weight:700;letter-spacing:0.4px;">SimuPed</div>
+          ${logoUrl
+            ? `<img src="${logoUrl}" alt="SimuPed" style="width:120px;max-width:100%;display:block;margin:0 auto 12px;" />
+               <div style="font-size:18px;font-weight:600;letter-spacing:0.3px;">Simulación Pediátrica</div>`
+            : '<div style="font-size:26px;font-weight:700;letter-spacing:0.4px;">SimuPed</div>'}
           <div style="margin-top:6px;font-size:15px;opacity:0.85;">Hospital Universitario Central de Asturias</div>
         </td>
       </tr>
@@ -84,6 +87,21 @@ function getAppBaseUrl() {
     return `https://${sanitized}`;
   }
   return process.env.NODE_ENV === 'production' ? 'https://simuped.vercel.app' : 'http://localhost:5173';
+}
+
+function getAssetBaseUrl(appBaseUrl) {
+  const candidates = [
+    process.env.ASSET_BASE_URL,
+    process.env.PUBLIC_ASSET_HOST,
+    process.env.NEXT_PUBLIC_ASSET_BASE_URL,
+    appBaseUrl
+  ];
+  for (const value of candidates) {
+    if (value && typeof value === 'string') {
+      return value.replace(/\/$/, '');
+    }
+  }
+  return appBaseUrl ? appBaseUrl.replace(/\/$/, '') : '';
 }
 
 export default async function handler(req, res) {
@@ -145,6 +163,8 @@ export default async function handler(req, res) {
           const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'SimuPed';
           const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
           const baseUrl = getAppBaseUrl();
+          const assetBaseUrl = getAssetBaseUrl(baseUrl);
+          const logoUrl = assetBaseUrl ? `${assetBaseUrl}/logo-negative.png` : null;
           const inviteLink = `${baseUrl}/confirm-invite?token=${encodeURIComponent(token)}`;
 
           const html = buildInviteEmail({
@@ -152,7 +172,8 @@ export default async function handler(req, res) {
             sessionName: req.body.session_name,
             sessionDate: req.body.session_date,
             sessionLocation: req.body.session_location,
-            inviteLink
+            inviteLink,
+            logoUrl
           });
 
           if (!RESEND_API_KEY) {
