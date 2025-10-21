@@ -44,7 +44,7 @@ export default function Certificate() {
     styleTag.innerHTML = `
       @page {
         size: A4 landscape;
-        margin: 12mm;
+        margin: 10mm;
       }
       @media print {
         body {
@@ -52,12 +52,17 @@ export default function Certificate() {
           print-color-adjust: exact;
           background: #fff !important;
         }
+        main.certificate-page {
+          margin: 0 !important;
+          padding: 0 !important;
+        }
         #certificate-root {
           box-shadow: none !important;
           border: none !important;
           border-radius: 0 !important;
           margin: 0 !important;
-          width: 100% !important;
+          width: calc(297mm - 20mm) !important;
+          height: calc(210mm - 20mm) !important;
         }
       }
     `;
@@ -259,7 +264,7 @@ export default function Certificate() {
       <div className="print:hidden">
         <Navbar />
       </div>
-      <main className="max-w-4xl mx-auto p-6 print:max-w-none print:px-0 print:py-0">
+      <main className="certificate-page max-w-5xl mx-auto px-6 py-8 print:max-w-none print:px-0 print:py-0">
         <h1 className="text-2xl font-semibold mb-4 print:hidden">Certificado de Finalización</h1>
 
         {loading ? (
@@ -274,119 +279,127 @@ export default function Certificate() {
           </div>
         ) : (
           <div>
-            <div
-              id="certificate-root"
-              className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:shadow-none print:border-0 print:rounded-none"
-              style={{ pageBreakInside: 'avoid' }}
-            >
+            <div className="flex justify-center">
               <div
-                className="relative"
+                id="certificate-root"
+                className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:shadow-none print:border-0 print:rounded-none"
                 style={{
-                  background: 'linear-gradient(135deg,#0A3D91,#1E6ACB)',
-                  color: '#fff'
+                  pageBreakInside: 'avoid',
+                  width: 'min(92vw, 1120px)',
+                  minHeight: '794px',
+                  margin: '0 auto',
+                  display: 'flex',
+                  flexDirection: 'column'
                 }}
               >
-                <div className="absolute inset-0 opacity-25" style={{ backgroundImage: 'url(/videohero3.gif)', backgroundSize: 'cover', backgroundPosition: 'center' }} />
-                <div className="relative px-10 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
-                  <img src="/logos/huca.png" alt="HUCA" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
-                  <div className="text-center flex-1">
-                    <h2 className="text-3xl font-bold tracking-tight">SimuPed</h2>
-                    <p className="text-sm uppercase tracking-[0.35em] text-sky-100">Hospital Universitario Central de Asturias</p>
-                  </div>
-                  {logoState.visible ? (
-                    <img
-                      src={logoState.src}
-                      alt="SimuPed"
-                      className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl"
-                      onError={() => {
-                        setLogoState((prev) => {
-                          if (prev.src !== logoSimuped) {
-                            return { ...prev, src: logoSimuped };
-                          }
-                          return { ...prev, visible: false };
-                        });
-                      }}
-                    />
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="px-10 py-12 md:px-16 md:py-14">
-                {isPreview ? (
-                  <div className="text-center mb-4 uppercase text-orange-500 text-xs font-semibold tracking-[0.45em]">Certificado de prueba</div>
-                ) : null}
-
-                <div className="text-center mb-10">
-                  <h3 className="text-3xl font-semibold text-slate-900">Certificado de Finalización</h3>
-                  <p className="mt-4 text-base text-slate-600">Se certifica que</p>
-                </div>
-
-                <div className="text-center mb-10">
-                  <p className="text-[32px] leading-tight font-semibold text-slate-900">{fullName}</p>
-                  <p className="mt-3 text-base text-slate-500">DNI: <span className="font-medium text-slate-700">{dniValue}</span></p>
-                </div>
-
-                <p className="text-center text-lg text-slate-700 max-w-3xl mx-auto leading-relaxed">
-                  ha completado la formación requerida en la plataforma <strong>SimuPed</strong>, cumpliendo la totalidad de simulaciones online y alcanzando el mínimo de participación presencial estipulado por la Dirección de Simulación Pediátrica del HUCA.
-                </p>
-
-                {(onlineSummaries.length > 0 || presencialSummaries.length > 0) && (
-                  <div className="mt-12 border border-slate-200 rounded-3xl bg-slate-50 px-8 py-7">
-                    <h4 className="text-center text-sm uppercase tracking-[0.25em] text-slate-500">Resumen de participación</h4>
-                    <div className="mt-7 grid gap-8 md:grid-cols-2">
-                      <section>
-                        <header className="flex items-center justify-between mb-3">
-                          <p className="text-sm font-semibold text-slate-800">Simulaciones online completadas</p>
-                          <span className="text-xs text-slate-500">Media por escenario</span>
-                        </header>
-                        <ul className="space-y-3 text-sm text-slate-600">
-                          {onlineSummaries.length === 0 ? (
-                            <li className="text-slate-400">Sin simulaciones online registradas</li>
-                          ) : (
-                            onlineSummaries.map((row) => (
-                              <li key={`online-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
-                                  <span className="text-[#0A3D91] font-semibold">
-                                    {row.averageScore != null ? `${Math.round(row.averageScore)}%` : 'S/N'}
-                                  </span>
-                                </div>
-                                <div className="mt-1 flex flex-wrap items-center justify-between text-xs text-slate-500">
-                                  <span>{row.attemptCount} intento{row.attemptCount === 1 ? '' : 's'}</span>
-                                  {row.lastCompleted && <span>Última: {formatDate(row.lastCompleted)}</span>}
-                                </div>
-                              </li>
-                            ))
-                          )}
-                        </ul>
-                      </section>
-
-                      <section>
-                        <header className="flex items-center justify-between mb-3">
-                          <p className="text-sm font-semibold text-slate-800">Participaciones presenciales</p>
-                          <span className="text-xs text-slate-500">Una entrada por escenario</span>
-                        </header>
-                        <ul className="space-y-3 text-sm text-slate-600">
-                          {presencialSummaries.length === 0 ? (
-                            <li className="text-slate-400">Sin registros presenciales</li>
-                          ) : (
-                            presencialSummaries.map((row) => (
-                              <li key={`presencial-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
-                                  <span className="text-slate-500">{row.participationCount} sesión{row.participationCount === 1 ? '' : 'es'}</span>
-                                </div>
-                                {row.lastCompleted && (
-                                  <div className="mt-1 text-xs text-slate-500 text-right">Última: {formatDate(row.lastCompleted)}</div>
-                                )}
-                              </li>
-                            ))
-                          )}
-                        </ul>
-                      </section>
+                <div
+                  className="relative"
+                  style={{
+                    background: 'linear-gradient(135deg,#0A3D91,#1E6ACB)',
+                    color: '#fff'
+                  }}
+                >
+                  <div className="absolute inset-0 opacity-25" style={{ backgroundImage: 'url(/videohero3.gif)', backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                  <div className="relative px-10 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
+                    <img src="/logos/huca.png" alt="HUCA" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
+                    <div className="text-center flex-1">
+                      <h2 className="text-3xl font-bold tracking-tight">SimuPed</h2>
+                      <p className="text-sm uppercase tracking-[0.35em] text-sky-100">Hospital Universitario Central de Asturias</p>
                     </div>
+                    {logoState.visible ? (
+                      <img
+                        src={logoState.src}
+                        alt="SimuPed"
+                        className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl"
+                        onError={() => {
+                          setLogoState((prev) => {
+                            if (prev.src !== logoSimuped) {
+                              return { ...prev, src: logoSimuped };
+                            }
+                            return { ...prev, visible: false };
+                          });
+                        }}
+                      />
+                    ) : null}
                   </div>
-                )}
+                </div>
+
+                <div className="px-10 py-12 md:px-16 md:py-14">
+                  {isPreview ? (
+                    <div className="text-center mb-4 uppercase text-orange-500 text-xs font-semibold tracking-[0.45em]">Certificado de prueba</div>
+                  ) : null}
+
+                  <div className="text-center mb-10">
+                    <h3 className="text-3xl font-semibold text-slate-900">Certificado de Finalización</h3>
+                    <p className="mt-4 text-base text-slate-600">Se certifica que</p>
+                  </div>
+
+                  <div className="text-center mb-10">
+                    <p className="text-[32px] leading-tight font-semibold text-slate-900">{fullName}</p>
+                    <p className="mt-3 text-base text-slate-500">DNI: <span className="font-medium text-slate-700">{dniValue}</span></p>
+                  </div>
+
+                  <p className="text-center text-lg text-slate-700 max-w-3xl mx-auto leading-relaxed">
+                    ha completado la formación requerida en la plataforma <strong>SimuPed</strong>, cumpliendo la totalidad de simulaciones online y alcanzando el mínimo de participación presencial estipulado por la Dirección de Simulación Pediátrica del HUCA.
+                  </p>
+
+                  {(onlineSummaries.length > 0 || presencialSummaries.length > 0) && (
+                    <div className="mt-12 border border-slate-200 rounded-3xl bg-slate-50 px-8 py-7">
+                      <h4 className="text-center text-sm uppercase tracking-[0.25em] text-slate-500">Resumen de participación</h4>
+                      <div className="mt-7 grid gap-8 md:grid-cols-2">
+                        <section>
+                          <header className="flex items-center justify-between mb-3">
+                            <p className="text-sm font-semibold text-slate-800">Simulaciones online completadas</p>
+                            <span className="text-xs text-slate-500">Media por escenario</span>
+                          </header>
+                          <ul className="space-y-3 text-sm text-slate-600">
+                            {onlineSummaries.length === 0 ? (
+                              <li className="text-slate-400">Sin simulaciones online registradas</li>
+                            ) : (
+                              onlineSummaries.map((row) => (
+                                <li key={`online-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
+                                    <span className="text-[#0A3D91] font-semibold">
+                                      {row.averageScore != null ? `${Math.round(row.averageScore)}%` : 'S/N'}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center justify-between text-xs text-slate-500">
+                                    <span>{row.attemptCount} intento{row.attemptCount === 1 ? '' : 's'}</span>
+                                    {row.lastCompleted && <span>Última: {formatDate(row.lastCompleted)}</span>}
+                                  </div>
+                                </li>
+                              ))
+                            )}
+                          </ul>
+                        </section>
+
+                        <section>
+                          <header className="flex items-center justify-between mb-3">
+                            <p className="text-sm font-semibold text-slate-800">Participaciones presenciales</p>
+                            <span className="text-xs text-slate-500">Una entrada por escenario</span>
+                          </header>
+                          <ul className="space-y-3 text-sm text-slate-600">
+                            {presencialSummaries.length === 0 ? (
+                              <li className="text-slate-400">Sin registros presenciales</li>
+                            ) : (
+                              presencialSummaries.map((row) => (
+                                <li key={`presencial-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
+                                    <span className="text-slate-500">{row.participationCount} sesión{row.participationCount === 1 ? '' : 'es'}</span>
+                                  </div>
+                                  {row.lastCompleted && (
+                                    <div className="mt-1 text-xs text-slate-500 text-right">Última: {formatDate(row.lastCompleted)}</div>
+                                  )}
+                                </li>
+                              ))
+                            )}
+                          </ul>
+                        </section>
+                      </div>
+                    </div>
+                  )}
 
                 <div className="mt-14 grid gap-10 md:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5 text-left">
@@ -454,6 +467,7 @@ export default function Certificate() {
                 </div>
               </div>
             </div>
+          </div>
 
             <div className="mt-6 space-x-3 print:hidden">
               <button

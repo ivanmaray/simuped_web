@@ -43,7 +43,7 @@ const ScheduledSessions = () => {
         setSessions([]);
         setError("Las tablas de sesiones programadas no están creadas. Ejecuta las migraciones SQL primero.");
       } else {
-        // Get scheduled sessions with participant counts
+        // Get scheduled sessions
         const { data, error } = await supabase
           .from("scheduled_sessions")
           .select(`
@@ -65,75 +65,32 @@ const ScheduledSessions = () => {
 
         if (error) throw error;
 
-        // Get participant info for all sessions (counts and lists for admins)
+        const sessionIds = (data || []).map((session) => session.id);
+        let countsBySession = {};
+
+        if (sessionIds.length > 0) {
+          try {
+            const response = await fetch('/api/scheduled_session_counts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionIds })
+            });
+
+            if (response.ok) {
+              const json = await response.json();
+              countsBySession = json?.counts || {};
+            } else {
+              console.warn('Failed to load session counts', response.status);
+            }
+          } catch (countErr) {
+            console.warn('Error fetching session counts', countErr);
+          }
+        }
+
+        // Combine session info with counts and user registration state
         const sessionsWithCounts = await Promise.all(
           (data || []).map(async (session) => {
             try {
-              // Always get participant count - this should work for everyone
-              const { count } = await supabase
-                .from("scheduled_session_participants")
-                .select("id", { count: "exact" })
-                .eq("session_id", session.id);
-
-              // Get participant list for admins (includes detailed info)
-              let participants = [];
-              let confirmedCount = null;
-              if (ready && isAdmin) {
-                try {
-                  console.log("ADMIN MODE: Fetching participants for session:", session.id);
-
-                  // First try to get the raw participant data
-                  const { data: rawParticipants, error: rawError } = await supabase
-                    .from("scheduled_session_participants")
-                    .select("id, user_id, registered_at, confirmed_at")
-                    .eq("session_id", session.id);
-
-                  console.log("Raw participants data:", rawParticipants, "Error:", rawError);
-
-                  if (rawParticipants && rawParticipants.length > 0) {
-                    confirmedCount = rawParticipants.filter((p) => !!p.confirmed_at).length;
-                    // Then get profile info for those users
-                    const userIds = rawParticipants.map(p => p.user_id);
-                    console.log("User IDs to fetch profiles for:", userIds);
-
-                    const { data: profileData, error: profileError } = await supabase
-                      .from("profiles")
-                      .select("id, nombre, apellidos, rol, email")
-                      .in("id", userIds);
-
-                    console.log("Profile data:", profileData, "Error:", profileError);
-
-                    // Combine the data
-                    participants = rawParticipants.map(participant => {
-                      const profile = profileData?.find(p => p.id === participant.user_id);
-                      console.log("Participant:", participant, "Profile found:", profile);
-
-                      const completeProfile = profile || {
-                        id: participant.user_id,
-                        nombre: "Usuario",
-                        apellidos: "Registrado",
-                        rol: "desconocido",
-                        email: "usuario@simuped.com"
-                      };
-
-                      return {
-                        id: participant.id,
-                        registered_at: participant.registered_at,
-                        confirmed_at: participant.confirmed_at,
-                        profiles: completeProfile
-                      };
-                    });
-
-                    console.log("Final participants data:", participants);
-                  } else {
-                    console.log("No raw participants found");
-                  }
-
-                } catch (participantError) {
-                  console.warn("Error fetching participants:", participantError);
-                }
-              }
-
               // Check individual registration status only for authenticated users
               let isRegistered = false;
               let userRegistration = null;
@@ -154,22 +111,23 @@ const ScheduledSessions = () => {
                 }
               }
 
+              const countInfo = countsBySession[session.id] || { total: 0, confirmed: 0 };
+
               return {
                 ...session,
-                registered_count: count || 0,
+                registered_count: typeof countInfo.total === 'number' ? countInfo.total : 0,
                 is_registered: isRegistered,
                 user_registration: userRegistration,
-                confirmed_count: confirmedCount,
-                participants: participants,
+                confirmed_count: typeof countInfo.confirmed === 'number' ? countInfo.confirmed : null,
                 scheduled_at: new Date(session.scheduled_at)
               };
             } catch (err) {
-              console.warn("Error getting participants for session:", err);
+              console.warn("Error building session entry:", err);
               return {
                 ...session,
                 registered_count: 0,
                 is_registered: false,
-                participants: [],
+                confirmed_count: null,
                 scheduled_at: new Date(session.scheduled_at)
               };
             }
@@ -458,82 +416,20 @@ const ScheduledSessions = () => {
                         )}
                       </div>
 
-
-
-                      {/* Show participants if admin */}
-                      {ready && isAdmin && session.participants && session.participants.length > 0 && (
-                        <div className="mt-2">
-                          <details className="text-xs">
-                            <summary className="cursor-pointer hover:text-slate-800 underline text-slate-600">
-                              Ver participantes ({session.participants.length}) · Confirmados {session.confirmed_count ?? 0}
-                            </summary>
-                            <div className="mt-2 space-y-2 max-w-xl">
-                              {session.participants.map((participant) => {
-                                const name = [participant.profiles.nombre, participant.profiles.apellidos]
-                                  .filter(Boolean)
-                                  .join(" ") || "Sin nombre";
-                                const registeredDate = new Date(participant.registered_at).toLocaleString('es-ES', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                });
-                                const confirmedDate = participant.confirmed_at
-                                  ? new Date(participant.confirmed_at).toLocaleString('es-ES', {
-                                      day: '2-digit',
-                                      month: 'short',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })
-                                  : null;
-                                return (
-                                  <div key={participant.id} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <span className="truncate" title={participant.profiles.email || name}>
-                                          {name}
-                                        </span>
-                                        <span
-                                          className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium ${
-                                            participant.confirmed_at
-                                              ? 'bg-emerald-100 text-emerald-700'
-                                              : 'bg-amber-100 text-amber-700'
-                                          }`}
-                                        >
-                                          {participant.confirmed_at ? 'Confirmado' : 'Pendiente'}
-                                        </span>
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                                        <span>Registro: {registeredDate}</span>
-                                        {confirmedDate ? (
-                                          <span className="text-emerald-600">Confirmó: {confirmedDate}</span>
-                                        ) : (
-                                          <button
-                                            onClick={async () => {
-                                              try {
-                                                await fetch('/api/resend_session_invite', {
-                                                  method: 'POST',
-                                                  headers: { 'Content-Type': 'application/json' },
-                                                  body: JSON.stringify({ session_id: session.id, user_id: participant.profiles.id, session_name: session.title, session_date: session.scheduled_at, session_location: session.location })
-                                                });
-                                                alert('Invitación reenviada');
-                                              } catch (e) {
-                                                console.warn('Resend failed', e);
-                                                alert('Error reenviando invitación');
-                                              }
-                                            }}
-                                            className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-50"
-                                          >
-                                            Reenviar invitación
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </details>
+                      {isAdmin && (
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                            </svg>
+                            {session.registered_count} inscritos
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-700">
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            {session.confirmed_count ?? 0} confirmados
+                          </span>
                         </div>
                       )}
                     </div>

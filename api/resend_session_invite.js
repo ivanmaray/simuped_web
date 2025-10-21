@@ -23,7 +23,7 @@ function formatInviteDate(value) {
   }
 }
 
-function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation, inviteLink, logoUrl }) {
+function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation, inviteLink, logoUrl, supportEmail }) {
   const formattedDate = formatInviteDate(sessionDate);
   return `
   <div style="background-color:#f5f7fb;padding:32px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
@@ -55,12 +55,14 @@ function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation,
 
           <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">Si ya te has apuntado, puedes ignorar este correo. Quedan plazas limitadas; confirma tu participación para asegurar tu asiento.</p>
           <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#475569;">Si el botón no funciona, copia y pega esta dirección en tu navegador:<br><span style="color:#0A3D91;word-break:break-all;">${inviteLink}</span></p>
+          <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Recomendamos llegar con 10 minutos de antelación para preparar el material. Si necesitas modificar tu asistencia, puedes gestionarlo desde tu panel.</p>
+          <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:${supportEmail || 'contacto@simuped.com'}" style="color:#0A3D91;text-decoration:none;">${supportEmail || 'contacto@simuped.com'}</a>.</p>
         </td>
       </tr>
       <tr>
         <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
           <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
-          <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió de forma automática desde la plataforma SimuPed.</p>
+          <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
         </td>
       </tr>
     </table>
@@ -115,10 +117,13 @@ function resolveAssetUrl(baseUrl, assetPath) {
 function getLogoUrl(baseUrl, assetBaseUrl) {
   const host = assetBaseUrl || baseUrl || '';
   const candidates = [
+    process.env.SIMUPED_EMAIL_LOGO_PATH,
     process.env.SIMUPED_LOGO_PATH,
     process.env.LOGO_ASSET_PATH,
-    'assets/logo-simuped-Dtpd4WLf.avif',
-    'logo-negative.png'
+    'logo-negative.png',
+    'logo-simuped-Dtpd4WLf.avif',
+    'logo-simuped.avif',
+    'logo-simuped.png'
   ];
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -160,7 +165,8 @@ export default async function handler(req, res) {
     const token = Buffer.from(JSON.stringify({ payload: tokenPayload, sig })).toString('base64');
     const baseUrl = getAppBaseUrl();
     const assetBaseUrl = getAssetBaseUrl(baseUrl);
-    const logoUrl = getLogoUrl(baseUrl, assetBaseUrl);
+  const logoUrl = getLogoUrl(baseUrl, assetBaseUrl);
+  const supportEmail = process.env.SUPPORT_EMAIL || process.env.CONTACT_EMAIL || 'contacto@simuped.com';
     const inviteLink = `${baseUrl}/confirm-invite?token=${encodeURIComponent(token)}`;
 
     // Send email directly via Resend
@@ -175,7 +181,8 @@ export default async function handler(req, res) {
         sessionDate: session_date,
         sessionLocation: session_location,
         inviteLink,
-        logoUrl
+        logoUrl,
+        supportEmail
       })}
     `;
     if (!RESEND_API_KEY) {

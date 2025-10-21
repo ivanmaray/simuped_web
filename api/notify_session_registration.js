@@ -68,10 +68,13 @@ function resolveAssetUrl(baseUrl, assetPath) {
 function getLogoUrl(baseUrl, assetBaseUrl) {
   const host = assetBaseUrl || baseUrl || '';
   const candidates = [
+    process.env.SIMUPED_EMAIL_LOGO_PATH,
     process.env.SIMUPED_LOGO_PATH,
     process.env.LOGO_ASSET_PATH,
-    'assets/logo-simuped-Dtpd4WLf.avif',
-    'logo-negative.png'
+    'logo-negative.png',
+    'logo-simuped-Dtpd4WLf.avif',
+    'logo-simuped.avif',
+    'logo-simuped.png'
   ];
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -86,7 +89,6 @@ function buildSessionRegistrationEmail({
   sessionName,
   sessionDate,
   sessionLocation,
-  sessionCode,
   ctaLink,
   ctaLabel,
   logoUrl,
@@ -123,7 +125,6 @@ function buildSessionRegistrationEmail({
             <p style="margin:0 0 12px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📅 Fecha:</strong><br>${date || 'Por confirmar'}</p>
             <p style="margin:0 0 12px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">⏰ Hora:</strong><br>${time || 'Por confirmar'}</p>
             <p style="margin:0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📍 Lugar:</strong><br>${sessionLocation || 'Pendiente de determinar'}</p>
-            ${sessionCode ? `<p style="margin:16px 0 0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">🔐 Código de sesión:</strong><br>${sessionCode}</p>` : ''}
           </div>
 
           ${ctaLink
@@ -135,7 +136,7 @@ function buildSessionRegistrationEmail({
             : ''}
 
           <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#475569;">Recomendamos llegar con 10 minutos de antelación para preparar el material. Si necesitas modificar tu asistencia, puedes gestionarlo desde tu panel.</p>
-          <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:${supportEmail || 'simuped@gmail.com'}" style="color:#0A3D91;text-decoration:none;">${supportEmail || 'simuped@gmail.com'}</a>.</p>
+          <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:${supportEmail || 'contacto@simuped.com'}" style="color:#0A3D91;text-decoration:none;">${supportEmail || 'contacto@simuped.com'}</a>.</p>
         </td>
       </tr>
       <tr>
@@ -171,10 +172,10 @@ export default async function handler(req, res) {
     }
 
     // Email configuration
-    const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
+  const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
 
-    // Platform admin email (send notification about new registration)
-    const PLATFORM_EMAIL = process.env.PLATFORM_EMAIL || "simuped@gmail.com"; // Change to your actual platform email
+  // Platform admin email (send notification about new registration)
+  const PLATFORM_EMAIL = process.env.PLATFORM_EMAIL || "contacto@simuped.com";
 
   const baseUrl = getAppBaseUrl();
   const assetBaseUrl = getAssetBaseUrl(baseUrl);
@@ -183,19 +184,18 @@ export default async function handler(req, res) {
     const defaultCtaLink = `${baseUrl}/dashboard`;
     const ctaLink = inviteLink || defaultCtaLink;
     const ctaLabel = inviteLink ? 'Confirmar asistencia' : 'Ir a mi panel';
-  const supportEmail = process.env.SUPPORT_EMAIL || process.env.CONTACT_EMAIL || PLATFORM_EMAIL;
+  const supportEmail = process.env.SUPPORT_EMAIL || process.env.CONTACT_EMAIL || 'contacto@simuped.com';
 
     // Email to the user who registered
     const userPayload = {
       from,
       to: userEmail,
-      subject: "✅ Bienvenido/a - Te has registrado en una sesión de SimuPed",
+      subject: "✅ Registro confirmado · Sesión SimuPed",
       html: buildSessionRegistrationEmail({
         userName,
         sessionName,
         sessionDate,
         sessionLocation,
-        sessionCode,
         ctaLink,
         ctaLabel,
         logoUrl,
