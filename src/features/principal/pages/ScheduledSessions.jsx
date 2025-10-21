@@ -11,6 +11,7 @@ const ScheduledSessions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showSetupInfo, setShowSetupInfo] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -306,6 +307,34 @@ const ScheduledSessions = () => {
     navigate("/sesiones-programadas/crear");
   };
 
+  const deleteSession = async (sessionId, title) => {
+    if (!isAdmin) return;
+    const ok = confirm(`¿Eliminar la sesión "${title}"? Se eliminarán también los registros de asistentes.`);
+    if (!ok) return;
+
+    try {
+      setDeletingId(sessionId);
+      await supabase
+        .from("scheduled_session_participants")
+        .delete()
+        .eq("session_id", sessionId);
+
+      const { error: deleteErr } = await supabase
+        .from("scheduled_sessions")
+        .delete()
+        .eq("id", sessionId);
+      if (deleteErr) throw deleteErr;
+
+      setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      alert("Sesión eliminada correctamente.");
+    } catch (err) {
+      console.error("Error deleting session:", err);
+      alert("No se pudo eliminar la sesión. Revisa los permisos o vuelve a intentarlo.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   if (!ready || loading) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -471,6 +500,16 @@ const ScheduledSessions = () => {
                         }`}>
                           {session.mode === 'dual' ? 'Dual' : 'Clásico'}
                         </span>
+                        {isAdmin && (
+                          <button
+                            onClick={() => deleteSession(session.id, session.title)}
+                            disabled={deletingId === session.id}
+                            className="px-2 py-1 rounded border border-red-200 text-red-600 text-xs hover:bg-red-50 disabled:opacity-60"
+                            title="Eliminar sesión"
+                          >
+                            {deletingId === session.id ? 'Eliminando...' : 'Eliminar'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

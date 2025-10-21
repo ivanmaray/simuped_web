@@ -698,6 +698,10 @@ export default function Principal_Perfil() {
                 href="/certificado"
                 className="inline-block px-3 py-2 rounded bg-slate-100 text-slate-700 text-sm border"
               >Ver certificado</a>
+              <a
+                href="/certificado?prueba=1"
+                className="inline-block px-3 py-2 rounded bg-white text-slate-600 text-sm border border-dashed"
+              >Descargar prueba</a>
             </div>
             <span className="text-sm text-slate-500">
               {loadingAchievements ? "Cargando logros…" : `${achievements.length} logro${achievements.length === 1 ? "" : "s"}`}

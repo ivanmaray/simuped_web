@@ -7,6 +7,64 @@ function signPayload(payload, secret) {
   return hmac.digest('hex');
 }
 
+function formatInviteDate(value) {
+  if (!value) return '';
+  try {
+    return new Date(value).toLocaleString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return value;
+  }
+}
+
+function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation, inviteLink }) {
+  const formattedDate = formatInviteDate(sessionDate);
+  return `
+  <div style="background-color:#f5f7fb;padding:32px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(15,23,42,0.12);">
+      <tr>
+        <td style="background:linear-gradient(135deg,#0A3D91,#1E6ACB);padding:32px;text-align:center;color:#ffffff;">
+          <div style="font-size:26px;font-weight:700;letter-spacing:0.4px;">SimuPed</div>
+          <div style="margin-top:6px;font-size:15px;opacity:0.85;">Hospital Universitario Central de Asturias</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:32px 36px;color:#1f2937;">
+          <p style="margin:0;font-size:16px;color:#64748b;letter-spacing:0.04em;text-transform:uppercase;font-weight:600;">Invitación confirmable</p>
+          <h1 style="margin:12px 0 20px;font-size:24px;color:#0f172a;">Has sido invitado/a a una sesión de SimuPed</h1>
+          <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Hola ${userName || ''},</p>
+          <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Te han invitado a la sesión <strong style="color:#0A3D91;">${sessionName || 'Sesión programada'}</strong>. Revisa los detalles y confirma tu asistencia:</p>
+
+          <div style="margin:20px 0;padding:20px 24px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
+            <p style="margin:0 0 12px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📅 Fecha y hora:</strong><br>${formattedDate || 'Por confirmar'}</p>
+            <p style="margin:0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📍 Lugar:</strong><br>${sessionLocation || 'Pendiente de determinar'}</p>
+          </div>
+
+          <div style="text-align:center;margin:28px 0;">
+            <a href="${inviteLink}" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Confirmar asistencia</a>
+          </div>
+
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">Si ya te has apuntado, puedes ignorar este correo. Quedan plazas limitadas; confirma tu participación para asegurar tu asiento.</p>
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#475569;">Si el botón no funciona, copia y pega esta dirección en tu navegador:<br><span style="color:#0A3D91;word-break:break-all;">${inviteLink}</span></p>
+        </td>
+      </tr>
+      <tr>
+        <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
+          <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
+          <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió de forma automática desde la plataforma SimuPed.</p>
+        </td>
+      </tr>
+    </table>
+  </div>
+  `;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
@@ -62,22 +120,18 @@ export default async function handler(req, res) {
         // Send invitation email directly via Resend API
         try {
           const RESEND_API_KEY = process.env.RESEND_API_KEY;
-          const MAIL_FROM = process.env.MAIL_FROM || 'onboarding@resend.dev';
+          const MAIL_FROM = process.env.MAIL_FROM || 'notifications@simuped.com';
           const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'SimuPed';
           const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
           const inviteLink = `${process.env.VITE_APP_URL || ''}/confirm-invite?token=${encodeURIComponent(token)}`;
 
-          const html = `
-            <div style="font-family: Arial, sans-serif; max-width:600px;">
-              <h3>Has sido invitado/a a una sesión de SimuPed</h3>
-              <p>Hola ${userName || ''},</p>
-              <p>Te han invitado a la sesión: <strong>${req.body.session_name || 'Sesión programada'}</strong>.</p>
-              <p>Fecha y hora: ${req.body.session_date ? new Date(req.body.session_date).toLocaleString('es-ES') : ''}</p>
-              <p>Lugar: ${req.body.session_location || ''}</p>
-              <p><a href="${inviteLink}" style="background:#1a69b8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Confirmar asistencia</a></p>
-              <p>Si ya te has apuntado, puedes ignorar este correo.</p>
-            </div>
-          `;
+          const html = buildInviteEmail({
+            userName,
+            sessionName: req.body.session_name,
+            sessionDate: req.body.session_date,
+            sessionLocation: req.body.session_location,
+            inviteLink
+          });
 
           if (!RESEND_API_KEY) {
             console.error('[invite_session_participants] MISSING RESEND_API_KEY');

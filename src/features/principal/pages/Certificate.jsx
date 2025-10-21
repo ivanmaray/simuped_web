@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../supabaseClient';
 import { useAuth } from '../../../auth';
 import Navbar from '../../../components/Navbar.jsx';
@@ -14,14 +15,25 @@ function formatDate(value) {
 
 export default function Certificate() {
   const { ready, session, profile } = useAuth();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [eligible, setEligible] = useState(false);
   const [message, setMessage] = useState('');
+  const isPreview = searchParams.has('prueba');
 
   useEffect(() => {
     let mounted = true;
     async function check() {
       if (!ready) return;
+
+      if (isPreview) {
+        if (mounted) {
+          setEligible(true);
+          setLoading(false);
+          setMessage('');
+        }
+        return;
+      }
       if (!session?.user) {
         if (mounted) setMessage('Debes iniciar sesión para ver el certificado.');
         return;
@@ -92,7 +104,7 @@ export default function Certificate() {
 
     check();
     return () => { mounted = false; };
-  }, [ready, session]);
+  }, [ready, session, isPreview]);
 
   if (!ready) return null;
 
@@ -123,6 +135,10 @@ export default function Certificate() {
                 </div>
                 <img src="/assets/logo-simuped.avif" alt="SimuPed" style={{height:64}} />
               </div>
+
+              {isPreview ? (
+                <div className="text-center mb-4 uppercase text-red-500 text-sm font-semibold">Certificado de prueba</div>
+              ) : null}
 
               <h3 className="text-center text-2xl font-semibold mb-6">Certificado de Finalización</h3>
 
