@@ -114,38 +114,38 @@ export default function MainRouter() {
       <Routes>
         {/* Públicas */}
     <Route path="/" element={<App />} />
-    <Route path="/registro" element={<Suspense fallback={<Spinner />}><Registro /></Suspense>} />
-    <Route path="/pendiente" element={<Suspense fallback={<Spinner />}><Pendiente /></Suspense>} />
-    <Route path="/presencial-info" element={<Suspense fallback={<Spinner />}><PresencialInfo /></Suspense>} />
-  <Route path="/privacidad" element={<Suspense fallback={<Spinner />}><LegalPrivacidad /></Suspense>} />
-  <Route path="/cookies" element={<Suspense fallback={<Spinner />}><LegalCookies /></Suspense>} />
+    <Route path="/registro" element={<Suspense fallback={<Spinner centered />}><Registro /></Suspense>} />
+    <Route path="/pendiente" element={<Suspense fallback={<Spinner centered />}><Pendiente /></Suspense>} />
+    <Route path="/presencial-info" element={<Suspense fallback={<Spinner centered />}><PresencialInfo /></Suspense>} />
+  <Route path="/privacidad" element={<Suspense fallback={<Spinner centered />}><LegalPrivacidad /></Suspense>} />
+  <Route path="/cookies" element={<Suspense fallback={<Spinner centered />}><LegalCookies /></Suspense>} />
 
         {/* Pantalla pública de alumnos por código */}
-  <Route path="/presencial/alumno/:code" element={<Suspense fallback={<Spinner />}><PresencialAlumno /></Suspense>} />
-  <Route path="/presencial-alumno/:code" element={<Suspense fallback={<Spinner />}><PresencialAlumno /></Suspense>} />
+  <Route path="/presencial/alumno/:code" element={<Suspense fallback={<Spinner centered />}><PresencialAlumno /></Suspense>} />
+  <Route path="/presencial-alumno/:code" element={<Suspense fallback={<Spinner centered />}><PresencialAlumno /></Suspense>} />
 
         {/* Requieren usuario autenticado */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<Suspense fallback={<Spinner />}><Dashboard /></Suspense>} />
-          <Route path="/sesiones-programadas" element={<Suspense fallback={<Spinner />}><ScheduledSessions /></Suspense>} />
-          <Route path="/confirm-invite" element={<Suspense fallback={<Spinner />}><ConfirmInvite /></Suspense>} />
+          <Route path="/dashboard" element={<Suspense fallback={<Spinner centered />}><Dashboard /></Suspense>} />
+          <Route path="/sesiones-programadas" element={<Suspense fallback={<Spinner centered />}><ScheduledSessions /></Suspense>} />
+          <Route path="/confirm-invite" element={<Suspense fallback={<Spinner centered />}><ConfirmInvite /></Suspense>} />
           <Route element={<RequireAdmin />}>
-            <Route path="/sesiones-programadas/crear" element={<Suspense fallback={<Spinner />}><CreateScheduledSession /></Suspense>} />
+            <Route path="/sesiones-programadas/crear" element={<Suspense fallback={<Spinner centered />}><CreateScheduledSession /></Suspense>} />
           </Route>
 
           {/* Online */}
-          <Route path="/simulacion" element={<Suspense fallback={<Spinner />}><Simulacion /></Suspense>} />
+          <Route path="/simulacion" element={<Suspense fallback={<Spinner centered />}><Simulacion /></Suspense>} />
           <Route
             path="/simulacion/:id/confirm"
-            element={<Suspense fallback={<Spinner />}><SimulacionConfirm /></Suspense>}
+            element={<Suspense fallback={<Spinner centered />}><SimulacionConfirm /></Suspense>}
           />
-          <Route path="/simulacion/:id" element={<Suspense fallback={<Spinner />}><SimulacionDetalle /></Suspense>} />
+          <Route path="/simulacion/:id" element={<Suspense fallback={<Spinner centered />}><SimulacionDetalle /></Suspense>} />
 
           {/* Evaluación */}
-          <Route path="/evaluacion" element={<Suspense fallback={<Spinner />}><Evaluacion /></Suspense>} />
+          <Route path="/evaluacion" element={<Suspense fallback={<Spinner centered />}><Evaluacion /></Suspense>} />
           <Route
             path="/evaluacion/attempt/:attemptId"
-            element={<Suspense fallback={<Spinner />}><AttemptReview /></Suspense>}
+            element={<Suspense fallback={<Spinner centered />}><AttemptReview /></Suspense>}
           />
           <Route
             path="/evaluacion/informe/:sessionId"
@@ -153,10 +153,10 @@ export default function MainRouter() {
           />
 
           {/* Perfil */}
-          <Route path="/perfil" element={<Suspense fallback={<Spinner />}><Perfil /></Suspense>} />
+          <Route path="/perfil" element={<Suspense fallback={<Spinner centered />}><Perfil /></Suspense>} />
 
           {/* Presencial (1 pantalla) - NO admin */}
-          <Route path="/presencial" element={<Suspense fallback={<Spinner />}><PresencialListado /></Suspense>} />
+          <Route path="/presencial" element={<Suspense fallback={<Spinner centered />}><PresencialListado /></Suspense>} />
           <Route path="/presencial/flow/dual" element={<PresencialListado />} />
           <Route
             path="/presencial/dual"
@@ -168,7 +168,7 @@ export default function MainRouter() {
           />
           <Route
             path="/presencial/:id/confirm"
-            element={<Suspense fallback={<Spinner />}><PresencialConfirm /></Suspense>}
+            element={<Suspense fallback={<Spinner centered />}><PresencialConfirm /></Suspense>}
           />
           <Route
             path="/presencial/:id/escenario"
@@ -176,7 +176,7 @@ export default function MainRouter() {
           />
           <Route
             path="/presencial/:id/informe"
-            element={<Suspense fallback={<Spinner />}><PresencialInforme /></Suspense>}
+            element={<Suspense fallback={<Spinner centered />}><PresencialInforme /></Suspense>}
           />
 
           {/* Presencial (DUAL) - SOLO admin/instructor */}
@@ -191,7 +191,7 @@ export default function MainRouter() {
             />
             <Route
               path="/presencial/instructor/:id/:sessionId"
-              element={<Suspense fallback={<Spinner />}><PresencialInstructor /></Suspense>}
+              element={<Suspense fallback={<Spinner centered />}><PresencialInstructor /></Suspense>}
             />
           </Route>
 

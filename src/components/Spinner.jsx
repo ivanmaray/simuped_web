@@ -1,6 +1,6 @@
-export default function Spinner({ label = "Cargando…", size = 32 }) {
+export default function Spinner({ label = "Cargando…", size = 32, centered = false }) {
 	const px = Number(size) || 32;
-	return (
+	const inner = (
 		<div className="inline-flex flex-col items-center justify-center gap-2" role="status" aria-live="polite">
 			<svg
 				className="text-[#0A3D91] animate-spin"
@@ -20,4 +20,13 @@ export default function Spinner({ label = "Cargando…", size = 32 }) {
 			{label && <span className="text-xs text-slate-500">{label}</span>}
 		</div>
 	);
+
+	if (centered) {
+		return (
+			<div className="min-h-screen grid place-items-center">
+				{inner}
+			</div>
+		);
+	}
+	return inner;
 }

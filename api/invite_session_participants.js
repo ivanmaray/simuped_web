@@ -52,25 +52,41 @@ export default async function handler(req, res) {
         const sig = signPayload(tokenPayload, INVITE_SECRET);
         const token = Buffer.from(JSON.stringify({ payload: tokenPayload, sig })).toString('base64');
 
-        // Send invitation email (using notify endpoint but with invitation wording and link)
+        // Send invitation email directly via Resend API
         try {
-          const inviteLink = `${process.env.VITE_APP_URL || ''}/api/confirm_session_invite?token=${encodeURIComponent(token)}`;
-          // Use existing notify endpoint for sending, but pass custom body
-          await fetch(`${process.env.VITE_APP_URL || ''}/api/notify_session_registration`, {
+          const RESEND_API_KEY = process.env.RESEND_API_KEY;
+          const MAIL_FROM = process.env.MAIL_FROM || 'notificaciones@simuped.com';
+          const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'SimuPed';
+          const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
+          const inviteLink = `${process.env.VITE_APP_URL || ''}/confirm-invite?token=${encodeURIComponent(token)}`;
+
+          const html = `
+            <div style="font-family: Arial, sans-serif; max-width:600px;">
+              <h3>Has sido invitado/a a una sesión de SimuPed</h3>
+              <p>Hola ${userName || ''},</p>
+              <p>Te han invitado a la sesión: <strong>${req.body.session_name || 'Sesión programada'}</strong>.</p>
+              <p>Fecha y hora: ${req.body.session_date ? new Date(req.body.session_date).toLocaleString('es-ES') : ''}</p>
+              <p>Lugar: ${req.body.session_location || ''}</p>
+              <p><a href="${inviteLink}" style="background:#1a69b8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Confirmar asistencia</a></p>
+              <p>Si ya te has apuntado, puedes ignorar este correo.</p>
+            </div>
+          `;
+
+          const resp = await fetch('https://api.resend.com/emails', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userEmail,
-              userName,
-              sessionName: req.body.session_name || 'Sesión programada',
-              sessionDate: req.body.session_date || new Date().toISOString(),
-              sessionLocation: req.body.session_location || '',
-              sessionCode: (session_id || '').substring(0, 6).toUpperCase(),
-              inviteLink
-            })
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_API_KEY}` },
+            body: JSON.stringify({ from, to: userEmail, subject: `Invitación: ${req.body.session_name || 'Sesión SimuPed'}`, html })
           });
+          if (!resp.ok) {
+            const errBody = await resp.text().catch(() => 'no-body');
+            console.warn('[invite_session_participants] resend send failed', resp.status, errBody);
+            results.push({ user_id: uid, ok: false, error: 'email_send_failed', detail: errBody });
+            continue;
+          }
         } catch (e) {
           console.warn('[invite_session_participants] email error', e);
+          results.push({ user_id: uid, ok: false, error: 'email_exception', detail: String(e) });
+          continue;
         }
         results.push({ user_id: uid, ok: true });
       } catch (e) {
