@@ -65,6 +65,27 @@ function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation,
   `;
 }
 
+function getAppBaseUrl() {
+  const candidates = [
+    process.env.APP_BASE_URL,
+    process.env.SITE_URL,
+    process.env.VITE_SITE_URL,
+    process.env.VITE_APP_URL
+  ];
+  for (const value of candidates) {
+    if (value && typeof value === 'string') {
+      return value.replace(/\/$/, '');
+    }
+  }
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl && typeof vercelUrl === 'string') {
+    const sanitized = vercelUrl.replace(/\/$/, '');
+    if (sanitized.startsWith('http')) return sanitized;
+    return `https://${sanitized}`;
+  }
+  return process.env.NODE_ENV === 'production' ? 'https://simuped.vercel.app' : 'http://localhost:5173';
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
@@ -123,7 +144,8 @@ export default async function handler(req, res) {
           const MAIL_FROM = process.env.MAIL_FROM || 'notifications@simuped.com';
           const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'SimuPed';
           const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
-          const inviteLink = `${process.env.VITE_APP_URL || ''}/confirm-invite?token=${encodeURIComponent(token)}`;
+          const baseUrl = getAppBaseUrl();
+          const inviteLink = `${baseUrl}/confirm-invite?token=${encodeURIComponent(token)}`;
 
           const html = buildInviteEmail({
             userName,
