@@ -17,7 +17,7 @@ const ScheduledSessions = () => {
     if (!ready) return;
 
     fetchSessions();
-  }, [ready]);
+  }, [ready, isAdmin, authSession?.access_token]);
 
   const fetchSessions = async () => {
     try {
@@ -65,8 +65,9 @@ const ScheduledSessions = () => {
 
         if (error) throw error;
 
-        const sessionIds = (data || []).map((session) => session.id);
-        let countsBySession = {};
+  const sessionIds = (data || []).map((session) => session.id);
+  let countsBySession = {};
+  let participantsBySession = {};
 
         if (sessionIds.length > 0) {
           try {
@@ -84,6 +85,33 @@ const ScheduledSessions = () => {
             }
           } catch (countErr) {
             console.warn('Error fetching session counts', countErr);
+          }
+        }
+
+        if (isAdmin && sessionIds.length > 0) {
+          const token = authSession?.access_token;
+          if (!token) {
+            console.warn('No se pudo obtener el token del usuario administrador para cargar participantes');
+          } else {
+            try {
+              const response = await fetch('/api/scheduled_session_roster', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ sessionIds })
+              });
+
+              if (response.ok) {
+                const json = await response.json();
+                participantsBySession = json?.rosters || {};
+              } else {
+                console.warn('No se pudo cargar el listado de participantes', response.status);
+              }
+            } catch (participantError) {
+              console.warn('Error al cargar participantes para administradores', participantError);
+            }
           }
         }
 
@@ -111,15 +139,33 @@ const ScheduledSessions = () => {
                 }
               }
 
-              const countInfo = countsBySession[session.id] || { total: 0, confirmed: 0 };
+              const countInfo = countsBySession[session.id] || {};
+              const roster = participantsBySession[session.id] || [];
+              const rosterConfirmed = roster.filter((p) => !!p.confirmed_at).length;
+
+              const countedTotal = typeof countInfo.total === 'number' ? countInfo.total : null;
+              const countedConfirmed = typeof countInfo.confirmed === 'number' ? countInfo.confirmed : null;
+
+              let registeredCount = countedTotal != null ? countedTotal : roster.length;
+              let confirmedCount = countedConfirmed != null ? countedConfirmed : rosterConfirmed;
+
+              if (isAdmin) {
+                if (roster.length > (registeredCount ?? 0)) {
+                  registeredCount = roster.length;
+                }
+                if (rosterConfirmed > (confirmedCount ?? 0)) {
+                  confirmedCount = rosterConfirmed;
+                }
+              }
 
               return {
                 ...session,
-                registered_count: typeof countInfo.total === 'number' ? countInfo.total : 0,
+                registered_count: registeredCount ?? 0,
                 is_registered: isRegistered,
                 user_registration: userRegistration,
-                confirmed_count: typeof countInfo.confirmed === 'number' ? countInfo.confirmed : null,
-                scheduled_at: new Date(session.scheduled_at)
+                confirmed_count: confirmedCount,
+                scheduled_at: new Date(session.scheduled_at),
+                participants: roster
               };
             } catch (err) {
               console.warn("Error building session entry:", err);
@@ -128,7 +174,8 @@ const ScheduledSessions = () => {
                 registered_count: 0,
                 is_registered: false,
                 confirmed_count: null,
-                scheduled_at: new Date(session.scheduled_at)
+                scheduled_at: new Date(session.scheduled_at),
+                participants: []
               };
             }
           })
@@ -456,6 +503,66 @@ const ScheduledSessions = () => {
                     </div>
                   </div>
                 </header>
+
+                {isAdmin && (
+                  <div className="mt-6 border-t border-slate-200 pt-5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-[0.25em]">Participantes</h3>
+                      <span className="text-xs text-slate-500">
+                        {session.participants.length} participante{session.participants.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    {session.participants.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-500">Aún no hay participantes inscritos en esta sesión.</p>
+                    ) : (
+                      <ul className="mt-4 space-y-2">
+                        {session.participants.map((participant) => (
+                          <li
+                            key={participant.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">
+                                {participant.name}
+                              </p>
+                              {participant.email ? (
+                                <p className="text-xs text-slate-500">{participant.email}</p>
+                              ) : null}
+                            </div>
+                            <div className="text-right text-xs text-slate-500">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${
+                                  participant.confirmed_at
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-amber-100 text-amber-700'
+                                }`}
+                              >
+                                {participant.confirmed_at ? 'Confirmado' : 'Pendiente'}
+                              </span>
+                              <div className="mt-1">
+                                {participant.confirmed_at
+                                  ? `Confirmado: ${new Date(participant.confirmed_at).toLocaleString('es-ES', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}`
+                                  : participant.registered_at
+                                    ? `Registrado: ${new Date(participant.registered_at).toLocaleString('es-ES', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}`
+                                    : 'Registro sin fecha'}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 <footer className="flex items-center justify-between">
                   <div className="flex items-center gap-4">

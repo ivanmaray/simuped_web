@@ -35,6 +35,7 @@ export default function Certificate() {
     src: initialLogoSrc,
     visible: true
   });
+  const hasSummary = (onlineSummaries.length > 0 || presencialSummaries.length > 0);
   const isPreview = searchParams.has('prueba');
 
   useEffect(() => {
@@ -56,13 +57,18 @@ export default function Certificate() {
           margin: 0 !important;
           padding: 0 !important;
         }
-        #certificate-root {
+        #certificate-root,
+        #certificate-summary {
           box-shadow: none !important;
           border: none !important;
           border-radius: 0 !important;
-          margin: 0 !important;
+          margin: 0 auto !important;
           width: calc(297mm - 20mm) !important;
-          height: calc(210mm - 20mm) !important;
+          min-height: calc(210mm - 20mm) !important;
+          page-break-inside: avoid !important;
+        }
+        #certificate-summary {
+          page-break-before: always !important;
         }
       }
     `;
@@ -324,7 +330,7 @@ export default function Certificate() {
                   </div>
                 </div>
 
-                <div className="px-10 py-12 md:px-16 md:py-14">
+                <div className="px-8 py-10 md:px-14 md:py-12">
                   {isPreview ? (
                     <div className="text-center mb-4 uppercase text-orange-500 text-xs font-semibold tracking-[0.45em]">Certificado de prueba</div>
                   ) : null}
@@ -342,64 +348,6 @@ export default function Certificate() {
                   <p className="text-center text-lg text-slate-700 max-w-3xl mx-auto leading-relaxed">
                     ha completado la formación requerida en la plataforma <strong>SimuPed</strong>, cumpliendo la totalidad de simulaciones online y alcanzando el mínimo de participación presencial estipulado por la Dirección de Simulación Pediátrica del HUCA.
                   </p>
-
-                  {(onlineSummaries.length > 0 || presencialSummaries.length > 0) && (
-                    <div className="mt-12 border border-slate-200 rounded-3xl bg-slate-50 px-8 py-7">
-                      <h4 className="text-center text-sm uppercase tracking-[0.25em] text-slate-500">Resumen de participación</h4>
-                      <div className="mt-7 grid gap-8 md:grid-cols-2">
-                        <section>
-                          <header className="flex items-center justify-between mb-3">
-                            <p className="text-sm font-semibold text-slate-800">Simulaciones online completadas</p>
-                            <span className="text-xs text-slate-500">Media por escenario</span>
-                          </header>
-                          <ul className="space-y-3 text-sm text-slate-600">
-                            {onlineSummaries.length === 0 ? (
-                              <li className="text-slate-400">Sin simulaciones online registradas</li>
-                            ) : (
-                              onlineSummaries.map((row) => (
-                                <li key={`online-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
-                                    <span className="text-[#0A3D91] font-semibold">
-                                      {row.averageScore != null ? `${Math.round(row.averageScore)}%` : 'S/N'}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 flex flex-wrap items-center justify-between text-xs text-slate-500">
-                                    <span>{row.attemptCount} intento{row.attemptCount === 1 ? '' : 's'}</span>
-                                    {row.lastCompleted && <span>Última: {formatDate(row.lastCompleted)}</span>}
-                                  </div>
-                                </li>
-                              ))
-                            )}
-                          </ul>
-                        </section>
-
-                        <section>
-                          <header className="flex items-center justify-between mb-3">
-                            <p className="text-sm font-semibold text-slate-800">Participaciones presenciales</p>
-                            <span className="text-xs text-slate-500">Una entrada por escenario</span>
-                          </header>
-                          <ul className="space-y-3 text-sm text-slate-600">
-                            {presencialSummaries.length === 0 ? (
-                              <li className="text-slate-400">Sin registros presenciales</li>
-                            ) : (
-                              presencialSummaries.map((row) => (
-                                <li key={`presencial-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-semibold text-slate-800 truncate pr-4" title={row.title}>{row.title}</span>
-                                    <span className="text-slate-500">{row.participationCount} sesión{row.participationCount === 1 ? '' : 'es'}</span>
-                                  </div>
-                                  {row.lastCompleted && (
-                                    <div className="mt-1 text-xs text-slate-500 text-right">Última: {formatDate(row.lastCompleted)}</div>
-                                  )}
-                                </li>
-                              ))
-                            )}
-                          </ul>
-                        </section>
-                      </div>
-                    </div>
-                  )}
 
                 <div className="mt-14 grid gap-10 md:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5 text-left">
@@ -468,6 +416,117 @@ export default function Certificate() {
               </div>
             </div>
           </div>
+
+          {hasSummary && (
+            <div className="mt-12 flex justify-center print:mt-0">
+              <div
+                id="certificate-summary"
+                className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xl print:shadow-none print:border-0 print:rounded-none"
+                style={{
+                  width: 'min(92vw, 1120px)',
+                  minHeight: '794px',
+                  margin: '0 auto',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}
+              >
+                <div
+                  className="relative"
+                  style={{
+                    background: 'linear-gradient(135deg,#0A3D91,#1E6ACB)',
+                    color: '#fff'
+                  }}
+                >
+                  <div className="relative px-10 py-6 flex flex-col md:flex-row items-center gap-6 md:gap-10">
+                    <img src="/logos/huca.png" alt="HUCA" className="h-14 md:h-16 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
+                    <div className="text-center flex-1">
+                      <h2 className="text-2xl font-semibold tracking-tight">Resumen de Participación</h2>
+                      <p className="text-xs uppercase tracking-[0.35em] text-sky-100">SimuPed · HUCA</p>
+                    </div>
+                    {logoState.visible ? (
+                      <img
+                        src={logoState.src}
+                        alt="SimuPed"
+                        className="h-14 md:h-16 bg-white/10 backdrop-blur-md p-3 rounded-2xl"
+                        onError={() => {
+                          setLogoState((prev) => {
+                            if (prev.src !== logoSimuped) {
+                              return { ...prev, src: logoSimuped };
+                            }
+                            return { ...prev, visible: false };
+                          });
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex-1 px-8 py-10 md:px-12 md:py-12">
+                  <p className="text-center text-sm text-slate-500 max-w-3xl mx-auto">
+                    Este anexo resume la participación de <strong>{fullName}</strong> en la plataforma SimuPed. Las medias se calculan por escenario completado.
+                  </p>
+
+                  <div className="mt-10 grid gap-10 md:grid-cols-2">
+                    <section>
+                      <header className="mb-4">
+                        <h3 className="text-base font-semibold text-slate-800">Simulaciones online</h3>
+                        <p className="text-xs text-slate-500">Media de puntuaciones y número de intentos</p>
+                      </header>
+                      <ul className="space-y-3 text-sm text-slate-600">
+                        {onlineSummaries.length === 0 ? (
+                          <li className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-400">Sin simulaciones online registradas</li>
+                        ) : (
+                          onlineSummaries.map((row) => (
+                            <li key={`summary-online-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-medium text-slate-800 truncate" title={row.title}>{row.title}</span>
+                                <span className="text-[#0A3D91] font-semibold">{row.averageScore != null ? `${Math.round(row.averageScore)}%` : 'S/N'}</span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center justify-between text-xs text-slate-500">
+                                <span>{row.attemptCount} intento{row.attemptCount === 1 ? '' : 's'}</span>
+                                {row.lastCompleted && <span>Última: {formatDate(row.lastCompleted)}</span>}
+                              </div>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    </section>
+
+                    <section>
+                      <header className="mb-4">
+                        <h3 className="text-base font-semibold text-slate-800">Participaciones presenciales</h3>
+                        <p className="text-xs text-slate-500">Sesiones realizadas por escenario</p>
+                      </header>
+                      <ul className="space-y-3 text-sm text-slate-600">
+                        {presencialSummaries.length === 0 ? (
+                          <li className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-400">Sin registros presenciales</li>
+                        ) : (
+                          presencialSummaries.map((row) => (
+                            <li key={`summary-presencial-${row.scenarioId}`} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-medium text-slate-800 truncate" title={row.title}>{row.title}</span>
+                                <span className="text-slate-500">{row.participationCount} sesión{row.participationCount === 1 ? '' : 'es'}</span>
+                              </div>
+                              {row.lastCompleted && (
+                                <div className="mt-1 text-xs text-slate-500 text-right">Última: {formatDate(row.lastCompleted)}</div>
+                              )}
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    </section>
+                  </div>
+
+                  <div className="mt-12 rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5">
+                    <h4 className="text-sm font-semibold text-slate-800 mb-2">Notas adicionales</h4>
+                    <p className="text-sm text-slate-600">
+                      La confirmación de asistencia presencial se realiza mediante invitación individual. Consulta el panel de SimuPed para descargar reportes detallados de cada escenario.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
             <div className="mt-6 space-x-3 print:hidden">
               <button
