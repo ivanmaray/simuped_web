@@ -77,6 +77,7 @@ function getAppBaseUrl() {
     process.env.VITE_SITE_URL,
     process.env.VITE_APP_URL
   ];
+  const canonical = (process.env.CANONICAL_SITE_URL || 'https://www.simuped.com').replace(/\/$/, '');
   for (const value of candidates) {
     if (value && typeof value === 'string') {
       return value.replace(/\/$/, '');
@@ -85,10 +86,14 @@ function getAppBaseUrl() {
   const vercelUrl = process.env.VERCEL_URL;
   if (vercelUrl && typeof vercelUrl === 'string') {
     const sanitized = vercelUrl.replace(/\/$/, '');
-    if (sanitized.startsWith('http')) return sanitized;
-    return `https://${sanitized}`;
+    const candidate = sanitized.startsWith('http') ? sanitized : `https://${sanitized}`;
+    if (!/vercel\.app$/i.test(new URL(candidate).hostname)) {
+      return candidate.replace(/\/$/, '');
+    }
+    return canonical;
   }
-  return process.env.NODE_ENV === 'production' ? 'https://simuped.vercel.app' : 'http://localhost:5173';
+  if (process.env.NODE_ENV === 'production') return canonical;
+  return 'http://localhost:5173';
 }
 
 function getAssetBaseUrl(appBaseUrl) {
