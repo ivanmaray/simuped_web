@@ -3,7 +3,7 @@
 // Si en el futuro activas alias en Vite ("@" -> "/src"),
 // podrás cambiar estos imports a '@/…'. De momento, los
 // './features/…', './auth/…' y './supabaseClient' son correctos.
-import React from "react";
+import React, { Suspense } from "react";
 import {
   Routes,
   Route,
@@ -16,30 +16,32 @@ import {
 
 import App from "./App.jsx"; // Landing pública con login/marketing
 import ProtectedRoute from "./ProtectedRoute.jsx";
+import Spinner from "./components/Spinner.jsx";
 
-import Dashboard from "./features/principal/pages/Principal_Dashboard.jsx";
-import ScheduledSessions from "./features/principal/pages/ScheduledSessions.jsx";
-import CreateScheduledSession from "./features/principal/pages/CreateScheduledSession.jsx";
-import LegalPrivacidad from "./features/principal/pages/Legal_Privacidad.jsx";
-import LegalCookies from "./features/principal/pages/Legal_Cookies.jsx";
-import Simulacion from "./features/online/pages/Online_Main.jsx";
-import SimulacionDetalle from "./features/online/pages/Online_Detalle.jsx";
-import SimulacionConfirm from "./features/online/pages/Online_Confirm.jsx";
-import Evaluacion from "./features/evaluacion/pages/Evaluacion_Main.jsx";
-import Perfil from "./features/principal/pages/Principal_Perfil.jsx";
-import Registro from "./auth/pages/Auth_Registro.jsx";
-import Pendiente from "./auth/pages/Auth_Pendiente.jsx";
-import AttemptReview from "./features/online/pages/Online_AttemptReview.jsx";
+// Lazy-loaded pages (reduce initial bundle)
+const Dashboard = React.lazy(() => import("./features/principal/pages/Principal_Dashboard.jsx"));
+const ScheduledSessions = React.lazy(() => import("./features/principal/pages/ScheduledSessions.jsx"));
+const CreateScheduledSession = React.lazy(() => import("./features/principal/pages/CreateScheduledSession.jsx"));
+const LegalPrivacidad = React.lazy(() => import("./features/principal/pages/Legal_Privacidad.jsx"));
+const LegalCookies = React.lazy(() => import("./features/principal/pages/Legal_Cookies.jsx"));
+const Simulacion = React.lazy(() => import("./features/online/pages/Online_Main.jsx"));
+const SimulacionDetalle = React.lazy(() => import("./features/online/pages/Online_Detalle.jsx"));
+const SimulacionConfirm = React.lazy(() => import("./features/online/pages/Online_Confirm.jsx"));
+const Evaluacion = React.lazy(() => import("./features/evaluacion/pages/Evaluacion_Main.jsx"));
+const Perfil = React.lazy(() => import("./features/principal/pages/Principal_Perfil.jsx"));
+const Registro = React.lazy(() => import("./auth/pages/Auth_Registro.jsx"));
+const Pendiente = React.lazy(() => import("./auth/pages/Auth_Pendiente.jsx"));
+const AttemptReview = React.lazy(() => import("./features/online/pages/Online_AttemptReview.jsx"));
 
-import PresencialListado from "./features/presencial/pages/shared/Presencial_Listado.jsx";
-import PresencialEscenario from "./features/presencial/pages/unica/Presencial_Escenario.jsx";
-import PresencialConfirm from "./features/presencial/pages/shared/Presencial_Confirm.jsx";
-import PresencialInstructor from "./features/presencial/pages/dual/Presencial_Instructor.jsx";
-import PresencialAlumno from "./features/presencial/pages/dual/Presencial_Alumno.jsx";
-import PresencialInfo from "./features/presencial/pages/shared/Presencial_Info.jsx";
-import PresencialInforme from "./features/presencial/pages/shared/Presencial_Informe.jsx";
+const PresencialListado = React.lazy(() => import("./features/presencial/pages/shared/Presencial_Listado.jsx"));
+const PresencialEscenario = React.lazy(() => import("./features/presencial/pages/unica/Presencial_Escenario.jsx"));
+const PresencialConfirm = React.lazy(() => import("./features/presencial/pages/shared/Presencial_Confirm.jsx"));
+const PresencialInstructor = React.lazy(() => import("./features/presencial/pages/dual/Presencial_Instructor.jsx"));
+const PresencialAlumno = React.lazy(() => import("./features/presencial/pages/dual/Presencial_Alumno.jsx"));
+const PresencialInfo = React.lazy(() => import("./features/presencial/pages/shared/Presencial_Info.jsx"));
+const PresencialInforme = React.lazy(() => import("./features/presencial/pages/shared/Presencial_Informe.jsx"));
 
-import Admin from "./features/admin/pages/Admin_Usuarios.jsx";
+const Admin = React.lazy(() => import("./features/admin/pages/Admin_Usuarios.jsx"));
 
 import { useAuth } from "./auth";
 
@@ -110,38 +112,38 @@ export default function MainRouter() {
       <DebugRouteLogger />
       <Routes>
         {/* Públicas */}
-        <Route path="/" element={<App />} />
-        <Route path="/registro" element={<Registro />} />
-        <Route path="/pendiente" element={<Pendiente />} />
-        <Route path="/presencial-info" element={<PresencialInfo />} />
-  <Route path="/privacidad" element={<LegalPrivacidad />} />
-  <Route path="/cookies" element={<LegalCookies />} />
+    <Route path="/" element={<App />} />
+    <Route path="/registro" element={<Suspense fallback={<Spinner />}><Registro /></Suspense>} />
+    <Route path="/pendiente" element={<Suspense fallback={<Spinner />}><Pendiente /></Suspense>} />
+    <Route path="/presencial-info" element={<Suspense fallback={<Spinner />}><PresencialInfo /></Suspense>} />
+  <Route path="/privacidad" element={<Suspense fallback={<Spinner />}><LegalPrivacidad /></Suspense>} />
+  <Route path="/cookies" element={<Suspense fallback={<Spinner />}><LegalCookies /></Suspense>} />
 
         {/* Pantalla pública de alumnos por código */}
-        <Route path="/presencial/alumno/:code" element={<PresencialAlumno />} />
-        <Route path="/presencial-alumno/:code" element={<PresencialAlumno />} />
+  <Route path="/presencial/alumno/:code" element={<Suspense fallback={<Spinner />}><PresencialAlumno /></Suspense>} />
+  <Route path="/presencial-alumno/:code" element={<Suspense fallback={<Spinner />}><PresencialAlumno /></Suspense>} />
 
         {/* Requieren usuario autenticado */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/sesiones-programadas" element={<ScheduledSessions />} />
+          <Route path="/dashboard" element={<Suspense fallback={<Spinner />}><Dashboard /></Suspense>} />
+          <Route path="/sesiones-programadas" element={<Suspense fallback={<Spinner />}><ScheduledSessions /></Suspense>} />
           <Route element={<RequireAdmin />}>
-            <Route path="/sesiones-programadas/crear" element={<CreateScheduledSession />} />
+            <Route path="/sesiones-programadas/crear" element={<Suspense fallback={<Spinner />}><CreateScheduledSession /></Suspense>} />
           </Route>
 
           {/* Online */}
-          <Route path="/simulacion" element={<Simulacion />} />
+          <Route path="/simulacion" element={<Suspense fallback={<Spinner />}><Simulacion /></Suspense>} />
           <Route
             path="/simulacion/:id/confirm"
-            element={<SimulacionConfirm />}
+            element={<Suspense fallback={<Spinner />}><SimulacionConfirm /></Suspense>}
           />
-          <Route path="/simulacion/:id" element={<SimulacionDetalle />} />
+          <Route path="/simulacion/:id" element={<Suspense fallback={<Spinner />}><SimulacionDetalle /></Suspense>} />
 
           {/* Evaluación */}
-          <Route path="/evaluacion" element={<Evaluacion />} />
+          <Route path="/evaluacion" element={<Suspense fallback={<Spinner />}><Evaluacion /></Suspense>} />
           <Route
             path="/evaluacion/attempt/:attemptId"
-            element={<AttemptReview />}
+            element={<Suspense fallback={<Spinner />}><AttemptReview /></Suspense>}
           />
           <Route
             path="/evaluacion/informe/:sessionId"
@@ -149,10 +151,10 @@ export default function MainRouter() {
           />
 
           {/* Perfil */}
-          <Route path="/perfil" element={<Perfil />} />
+          <Route path="/perfil" element={<Suspense fallback={<Spinner />}><Perfil /></Suspense>} />
 
           {/* Presencial (1 pantalla) - NO admin */}
-          <Route path="/presencial" element={<PresencialListado />} />
+          <Route path="/presencial" element={<Suspense fallback={<Spinner />}><PresencialListado /></Suspense>} />
           <Route path="/presencial/flow/dual" element={<PresencialListado />} />
           <Route
             path="/presencial/dual"
@@ -164,7 +166,7 @@ export default function MainRouter() {
           />
           <Route
             path="/presencial/:id/confirm"
-            element={<PresencialConfirm />}
+            element={<Suspense fallback={<Spinner />}><PresencialConfirm /></Suspense>}
           />
           <Route
             path="/presencial/:id/escenario"
@@ -172,7 +174,7 @@ export default function MainRouter() {
           />
           <Route
             path="/presencial/:id/informe"
-            element={<PresencialInforme />}
+            element={<Suspense fallback={<Spinner />}><PresencialInforme /></Suspense>}
           />
 
           {/* Presencial (DUAL) - SOLO admin/instructor */}
@@ -187,12 +189,12 @@ export default function MainRouter() {
             />
             <Route
               path="/presencial/instructor/:id/:sessionId"
-              element={<PresencialInstructor />}
+              element={<Suspense fallback={<Spinner />}><PresencialInstructor /></Suspense>}
             />
           </Route>
 
           {/* Admin panel */}
-          <Route path="/admin" element={<Admin />} />
+          <Route path="/admin" element={<Suspense fallback={<Spinner />}><Admin /></Suspense>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

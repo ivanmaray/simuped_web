@@ -6,7 +6,10 @@ import { useCallback, useEffect, useMemo, useState, useRef, forwardRef, useId } 
 import { supabase } from "../../../../supabaseClient";
 import Navbar from "../../../../components/Navbar.jsx";
 import { reportWarning } from "../../../../utils/reporting.js";
-import { chestXrayLibraryByCategory } from "../../../../utils/chestXrayLibrary.js";
+// chestXrayLibrary can be large (images/metadata). Load dynamically at runtime
+// so it doesn't inflate the main bundle.
+// We will lazy-load it inside the component and keep a local state.
+// import { chestXrayLibraryByCategory } from "../../../../utils/chestXrayLibrary.js";
 
 
 const CHECK_STATUSES = [
@@ -754,7 +757,28 @@ export default function Presencial_Instructor() {
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
   const [fullscreenMode, setFullscreenMode] = useState(false);
-  const xrayLibraryCategories = useMemo(() => Object.entries(chestXrayLibraryByCategory || {}), []);
+  // xray library is loaded lazily to avoid inflating the bundle
+  const [xrayLibraryByCategory, setXrayLibraryByCategory] = useState(null);
+  const xrayLibraryCategories = useMemo(() => {
+    if (!xrayLibraryByCategory) return [];
+    return Object.entries(xrayLibraryByCategory || {});
+  }, [xrayLibraryByCategory]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadXray() {
+      try {
+        const mod = await import('../../../../utils/chestXrayLibrary.js');
+        if (!mounted) return;
+        setXrayLibraryByCategory(mod.chestXrayLibraryByCategory || {});
+      } catch (e) {
+        console.debug('[Instructor] no se pudo cargar chestXrayLibrary dinámicamente:', e);
+        setXrayLibraryByCategory({});
+      }
+    }
+    loadXray();
+    return () => { mounted = false; };
+  }, []);
 
   // Control de desbloqueo manual y cronómetro locales (solo al pulsar Iniciar)
   const [uiUnlocked, setUiUnlocked] = useState(false);

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import { useAuth } from "../../../auth";
 import Navbar from "../../../components/Navbar.jsx";
+import InviteResultModal from "../../../components/InviteResultModal.jsx";
 
 const CreateScheduledSession = () => {
   const navigate = useNavigate();
@@ -25,12 +26,17 @@ const CreateScheduledSession = () => {
     participants: [] // Array de objetos {user_id, user_name, user_email, user_role}
   });
 
+  // Temp input for adding invitations
+  const [inviteInput, setInviteInput] = useState({ name: '', email: '', role: '' });
+
   const [availableRoles] = useState([
     { value: 'medico', label: 'Médico', color: 'bg-blue-500' },
     { value: 'enfermeria', label: 'Enfermería', color: 'bg-green-500' },
     { value: 'farmacia', label: 'Farmacia', color: 'bg-purple-500' },
     { value: 'otro', label: 'Otro', color: 'bg-gray-500' }
   ]);
+  const [inviteResults, setInviteResults] = useState([]);
+  const [showInviteResults, setShowInviteResults] = useState(false);
 
   useEffect(() => {
     if (!ready || !session) return;
@@ -99,6 +105,37 @@ const CreateScheduledSession = () => {
         .single();
 
       if (error) throw error;
+
+      // If there are participants to invite, send them in a single request to the backend
+      let inviteResults = [];
+      if (Array.isArray(form.participants) && form.participants.length > 0) {
+        try {
+          const invites = form.participants.map((p) => ({ email: p.user_email || p.email || p.userEmail || p.email_address, name: p.user_name || p.name || '', role: p.user_role || p.role || '' }));
+          const resp = await fetch('/api/send_session_invites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: data.id, invites, inviter_id: session.user_id })
+          });
+          if (resp.ok) {
+            const json = await resp.json();
+            inviteResults = (json.results || []).map(r => ({ email: r.email || '', ok: !!r.ok, message: r.error || (r.resp || '') }));
+          } else {
+            const text = await resp.text().catch(() => 'Error desconocido');
+            inviteResults = [{ email: 'N/A', ok: false, message: text }];
+          }
+        } catch (e) {
+          console.warn('Error sending invites batch', e);
+          inviteResults = [{ email: 'N/A', ok: false, message: e.message }];
+        }
+      }
+
+      // Show invite results modal if we attempted invites
+      if (inviteResults.length > 0) {
+        setInviteResults(inviteResults);
+        setShowInviteResults(true);
+        // Wait for the modal to be closed by the user; the modal will call onClose which will set showInviteResults=false and then we navigate
+        return;
+      }
 
       alert("Sesión programada creada exitosamente");
       navigate("/sesiones-programadas");
@@ -255,6 +292,85 @@ const CreateScheduledSession = () => {
             </label>
           </div>
 
+          {/* Invitaciones por correo */}
+          <div className="border-t pt-6">
+            <h3 className="text-sm font-semibold text-slate-800 mb-2">Invitar participantes (opcional)</h3>
+            <p className="text-sm text-slate-500 mb-3">Puedes añadir direcciones de correo para que reciban una invitación automática.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <label className="block">
+                <span className="text-xs text-slate-600 block">Nombre</span>
+                <input
+                  type="text"
+                  value={inviteInput.name}
+                  onChange={(e) => setInviteInput((s) => ({ ...s, name: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-2 py-2"
+                  placeholder="Nombre completo (opcional)"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-slate-600 block">Correo electrónico</span>
+                <input
+                  type="email"
+                  value={inviteInput.email}
+                  onChange={(e) => setInviteInput((s) => ({ ...s, email: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-2 py-2"
+                  placeholder="ejemplo@hospital.es"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-slate-600 block">Rol</span>
+                <select
+                  value={inviteInput.role}
+                  onChange={(e) => setInviteInput((s) => ({ ...s, role: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-2 py-2"
+                >
+                  <option value="">Seleccionar rol (opcional)</option>
+                  {availableRoles.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!inviteInput.email || inviteInput.email.trim() === '') {
+                    alert('Introduce un correo válido para invitar');
+                    return;
+                  }
+                  setForm((prev) => ({ ...prev, participants: (prev.participants || []).concat({ user_name: inviteInput.name, user_email: inviteInput.email, user_role: inviteInput.role }) }));
+                  setInviteInput({ name: '', email: '', role: '' });
+                }}
+                className="px-3 py-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-700"
+              >
+                Añadir invitado
+              </button>
+              <div className="text-sm text-slate-500 self-center">{form.participants.length} invitado(s) añadidos</div>
+            </div>
+
+            {form.participants.length > 0 && (
+              <ul className="mt-4 space-y-2">
+                {form.participants.map((p, idx) => (
+                  <li key={`${p.user_email}-${idx}`} className="flex items-center justify-between gap-3 rounded-lg border p-2">
+                    <div>
+                      <div className="text-sm font-medium">{p.user_name || p.user_email}</div>
+                      <div className="text-xs text-slate-500">{p.user_email} {p.user_role ? `· ${p.user_role}` : ''}</div>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, participants: prev.participants.filter((_, i) => i !== idx) }))}
+                        className="px-2 py-1 text-sm rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                      >Eliminar</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {/* Botones */}
           <div className="flex items-center gap-3 pt-6">
             <button
@@ -274,6 +390,12 @@ const CreateScheduledSession = () => {
           </div>
         </form>
       </main>
+
+      <InviteResultModal isOpen={showInviteResults} results={inviteResults} onClose={() => {
+        setShowInviteResults(false);
+        // after closing, navigate to sessions list
+        navigate('/sesiones-programadas');
+      }} />
     </div>
   );
 };
