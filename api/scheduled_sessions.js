@@ -23,7 +23,8 @@ async function handleSessionCounts(req, res) {
   }
 
   try {
-    const { sessionIds } = req.body || {};
+  const { sessionIds } = req.body || {};
+  console.log('[scheduled_session_roster] incoming request', { sessionIdsCount: Array.isArray(sessionIds) ? sessionIds.length : 'invalid' });
     if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
       return res.status(400).json({ ok: false, error: 'invalid_payload' });
     }
@@ -83,9 +84,8 @@ async function handleSessionRoster(req, res) {
 
     const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
     const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
-    const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !SUPABASE_ANON_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       console.error('[scheduled_session_roster] Missing Supabase configuration');
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
     }
@@ -97,11 +97,9 @@ async function handleSessionRoster(req, res) {
       return res.status(401).json({ ok: false, error: 'missing_token' });
     }
 
-    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    });
+    const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { fetch });
 
-    const { data: userResp, error: userErr } = await authClient.auth.getUser(token);
+    const { data: userResp, error: userErr } = await client.auth.getUser(token);
     if (userErr || !userResp?.user) {
       console.warn('[scheduled_session_roster] Invalid token', userErr);
       return res.status(401).json({ ok: false, error: 'invalid_token' });
@@ -109,8 +107,11 @@ async function handleSessionRoster(req, res) {
 
     const user = userResp.user;
     let isAdmin = Boolean(user?.app_metadata?.is_admin || user?.user_metadata?.is_admin);
-
-    const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { fetch });
+    console.log('[scheduled_session_roster] user metadata', {
+      userId: user?.id,
+      metaAdmin: Boolean(user?.app_metadata?.is_admin),
+      userMetaAdmin: Boolean(user?.user_metadata?.is_admin)
+    });
 
     if (!isAdmin) {
       const { data: profileRow, error: profileErr } = await client
@@ -130,57 +131,79 @@ async function handleSessionRoster(req, res) {
       return res.status(403).json({ ok: false, error: 'not_authorized' });
     }
 
-    const { data, error } = await client
+    const { data: participantRows, error: participantsErr } = await client
       .from('scheduled_session_participants')
-      .select(`
-        session_id,
-        confirmed_at,
-        profiles (
-          id,
-          nombre,
-          apellidos,
-          email,
-          rol,
-          unidad
-        )
-      `)
-      .in('session_id', sessionIds);
+      .select('id, session_id, user_id, registered_at, confirmed_at')
+      .in('session_id', sessionIds)
+      .order('registered_at', { ascending: true });
 
-    if (error) {
-      console.error('[scheduled_session_roster] Supabase error', error);
-      return res.status(500).json({ ok: false, error: 'supabase_error', details: error.message });
+    if (participantsErr) {
+      console.error('[scheduled_session_roster] Supabase error', participantsErr);
+      return res.status(500).json({ ok: false, error: 'supabase_error', detail: participantsErr?.message, code: participantsErr?.code });
     }
 
+    const userIds = Array.from(new Set((participantRows || []).map((row) => row.user_id).filter(Boolean)));
+    let profilesById = {};
+
+    if (userIds.length > 0) {
+      const { data: profileRows, error: profileErr } = await client
+        .from('profiles')
+        .select('id, nombre, apellidos, email')
+        .in('id', userIds);
+
+      if (profileErr) {
+        console.error('[scheduled_session_roster] Error loading profiles', profileErr);
+      } else {
+        profilesById = (profileRows || []).reduce((acc, profileRow) => {
+          acc[profileRow.id] = profileRow;
+          return acc;
+        }, {});
+      }
+    }
+
+    console.log('[scheduled_session_roster] roster build stats', {
+      participants: participantRows?.length || 0,
+      usersWithProfiles: Object.keys(profilesById).length
+    });
+
     const rosters = {};
-    for (const row of data || []) {
+    for (const row of participantRows || []) {
       if (!row?.session_id) continue;
       if (!rosters[row.session_id]) {
         rosters[row.session_id] = [];
       }
 
-      const profile = row.profiles;
-      if (profile) {
-        rosters[row.session_id].push({
-          id: profile.id,
-          nombre: profile.nombre,
-          apellidos: profile.apellidos,
-          email: profile.email,
-          rol: profile.rol,
-          unidad: profile.unidad,
-          confirmed: Boolean(row.confirmed_at),
-          confirmed_at: row.confirmed_at
-        });
-      }
+      const profile = row.user_id ? profilesById[row.user_id] : null;
+      const nameParts = profile ? [profile.nombre, profile.apellidos].filter(Boolean) : [];
+      const displayName = nameParts.length > 0 ? nameParts.join(' ').trim() : (profile?.email || 'Participante sin nombre');
+
+      rosters[row.session_id].push({
+        id: row.id,
+        user_id: row.user_id,
+        nombre: profile?.nombre || null,
+        apellidos: profile?.apellidos || null,
+        email: profile?.email || null,
+        display_name: displayName,
+        registered_at: row.registered_at,
+        confirmed_at: row.confirmed_at
+      });
     }
 
-    // Ensure all requested ids exist in the response, even if empty rosters
     for (const id of sessionIds) {
-      if (!rosters[id]) rosters[id] = [];
+      if (!rosters[id]) {
+        rosters[id] = [];
+      } else {
+        rosters[id].sort((a, b) => {
+          const timeA = a.confirmed_at || a.registered_at || 0;
+          const timeB = b.confirmed_at || b.registered_at || 0;
+          return new Date(timeA).getTime() - new Date(timeB).getTime();
+        });
+      }
     }
 
     return res.status(200).json({ ok: true, rosters });
   } catch (err) {
     console.error('[scheduled_session_roster] error', err);
-    return res.status(500).json({ ok: false, error: 'internal_error' });
+    return res.status(500).json({ ok: false, error: 'internal_error', detail: err?.message, stack: err?.stack });
   }
 }
