@@ -322,7 +322,7 @@ async function handleInviteUser(req, res) {
       const { data: magic } = await admin.auth.admin.generateLink({
         type: 'magiclink',
         email: emailNorm,
-        options: { redirectTo: `${baseUrl}/principal?invited=1` }
+        options: { redirectTo: `${baseUrl}/dashboard?invited=1` }
       });
       magicLink = magic?.properties?.action_link || magicLink;
     } catch (e) {
@@ -332,7 +332,7 @@ async function handleInviteUser(req, res) {
       const { data: rec } = await admin.auth.admin.generateLink({
         type: 'recovery',
         email: emailNorm,
-        options: { redirectTo: `${baseUrl}/principal/perfil?set_password=1` }
+        options: { redirectTo: `${baseUrl}/perfil?set_password=1` }
       });
       recoveryLink = rec?.properties?.action_link || recoveryLink;
     } catch (e) {

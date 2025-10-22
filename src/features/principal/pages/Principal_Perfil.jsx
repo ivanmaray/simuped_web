@@ -1,5 +1,6 @@
 // src/pages/Perfil.jsx
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { TrophyIcon } from "@heroicons/react/24/outline";
 import { supabase } from "../../../supabaseClient";
@@ -204,6 +205,7 @@ function validarDNI(v) {
 
 export default function Principal_Perfil() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -233,6 +235,12 @@ export default function Principal_Perfil() {
   const [achievements, setAchievements] = useState([]);
   const [loadingAchievements, setLoadingAchievements] = useState(true);
 
+  // Password reset flow
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [newPassword2, setNewPassword2] = useState("");
+  const [pwMsg, setPwMsg] = useState("");
+
   useEffect(() => {
     let mounted = true;
 
@@ -244,7 +252,7 @@ export default function Principal_Perfil() {
         console.error("[Perfil] getSession error:", error);
         setErrorMsg(error.message || "Error obteniendo sesión");
       }
-      const sess = data?.session ?? null;
+  const sess = data?.session ?? null;
       setSession(sess);
       if (!sess) {
         setLoading(false);
@@ -252,6 +260,17 @@ export default function Principal_Perfil() {
         navigate("/", { replace: true });
         return;
       }
+
+      // Detect password setup intent
+      try {
+        const setPw = (searchParams.get("set_password") || "").toString() === "1";
+        const url = new URL(window.location.href);
+        const isRecovery = (url.searchParams.get("type") || "").toLowerCase() === "recovery";
+        const hasAccessToken = window.location.hash.includes("access_token=");
+        if (setPw || isRecovery || hasAccessToken) {
+          setShowSetPassword(true);
+        }
+      } catch {}
 
       // Cargar perfil desde 'profiles' con fallback si falta areas_interes
       let prof = null;
@@ -487,6 +506,39 @@ export default function Principal_Perfil() {
     };
   }, [navigate]);
 
+  async function handleUpdatePassword(e) {
+    e?.preventDefault?.();
+    setPwMsg("");
+    if (!newPassword || newPassword.length < 8) {
+      setPwMsg("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (newPassword !== newPassword2) {
+      setPwMsg("Las contraseñas no coinciden.");
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        const raw = (error.message || '').toLowerCase();
+        if (raw.includes('weak')) setPwMsg('La contraseña no cumple los requisitos.');
+        else setPwMsg(error.message || 'No se pudo actualizar la contraseña.');
+        return;
+      }
+      setPwMsg("Contraseña actualizada ✔");
+      setShowSetPassword(false);
+      setNewPassword("");
+      setNewPassword2("");
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('set_password');
+        window.history.replaceState({}, '', url.toString());
+      } catch {}
+    } catch (ex) {
+      setPwMsg("Error inesperado actualizando la contraseña.");
+    }
+  }
+
   async function handleGuardar(e) {
     e.preventDefault();
     if (!session?.user?.id) return;
@@ -680,6 +732,28 @@ export default function Principal_Perfil() {
           >
             {errorMsg || okMsg}
           </div>
+        )}
+
+        {showSetPassword && (
+          <form onSubmit={handleUpdatePassword} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold mb-3">Establecer nueva contraseña</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="block">
+                <span className="text-sm text-slate-700">Nueva contraseña</span>
+                <input type="password" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} placeholder="••••••••" required />
+              </label>
+              <label className="block">
+                <span className="text-sm text-slate-700">Confirmar contraseña</span>
+                <input type="password" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]" value={newPassword2} onChange={(e)=>setNewPassword2(e.target.value)} placeholder="••••••••" required />
+              </label>
+            </div>
+            {pwMsg && (
+              <div className={`mt-3 rounded border px-3 py-2 text-sm ${pwMsg.includes('✔') ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>{pwMsg}</div>
+            )}
+            <div className="mt-4">
+              <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-sky-700 text-white px-4 py-2 hover:bg-sky-800">Guardar contraseña</button>
+            </div>
+          </form>
         )}
 
         <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.35)] px-6 py-6 space-y-5">
