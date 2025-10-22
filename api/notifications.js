@@ -219,6 +219,7 @@ async function handleSessionRegistration(req, res) {
           <tr>
             <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
               <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
+              <p style="margin:6px 0;font-size:13px;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a></p>
               <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
             </td>
           </tr>
@@ -277,12 +278,13 @@ async function handleUserApproved(req, res) {
               </div>
 
               <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Ya puedes explorar los escenarios disponibles, inscribirte en sesiones y comenzar tu formación en simulación pediátrica.</p>
-              <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a>.</p>
+              
             </td>
           </tr>
           <tr>
             <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
               <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
+              <p style="margin:6px 0;font-size:13px;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a></p>
               <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
             </td>
           </tr>
@@ -363,12 +365,13 @@ async function handleSessionReminder(req, res) {
               </div>
 
               <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Te esperamos puntualmente. Prepara todo el material necesario y llega con tiempo suficiente.</p>
-              <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a>.</p>
+              
             </td>
           </tr>
           <tr>
             <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
               <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
+              <p style="margin:6px 0;font-size:13px;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a></p>
               <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
             </td>
           </tr>

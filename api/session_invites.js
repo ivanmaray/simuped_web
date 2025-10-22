@@ -128,12 +128,12 @@ function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation,
           <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">Si ya te has apuntado, puedes ignorar este correo. Quedan plazas limitadas; confirma tu participación para asegurar tu asiento.</p>
           <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#475569;">Si el botón no funciona, copia y pega esta dirección en tu navegador:<br><span style="color:#0A3D91;word-break:break-all;">${inviteLink}</span></p>
           <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Recomendamos llegar con 10 minutos de antelación para preparar el material. Si necesitas modificar tu asistencia, puedes gestionarlo desde tu panel.</p>
-          <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:${supportEmail || 'contacto@simuped.com'}" style="color:#0A3D91;text-decoration:none;">${supportEmail || 'contacto@simuped.com'}</a>.</p>
         </td>
       </tr>
       <tr>
         <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
           <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
+          <p style="margin:6px 0;font-size:13px;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:${supportEmail || 'contacto@simuped.com'}" style="color:#0A3D91;text-decoration:none;">${supportEmail || 'contacto@simuped.com'}</a></p>
           <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
         </td>
       </tr>
@@ -142,7 +142,7 @@ function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation,
   `;
 }
 
-function buildOrganizerConfirmEmail({ participantName, participantEmail, sessionName, sessionDate, sessionLocation, logoUrl }) {
+function buildOrganizerConfirmEmail({ participantName, participantEmail, sessionName, sessionDate, sessionLocation, logoUrl, supportEmail }) {
   const formattedDate = formatInviteDate(sessionDate);
   return `
   <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
@@ -163,6 +163,13 @@ function buildOrganizerConfirmEmail({ participantName, participantEmail, session
           <p style="margin:0 0 6px;font-size:15px;color:#334155;">Sesión: <strong style="color:#0A3D91;">${sessionName || 'Sesión programada'}</strong></p>
           <p style="margin:0 0 6px;font-size:15px;color:#334155;">Fecha y hora: <strong>${formattedDate || 'Por confirmar'}</strong></p>
           <p style="margin:0;font-size:15px;color:#334155;">Lugar: <strong>${sessionLocation || 'Pendiente'}</strong></p>
+        </td>
+      </tr>
+      <tr>
+        <td style="background-color:#f1f5f9;padding:18px 26px;text-align:center;color:#64748b;font-size:13px;">
+          <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
+          <p style="margin:6px 0;font-size:13px;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:${supportEmail || 'contacto@simuped.com'}" style="color:#0A3D91;text-decoration:none;">${supportEmail || 'contacto@simuped.com'}</a></p>
+          <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
         </td>
       </tr>
     </table>
@@ -577,13 +584,15 @@ async function handleConfirmInvite(req, res) {
           const baseUrl = getAppBaseUrl();
           const assetBaseUrl = getAssetBaseUrl(baseUrl);
           const logoUrl = getLogoUrl(baseUrl, assetBaseUrl);
+          const supportEmail = process.env.SUPPORT_EMAIL || process.env.CONTACT_EMAIL || 'contacto@simuped.com';
           const html = buildOrganizerConfirmEmail({
             participantName: displayName || prof?.email || 'Usuario',
             participantEmail: prof?.email || null,
             sessionName: sessionRow?.title || null,
             sessionDate: sessionRow?.scheduled_at || null,
             sessionLocation: sessionRow?.location || null,
-            logoUrl
+            logoUrl,
+            supportEmail
           });
           const MAIL_FROM = process.env.MAIL_FROM || 'notifications@simuped.com';
           const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'SimuPed';
