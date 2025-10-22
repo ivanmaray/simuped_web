@@ -200,17 +200,22 @@ const CreateScheduledSession = () => {
                   session_location: form.location
                 })
               });
-              return { userId, ok: resp.ok, status: resp.status };
+              let payload = null;
+              try { payload = await resp.json(); } catch {}
+              const ok = payload?.ok === true;
+              return { userId, ok, status: resp.status, detail: payload?.detail, error: payload?.error };
             } catch (e) {
               return { userId, ok: false, error: e.message };
             }
           });
 
           const inviteResults = await Promise.all(invitePromises);
-          const failed = inviteResults.filter(r => !r.ok);
+          const failed = inviteResults.filter(r => r.ok === false);
           if (failed.length > 0) {
             console.warn('Some invites failed', failed);
-            alert(`Sesión creada, pero ${failed.length} invitaciones fallaron. Revisa la configuración de correo.`);
+            const sample = failed[0];
+            const extra = sample?.error || sample?.detail ? `\nDetalle: ${sample?.error || sample?.detail}` : '';
+            alert(`Sesión creada, pero ${failed.length} invitación(es) falló/fallaron. Revisa la configuración de correo.${extra}`);
           }
         }
       } catch (e) {
