@@ -20,7 +20,7 @@ const CreateScheduledSession = () => {
     scheduled_at: "",
     location: "Sala de Simulación HUCA",
     max_participants: 8,
-    mode: "clasico",
+    mode: "clásico",
     scenario_id: "",
     enrollment_deadline: "",
     participants: [] // Array de objetos {user_id, user_name, user_email, user_role}
@@ -365,7 +365,7 @@ const CreateScheduledSession = () => {
                 onChange={(e) => handleChange("mode", e.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]"
               >
-                <option value="clasico">Clásico (1 pantalla)</option>
+                <option value="clásico">Clásico (1 pantalla)</option>
                 <option value="dual">Dual (2 pantallas)</option>
               </select>
             </label>
