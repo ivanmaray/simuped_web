@@ -372,10 +372,10 @@ async function handleInviteUser(req, res) {
               </div>
 
               <div style="text-align:center;margin:28px 0;">
-                <a href="${magicLink}" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Entrar y completar perfil</a>
+                <a href="${recoveryLink}" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Establecer contraseña y entrar</a>
               </div>
 
-              <p style="margin:12px 0 0;font-size:13px;line-height:1.6;color:#64748b;">¿Prefieres crear tu contraseña ahora? <a href="${recoveryLink}" style="color:#0A3D91;text-decoration:none;">Establecer contraseña</a></p>
+              <p style="margin:12px 0 0;font-size:13px;line-height:1.6;color:#64748b;">¿Prefieres entrar sin contraseña? Usa el <a href="${magicLink}" style="color:#0A3D91;text-decoration:none;">acceso directo</a>.</p>
 
               <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Si tienes dudas sobre el acceso o tu rol, puedes responder a este correo directamente.</p>
               <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a>.</p>
