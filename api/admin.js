@@ -265,6 +265,14 @@ async function handleInviteUser(req, res) {
   // Prefer PNG (better client support, esp. Outlook), fallback to AVIF
   const logoUrl = resolveAssetUrl(assetBaseUrl, '/logo-negative.png') || resolveAssetUrl(assetBaseUrl, '/logo-simuped-Dtpd4WLf.avif');
 
+    const roleLabel = (v) => {
+      const k = (v || '').toString().trim().toLowerCase();
+      if (k === 'medico') return 'Médico';
+      if (k === 'enfermeria') return 'Enfermería';
+      if (k === 'farmacia') return 'Farmacia';
+      return v || 'No especificado';
+    };
+
     const html = `
       <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(15,23,42,0.12);">
@@ -285,7 +293,7 @@ async function handleInviteUser(req, res) {
 
               <div style="margin:20px 0;padding:20px 24px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
                 <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📧 Email:</strong> ${email}</p>
-                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">👤 Rol:</strong> ${rol || 'No especificado'}</p>
+                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">👤 Rol:</strong> ${roleLabel(rol)}</p>
                 <p style="margin:0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">🏥 Unidad:</strong> ${unidad || 'No especificada'}</p>
               </div>
 

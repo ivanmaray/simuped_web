@@ -928,13 +928,16 @@ export default function Admin_Usuarios() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="block text-sm text-slate-600">
                   <span className="text-xs uppercase tracking-wide text-slate-400">Rol (opcional)</span>
-                  <input
-                    type="text"
+                  <select
                     value={inviteForm.rol}
                     onChange={(e) => setInviteForm((prev) => ({ ...prev, rol: e.target.value }))}
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
-                    placeholder="Pediatra, Enfermería, Farmacia..."
-                  />
+                  >
+                    <option value="">Selecciona rol…</option>
+                    <option value="medico">Médico</option>
+                    <option value="enfermeria">Enfermería</option>
+                    <option value="farmacia">Farmacia</option>
+                  </select>
                 </label>
                 <label className="block text-sm text-slate-600">
                   <span className="text-xs uppercase tracking-wide text-slate-400">Unidad (opcional)</span>
