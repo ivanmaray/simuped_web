@@ -441,8 +441,27 @@ export default function Admin_Usuarios() {
         body: JSON.stringify({ email, nombre, apellidos }),
       });
       const data = await resp.json().catch(() => null);
-      if (!resp.ok) {
-        const message = data?.error || "No se pudo enviar la invitación";
+      if (!resp.ok || data?.ok === false) {
+        const code = data?.error || "unknown";
+        let message = data?.message || data?.error || "No se pudo enviar la invitación";
+        switch (code) {
+          case "profile_email_exists":
+            message = "Ese email ya tiene un perfil en SimuPed.";
+            break;
+          case "user_already_exists":
+            message = "Ya existe un usuario con ese email en Auth.";
+            break;
+          case "server_not_configured":
+            message = "El servidor no está configurado para invitaciones (revisa variables de entorno).";
+            break;
+          case "failed_to_create_profile": {
+            const extra = data?.details || data?.hint || data?.message;
+            message = `No se pudo crear el perfil.${extra ? ` Detalle: ${extra}` : ""}`;
+            break;
+          }
+          default:
+            break;
+        }
         throw new Error(message);
       }
 
