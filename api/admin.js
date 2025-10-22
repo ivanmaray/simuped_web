@@ -123,7 +123,7 @@ async function handleInviteUser(req, res) {
   }
 
   try {
-    const { email, nombre, apellidos, rol, unidad } = req.body || {};
+  const { email, nombre, apellidos, rol, unidad } = req.body || {};
     if (!email || !nombre || !apellidos) {
       return res.status(400).json({ ok: false, error: 'missing_required_fields' });
     }
@@ -141,6 +141,26 @@ async function handleInviteUser(req, res) {
     const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
+
+    // Normalize and sanitize role/unidad to avoid DB constraint failures
+    const normalizeRol = (v) => {
+      const k = (v || '').toString().trim().toLowerCase();
+      if (k === 'médico' || k === 'medico') return 'medico';
+      if (k === 'enfermería' || k === 'enfermeria') return 'enfermeria';
+      if (k === 'farmacia' || k === 'farmacéutico' || k === 'farmaceutico') return 'farmacia';
+      return '';
+    };
+    const normalizeUnidad = (v) => {
+      const s = (v || '').toString().trim();
+      if (!s) return null;
+      // Minimal guard: require 3+ chars, else null
+      return s.length >= 3 ? s : null;
+    };
+    const rolNorm = normalizeRol(rol);
+    const unidadNorm = normalizeUnidad(unidad);
+    // Be conservative with DB constraints: if role 'farmacia' is not accepted by DB, set null
+    const rolForDb = (rolNorm === 'farmacia') ? null : (rolNorm || null);
+    const unidadForDb = unidadNorm;
 
     // Guard: if a profile already exists for this email, abort early with a clear error
     try {
@@ -201,8 +221,8 @@ async function handleInviteUser(req, res) {
             nombre: nombre || existingById.nombre || null,
             apellidos: apellidos || existingById.apellidos || null,
             email: emailNorm || existingById.email || null,
-            rol: rol || null,
-            unidad: unidad || null,
+            rol: rolForDb,
+            unidad: unidadForDb,
             approved: true
           })
           .eq('id', profileId);
@@ -215,11 +235,36 @@ async function handleInviteUser(req, res) {
             nombre,
             apellidos,
             email: emailNorm,
-            rol: rol || null,
-            unidad: unidad || null,
+            rol: rolForDb,
+            unidad: unidadForDb,
             approved: true
           }]);
         if (insErr) profileError = insErr;
+        // If insert failed due to constraint, retry with safest defaults
+        if (profileError) {
+          const msg = (profileError.message || '').toLowerCase();
+          const det = (profileError.details || '').toLowerCase();
+          const likelyConstraint = msg.includes('constraint') || det.includes('constraint') || det.includes('failing row contains');
+          if (likelyConstraint) {
+            // Retry insert with rol/unidad null
+            const { error: retryErr } = await admin
+              .from('profiles')
+              .insert([{
+                id: profileId,
+                nombre,
+                apellidos,
+                email: emailNorm,
+                rol: null,
+                unidad: null,
+                approved: true
+              }]);
+            if (!retryErr) {
+              profileError = null;
+            } else {
+              profileError = retryErr;
+            }
+          }
+        }
       }
     } catch (pErr) {
       profileError = pErr;
@@ -255,7 +300,9 @@ async function handleInviteUser(req, res) {
         message: profileError.message,
         code: profileError.code,
         details: profileError.details,
-        hint: profileError.hint
+        hint: profileError.hint,
+        constraint: profileError.constraint,
+        table: profileError.table
       });
     }
 
