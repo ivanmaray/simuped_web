@@ -259,7 +259,7 @@ export function clearScheduledNotifications() {
  */
 export async function sendEmailNotification({ email, nombre, sessionTitle, sessionDate, minutesBefore, reminderType }) {
   try {
-    const response = await fetch('/api/send_session_reminder', {
+    const response = await fetch('/api/notifications?action=session_reminder', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

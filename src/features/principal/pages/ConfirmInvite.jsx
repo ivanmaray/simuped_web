@@ -18,7 +18,7 @@ export default function ConfirmInvite() {
 
     (async () => {
       try {
-        const resp = await fetch('/api/confirm_session_invite', {
+        const resp = await fetch('/api/session_invites?action=confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token })

@@ -224,7 +224,7 @@ export default function Auth_Registro() {
       try {
         const uid = signData?.user?.id;
         if (uid) {
-          const resp = await fetch("/api/seed_profile", {
+          const resp = await fetch("/api/admin?action=seed_profile", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -273,7 +273,7 @@ export default function Auth_Registro() {
 
       // 4) Notificar al admin por email (no bloqueante)
       try {
-        await fetch("/api/new-user-email", {
+        await fetch("/api/notifications?action=new_user", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -331,7 +331,7 @@ export default function Admin_Usuarios() {
       // 2) Notifica por email (endpoint Vercel). Enviamos nombre y email (no usamos auth.users).
       let mailOk = false;
       try {
-        const res = await fetch("/api/notify_user_approved", {
+        const res = await fetch("/api/notifications?action=user_approved", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -435,7 +435,7 @@ export default function Admin_Usuarios() {
     setOk("");
 
     try {
-      const resp = await fetch("/api/admin_invite_user", {
+      const resp = await fetch("/api/admin?action=invite_user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, nombre, apellidos }),
@@ -496,7 +496,7 @@ export default function Admin_Usuarios() {
     setOk("");
 
     try {
-      const resp = await fetch("/api/admin_delete_user", {
+      const resp = await fetch("/api/admin?action=delete_user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: deleteTarget.id, email: deleteTarget.email }),

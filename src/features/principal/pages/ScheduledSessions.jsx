@@ -71,7 +71,7 @@ const ScheduledSessions = () => {
 
         if (sessionIds.length > 0) {
           try {
-            const response = await fetch('/api/scheduled_session_counts', {
+            const response = await fetch('/api/scheduled_sessions?action=counts', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ sessionIds })
@@ -94,7 +94,7 @@ const ScheduledSessions = () => {
             console.warn('No se pudo obtener el token del usuario administrador para cargar participantes');
           } else {
             try {
-              const response = await fetch('/api/scheduled_session_roster', {
+              const response = await fetch('/api/scheduled_sessions?action=roster', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -254,7 +254,7 @@ const ScheduledSessions = () => {
             .filter(Boolean)
             .join(" ") || "Usuario";
 
-          await fetch("/api/notify_session_registration", {
+          await fetch("/api/notifications?action=session_registration", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

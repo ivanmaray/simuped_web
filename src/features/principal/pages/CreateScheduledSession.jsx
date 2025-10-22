@@ -186,30 +186,31 @@ const CreateScheduledSession = () => {
       try {
         const registeredUserIds = (form.participants || []).filter(p => p.user_id).map(p => p.user_id);
         if (registeredUserIds.length > 0) {
-          const resp = await fetch('/api/invite_session_participants', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              session_id: data.id,
-              user_ids: registeredUserIds,
-              inviter_id: session.user_id,
-              session_name: form.title,
-              session_date: form.scheduled_at,
-              session_location: form.location
-            })
-          });
-          if (!resp.ok) {
-            const payload = await resp.json().catch(() => null);
-            console.warn('Invite endpoint error', resp.status, payload);
-            const detail = payload?.error || payload?.results?.find?.((r) => !r.ok)?.error || 'Error desconocido';
-            alert(`Sesión creada, pero las invitaciones fallaron (${detail}). Revisa la configuración de correo.`);
-          } else {
-            const payload = await resp.json().catch(() => null);
-            const failed = payload?.results?.filter?.((r) => !r.ok) || [];
-            if (failed.length > 0) {
-              const first = failed[0];
-              alert(`Sesión creada, pero algunas invitaciones fallaron (${first.error || 'error desconocido'}). Consulta los logs.`);
+          // Send individual invites for each registered user
+          const invitePromises = registeredUserIds.map(async (userId) => {
+            try {
+              const resp = await fetch('/api/session_invites?action=resend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  session_id: data.id,
+                  user_id: userId,
+                  session_name: form.title,
+                  session_date: form.scheduled_at,
+                  session_location: form.location
+                })
+              });
+              return { userId, ok: resp.ok, status: resp.status };
+            } catch (e) {
+              return { userId, ok: false, error: e.message };
             }
+          });
+
+          const inviteResults = await Promise.all(invitePromises);
+          const failed = inviteResults.filter(r => !r.ok);
+          if (failed.length > 0) {
+            console.warn('Some invites failed', failed);
+            alert(`Sesión creada, pero ${failed.length} invitaciones fallaron. Revisa la configuración de correo.`);
           }
         }
       } catch (e) {
