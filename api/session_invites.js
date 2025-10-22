@@ -261,18 +261,19 @@ async function handleResendInvite(req, res) {
   const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
     if (!INVITE_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    console.error('[resend_session_invite] Missing configuration', {
-      hasInviteSecret: Boolean(INVITE_SECRET),
-      hasUrl: Boolean(SUPABASE_URL),
-      hasServiceKey: Boolean(SUPABASE_SERVICE_KEY)
-    });
-    return res.status(500).json({ ok: false, error: 'server_not_configured' });
-  }
+      console.error('[resend_session_invite] Missing configuration', {
+        hasInviteSecret: Boolean(INVITE_SECRET),
+        hasUrl: Boolean(SUPABASE_URL),
+        hasServiceKey: Boolean(SUPABASE_SERVICE_KEY)
+      });
+      // Do not bubble 500 to client; surface as ok:false with details
+      return res.status(200).json({ ok: false, error: 'server_not_configured' });
+    }
 
   try {
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { fetch });
     const { data: profile, error: profErr } = await sb.from('profiles').select('id, nombre, apellidos, email').eq('id', user_id).single();
-  if (profErr || !profile) return res.status(404).json({ ok: false, error: 'profile_not_found', detail: profErr?.message, code: profErr?.code });
+  if (profErr || !profile) return res.status(200).json({ ok: false, error: 'profile_not_found', detail: profErr?.message, code: profErr?.code });
 
     const tokenPayload = { session_id, user_id, exp: Date.now() + (1000 * 60 * 60 * 24 * 7) };
     const sig = signPayload(tokenPayload, INVITE_SECRET);
@@ -299,7 +300,7 @@ async function handleResendInvite(req, res) {
 
     if (!RESEND_API_KEY) {
       console.error('[resend_session_invite] Missing RESEND_API_KEY');
-      return res.status(500).json({ ok: false, error: 'missing_resend_api_key' });
+      return res.status(200).json({ ok: false, error: 'missing_resend_api_key' });
     }
 
     const resp = await fetch('https://api.resend.com/emails', {
@@ -320,7 +321,7 @@ async function handleResendInvite(req, res) {
     return res.status(200).json({ ok: true });
   } catch (e) {
     console.error('[resend_session_invite] error', e);
-    return res.status(500).json({ ok: false, error: 'internal', detail: e?.message, stack: e?.stack });
+    return res.status(200).json({ ok: false, error: 'internal', detail: e?.message, stack: e?.stack });
   }
 }
 
