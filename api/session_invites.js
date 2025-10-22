@@ -434,6 +434,48 @@ async function handleConfirmInvite(req, res) {
       return res.status(500).json({ ok: false, error: 'database_error' });
     }
 
+    // Ensure participant is registered and confirmed
+    try {
+      // Load profile for user_name/email enrichment
+      const { data: prof, error: profErr } = await sb
+        .from('profiles')
+        .select('nombre, apellidos, email, rol')
+        .eq('id', user_id)
+        .maybeSingle();
+
+      const displayName = prof ? [prof.nombre, prof.apellidos].filter(Boolean).join(' ').trim() : null;
+      const nowIso = new Date().toISOString();
+
+      // Try upsert participant record
+      const { error: partUpsertErr } = await sb
+        .from('scheduled_session_participants')
+        .upsert({
+          session_id,
+          user_id,
+          user_name: displayName || null,
+          user_email: prof?.email || null,
+          user_role: prof?.rol || 'confirmado',
+          confirmed_at: nowIso,
+          registered_at: nowIso
+        }, { onConflict: 'session_id,user_id' });
+
+      if (partUpsertErr) {
+        // Fallback: update existing row if present
+        await sb
+          .from('scheduled_session_participants')
+          .update({
+            user_name: displayName || null,
+            user_email: prof?.email || null,
+            user_role: prof?.rol || 'confirmado',
+            confirmed_at: nowIso
+          })
+          .eq('session_id', session_id)
+          .eq('user_id', user_id);
+      }
+    } catch (partErr) {
+      console.warn('[confirm_session_invite] participant ensure error', partErr);
+    }
+
     if (req.method === 'GET') {
       return res.redirect(`${getAppBaseUrl()}/presencial?confirmed=1`);
     }
