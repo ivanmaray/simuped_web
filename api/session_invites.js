@@ -142,6 +142,34 @@ function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation,
   `;
 }
 
+function buildOrganizerConfirmEmail({ participantName, participantEmail, sessionName, sessionDate, sessionLocation, logoUrl }) {
+  const formattedDate = formatInviteDate(sessionDate);
+  return `
+  <div style="background-color:#f5f7fb;padding:24px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:620px;margin:0 auto;background-color:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.12);">
+      <tr>
+        <td style="background:#0A3D91;padding:20px;text-align:center;color:#ffffff;">
+          ${logoUrl ? `<img src="${logoUrl}" alt="SimuPed" style="width:110px;max-width:100%;display:block;margin:0 auto 10px;" />` : '<div style="font-size:22px;font-weight:700;">SimuPed</div>'}
+          <div style="margin-top:4px;font-size:14px;opacity:0.9;">Nueva confirmación de asistencia</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:22px 26px;color:#1f2937;">
+          <p style="margin:0 0 16px;font-size:15px;color:#334155;">Se ha confirmado la asistencia de:</p>
+          <div style="margin:0 0 16px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+            <div style="font-size:16px;color:#0f172a;font-weight:600;">${participantName || 'Usuario'}</div>
+            <div style="font-size:14px;color:#475569;">${participantEmail || ''}</div>
+          </div>
+          <p style="margin:0 0 8px;font-size:15px;color:#334155;">Sesión: <strong style="color:#0A3D91;">${sessionName || 'Sesión programada'}</strong></p>
+          <p style="margin:0 0 8px;font-size:15px;color:#334155;">Fecha y hora: <strong>${formattedDate || 'Por confirmar'}</strong></p>
+          <p style="margin:0;font-size:15px;color:#334155;">Lugar: <strong>${sessionLocation || 'Pendiente'}</strong></p>
+        </td>
+      </tr>
+    </table>
+  </div>
+  `;
+}
+
 export default async function handler(req, res) {
   const action = req.query.action || req.body?.action;
 
@@ -474,6 +502,59 @@ async function handleConfirmInvite(req, res) {
       }
     } catch (partErr) {
       console.warn('[confirm_session_invite] participant ensure error', partErr);
+    }
+
+    // Optionally notify organizer about the confirmation (feature-flagged)
+    try {
+      const ENABLE_ORG_NOTIF = String(process.env.ENABLE_ORGANIZER_CONFIRM_EMAILS || '').toLowerCase() === 'true';
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      if (ENABLE_ORG_NOTIF && RESEND_API_KEY) {
+        // Load session and organizer info
+        const { data: sessionRow } = await sb
+          .from('scheduled_sessions')
+          .select('title, scheduled_at, location, created_by')
+          .eq('id', session_id)
+          .maybeSingle();
+
+        let organizerEmail = null;
+        let organizerName = null;
+        if (sessionRow?.created_by) {
+          const { data: orgProfile } = await sb
+            .from('profiles')
+            .select('email, nombre, apellidos')
+            .eq('id', sessionRow.created_by)
+            .maybeSingle();
+          organizerEmail = orgProfile?.email || null;
+          organizerName = [orgProfile?.nombre, orgProfile?.apellidos].filter(Boolean).join(' ').trim() || null;
+        }
+        // Fallback to admin notify email if no organizer email
+        if (!organizerEmail) organizerEmail = process.env.ADMIN_NOTIFY_EMAIL || null;
+
+        if (organizerEmail) {
+          const baseUrl = getAppBaseUrl();
+          const assetBaseUrl = getAssetBaseUrl(baseUrl);
+          const logoUrl = getLogoUrl(baseUrl, assetBaseUrl);
+          const html = buildOrganizerConfirmEmail({
+            participantName: displayName || prof?.email || 'Usuario',
+            participantEmail: prof?.email || null,
+            sessionName: sessionRow?.title || null,
+            sessionDate: sessionRow?.scheduled_at || null,
+            sessionLocation: sessionRow?.location || null,
+            logoUrl
+          });
+          const MAIL_FROM = process.env.MAIL_FROM || 'notifications@simuped.com';
+          const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || 'SimuPed';
+          const from = MAIL_FROM_NAME ? `${MAIL_FROM_NAME} <${MAIL_FROM}>` : MAIL_FROM;
+          // Send email via Resend API
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_API_KEY}` },
+            body: JSON.stringify({ from, to: organizerEmail, subject: `Confirmación de asistencia: ${sessionRow?.title || ''}`, html })
+          }).catch(() => {});
+        }
+      }
+    } catch (notifyErr) {
+      console.warn('[confirm_session_invite] organizer notify error', notifyErr);
     }
 
     if (req.method === 'GET') {
