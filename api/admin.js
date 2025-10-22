@@ -64,6 +64,8 @@ export default async function handler(req, res) {
       return await handleInviteUser(req, res);
     case 'seed_profile':
       return await handleSeedProfile(req, res);
+    case 'cleanup_email':
+      return await handleCleanupEmail(req, res);
     default:
       return res.status(400).json({ ok: false, error: 'invalid_action' });
   }
@@ -373,6 +375,76 @@ async function handleInviteUser(req, res) {
     return res.status(200).json({ ok: true, user_id: userData.user.id, profile: { id: profileId, email: emailNorm, nombre, apellidos } });
   } catch (err) {
     console.error('[admin_invite_user] error', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+}
+
+async function handleCleanupEmail(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  try {
+    const emailRaw = req.body?.email;
+    if (!emailRaw) return res.status(400).json({ ok: false, error: 'missing_email' });
+    const emailNorm = String(emailRaw).trim().toLowerCase();
+
+    const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const actions = { auth_deleted: false, profile_deleted: 0, invites_deleted: 0 };
+
+    // 1) Delete auth user by email (if any)
+    try {
+      const { data: list } = await admin.auth.admin.listUsers();
+      const user = list?.users?.find(u => (u.email || '').toLowerCase() === emailNorm);
+      if (user) {
+        const del = await admin.auth.admin.deleteUser(user.id);
+        if (!del.error) actions.auth_deleted = true;
+      }
+    } catch (e) {
+      console.warn('[cleanup_email] auth delete warning', e);
+    }
+
+    // 2) Delete profile rows by email (case-insensitively)
+    try {
+      // Fetch ids first, then delete by id to be explicit
+      const { data: profs } = await admin
+        .from('profiles')
+        .select('id, email');
+      const targets = (profs || []).filter(p => (p.email || '').toLowerCase() === emailNorm).map(p => p.id);
+      if (targets.length) {
+        const { error: delErr, count } = await admin
+          .from('profiles')
+          .delete({ count: 'exact' })
+          .in('id', targets);
+        if (!delErr) actions.profile_deleted = typeof count === 'number' ? count : targets.length;
+      }
+    } catch (e) {
+      console.warn('[cleanup_email] profile delete warning', e);
+    }
+
+    // 3) Delete any pending invites by invited_email
+    try {
+      const { error: invErr, count } = await admin
+        .from('scheduled_session_invites')
+        .delete({ count: 'exact' })
+        .eq('invited_email', emailNorm);
+      if (!invErr && typeof count === 'number') actions.invites_deleted = count;
+    } catch (e) {
+      console.warn('[cleanup_email] invites cleanup warning', e);
+    }
+
+    return res.status(200).json({ ok: true, actions });
+  } catch (err) {
+    console.error('[cleanup_email] error', err);
     return res.status(500).json({ ok: false, error: 'internal_error' });
   }
 }
