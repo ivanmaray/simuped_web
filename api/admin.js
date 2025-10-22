@@ -127,6 +127,7 @@ async function handleInviteUser(req, res) {
     if (!email || !nombre || !apellidos) {
       return res.status(400).json({ ok: false, error: 'missing_required_fields' });
     }
+    const emailNorm = String(email).trim().toLowerCase();
 
     const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
     const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -146,7 +147,7 @@ async function handleInviteUser(req, res) {
       const { data: existingByEmail, error: existingByEmailErr } = await admin
         .from('profiles')
         .select('id, email')
-        .ilike('email', email)
+        .eq('email', emailNorm)
         .maybeSingle();
       if (existingByEmail && !existingByEmailErr) {
         return res.status(400).json({ ok: false, error: 'profile_email_exists', profile_id: existingByEmail.id });
@@ -165,7 +166,7 @@ async function handleInviteUser(req, res) {
 
     // Create user account
     const { data: userData, error: createError } = await admin.auth.admin.createUser({
-      email,
+      email: emailNorm,
       password: Math.random().toString(36).slice(-12) + 'Aa1!',
       email_confirm: true,
       user_metadata: {
@@ -181,18 +182,47 @@ async function handleInviteUser(req, res) {
       return res.status(createError.status || 500).json({ ok: false, error: createError.message || 'failed_to_create_user' });
     }
 
-    // Create profile
-    const { error: profileError } = await admin
-      .from('profiles')
-      .insert([{
-        id: userData.user.id,
-        nombre,
-        apellidos,
-        email,
-        rol: rol || null,
-        unidad: unidad || null,
-        approved: true
-      }]);
+    // If profile with this id already exists, update it; otherwise insert new profile
+    let profileId = userData.user.id;
+    let profileError = null;
+    try {
+      const { data: existingById } = await admin
+        .from('profiles')
+        .select('id, email, nombre, apellidos')
+        .eq('id', profileId)
+        .maybeSingle();
+
+      if (existingById) {
+        // Update minimal fields and ensure approved = true
+        const { error: updErr } = await admin
+          .from('profiles')
+          .update({
+            nombre: nombre || existingById.nombre || null,
+            apellidos: apellidos || existingById.apellidos || null,
+            email: emailNorm || existingById.email || null,
+            rol: rol || null,
+            unidad: unidad || null,
+            approved: true
+          })
+          .eq('id', profileId);
+        if (updErr) profileError = updErr;
+      } else {
+        const { error: insErr } = await admin
+          .from('profiles')
+          .insert([{
+            id: profileId,
+            nombre,
+            apellidos,
+            email: emailNorm,
+            rol: rol || null,
+            unidad: unidad || null,
+            approved: true
+          }]);
+        if (insErr) profileError = insErr;
+      }
+    } catch (pErr) {
+      profileError = pErr;
+    }
 
     if (profileError) {
       console.error('[admin_invite_user] profile creation error', profileError);
@@ -202,11 +232,20 @@ async function handleInviteUser(req, res) {
       } catch (deleteErr) {
         console.error('[admin_invite_user] cleanup delete error', deleteErr);
       }
-      // If it's a unique violation on email or id, surface a conflict with a friendlier code
+      // If it's a unique violation, try to differentiate email vs id
       const msg = (profileError.message || '').toLowerCase();
+      const det = (profileError.details || '').toLowerCase();
       const isUnique = profileError.code === '23505' || msg.includes('duplicate key') || msg.includes('unique constraint');
       if (isUnique) {
-        return res.status(400).json({ ok: false, error: 'profile_email_exists' });
+        const emailDup = msg.includes('(email)') || det.includes('(email)');
+        const idDup = msg.includes('(id)') || det.includes('(id)');
+        if (emailDup) {
+          return res.status(400).json({ ok: false, error: 'profile_email_exists' });
+        }
+        if (idDup) {
+          return res.status(400).json({ ok: false, error: 'profile_id_exists', profile_id: profileId });
+        }
+        return res.status(400).json({ ok: false, error: 'profile_conflict' });
       }
       // Other DB errors
       return res.status(500).json({
@@ -269,12 +308,12 @@ async function handleInviteUser(req, res) {
 
     await resend.emails.send({
       from: 'SimuPed <notificaciones@simuped.com>',
-      to: email,
+      to: emailNorm,
       subject: 'Cuenta creada - Bienvenido a SimuPed',
       html,
     });
 
-    return res.status(200).json({ ok: true, user_id: userData.user.id });
+    return res.status(200).json({ ok: true, user_id: userData.user.id, profile: { id: profileId, email: emailNorm, nombre, apellidos } });
   } catch (err) {
     console.error('[admin_invite_user] error', err);
     return res.status(500).json({ ok: false, error: 'internal_error' });
