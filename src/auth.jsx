@@ -130,11 +130,26 @@ export function AuthProvider({ children }) {
             } catch (ex) {
               console.warn("[Auth] exchangeCodeForSession failed:", ex);
             }
+          } else if (hasHashAccessToken) {
+            // Magic link and recovery flows deliver tokens in the hash fragment.
+            try {
+              const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+              const params = new URLSearchParams(hash);
+              const access_token = params.get('access_token');
+              const refresh_token = params.get('refresh_token');
+              if (access_token && refresh_token) {
+                const { error: setErr } = await supabase.auth.setSession({ access_token, refresh_token });
+                if (setErr) console.warn('[Auth] setSession from hash failed:', setErr);
+                else console.log('[Auth] setSession from hash OK');
+              }
+            } catch (ex) {
+              console.warn('[Auth] parse hash tokens failed:', ex);
+            }
           }
 
           if (hasCode || hasHashAccessToken || hasError) {
             try {
-              const clean = url.origin + url.pathname;
+              const clean = url.origin + url.pathname + (url.search ? url.search.replace(/([?&])(code|error|type)=[^&]*/g, '$1').replace(/[?&]$/, '') : '');
               window.history.replaceState({}, "", clean);
               console.log("[Auth] URL cleaned after hydration");
             } catch {}
