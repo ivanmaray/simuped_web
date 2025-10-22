@@ -83,8 +83,9 @@ async function handleSessionRoster(req, res) {
 
     const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
     const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+    const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !SUPABASE_ANON_KEY) {
       console.error('[scheduled_session_roster] Missing Supabase configuration');
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
     }
@@ -96,9 +97,11 @@ async function handleSessionRoster(req, res) {
       return res.status(401).json({ ok: false, error: 'missing_token' });
     }
 
-    const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { fetch });
+    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
 
-    const { data: userResp, error: userErr } = await client.auth.getUser(token);
+    const { data: userResp, error: userErr } = await authClient.auth.getUser(token);
     if (userErr || !userResp?.user) {
       console.warn('[scheduled_session_roster] Invalid token', userErr);
       return res.status(401).json({ ok: false, error: 'invalid_token' });
@@ -106,6 +109,8 @@ async function handleSessionRoster(req, res) {
 
     const user = userResp.user;
     let isAdmin = Boolean(user?.app_metadata?.is_admin || user?.user_metadata?.is_admin);
+
+    const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { fetch });
 
     if (!isAdmin) {
       const { data: profileRow, error: profileErr } = await client
