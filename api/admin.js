@@ -141,6 +141,20 @@ async function handleInviteUser(req, res) {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
+    // Guard: if a profile already exists for this email, abort early with a clear error
+    try {
+      const { data: existingByEmail, error: existingByEmailErr } = await admin
+        .from('profiles')
+        .select('id, email')
+        .eq('email', email)
+        .maybeSingle();
+      if (existingByEmail && !existingByEmailErr) {
+        return res.status(400).json({ ok: false, error: 'profile_email_exists', profile_id: existingByEmail.id });
+      }
+    } catch (checkErr) {
+      console.warn('[admin_invite_user] profile email precheck warning', checkErr);
+    }
+
     // Check if user already exists
     const { data: existingUser } = await admin.auth.admin.listUsers();
     const userExists = existingUser.users.some(u => u.email === email);
@@ -188,7 +202,14 @@ async function handleInviteUser(req, res) {
       } catch (deleteErr) {
         console.error('[admin_invite_user] cleanup delete error', deleteErr);
       }
-      return res.status(500).json({ ok: false, error: 'failed_to_create_profile', details: profileError.message });
+      return res.status(500).json({
+        ok: false,
+        error: 'failed_to_create_profile',
+        message: profileError.message,
+        code: profileError.code,
+        details: profileError.details,
+        hint: profileError.hint
+      });
     }
 
     // Send welcome email
