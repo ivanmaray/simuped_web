@@ -308,12 +308,36 @@ async function handleInviteUser(req, res) {
       });
     }
 
-    // Send welcome email
+    // Prepare auth links and send welcome email
     const resend = new Resend(RESEND_API_KEY);
     const baseUrl = getAppBaseUrl();
     const assetBaseUrl = getAssetBaseUrl(baseUrl);
   // Prefer PNG (better client support, esp. Outlook), fallback to AVIF
   const logoUrl = resolveAssetUrl(assetBaseUrl, '/logo-negative.png') || resolveAssetUrl(assetBaseUrl, '/logo-simuped-Dtpd4WLf.avif');
+
+    // Generate a one-click login link (magic link) and a password setup link
+    let magicLink = `${baseUrl}/auth`;
+    let recoveryLink = `${baseUrl}/auth`;
+    try {
+      const { data: magic } = await admin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: emailNorm,
+        options: { redirectTo: `${baseUrl}/principal?invited=1` }
+      });
+      magicLink = magic?.properties?.action_link || magicLink;
+    } catch (e) {
+      console.warn('[admin_invite_user] magiclink generation failed', e);
+    }
+    try {
+      const { data: rec } = await admin.auth.admin.generateLink({
+        type: 'recovery',
+        email: emailNorm,
+        options: { redirectTo: `${baseUrl}/principal/perfil?set_password=1` }
+      });
+      recoveryLink = rec?.properties?.action_link || recoveryLink;
+    } catch (e) {
+      console.warn('[admin_invite_user] recovery link generation failed', e);
+    }
 
     const roleLabel = (v) => {
       const k = (v || '').toString().trim().toLowerCase();
@@ -348,8 +372,10 @@ async function handleInviteUser(req, res) {
               </div>
 
               <div style="text-align:center;margin:28px 0;">
-                <a href="${baseUrl}/auth" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Entrar y completar perfil</a>
+                <a href="${magicLink}" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Entrar y completar perfil</a>
               </div>
+
+              <p style="margin:12px 0 0;font-size:13px;line-height:1.6;color:#64748b;">¿Prefieres crear tu contraseña ahora? <a href="${recoveryLink}" style="color:#0A3D91;text-decoration:none;">Establecer contraseña</a></p>
 
               <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Si tienes dudas sobre el acceso o tu rol, puedes responder a este correo directamente.</p>
               <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a>.</p>
