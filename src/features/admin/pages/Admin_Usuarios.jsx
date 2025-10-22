@@ -129,6 +129,15 @@ export default function Admin_Usuarios() {
   const [processingIds, setProcessingIds] = useState({}); // { [userId]: true }
   const [, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
   const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified via our API }
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ email: "", nombre: "", apellidos: "" });
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const inviteEmailRef = useRef(null);
+  const [selfId, setSelfId] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [rolFilter, setRolFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");
   const [adminFilter, setAdminFilter] = useState("");
@@ -170,6 +179,7 @@ export default function Admin_Usuarios() {
         setLoading(false);
         return;
       }
+      setSelfId(me?.id || null);
 
       // 3) Usuarios (usar RPC admin_list_users para evitar RLS sobre profiles)
       try {
@@ -205,6 +215,18 @@ export default function Admin_Usuarios() {
       if (qTimerRef.current) clearTimeout(qTimerRef.current);
     };
   }, [q]);
+
+  useEffect(() => {
+    if (inviteOpen && inviteEmailRef.current) {
+      inviteEmailRef.current.focus();
+    }
+  }, [inviteOpen]);
+
+  useEffect(() => {
+    if (!deleteOpen) {
+      setDeleteConfirm("");
+    }
+  }, [deleteOpen]);
 
   const rolesDisponibles = useMemo(() => {
     const map = new Map();
@@ -385,6 +407,118 @@ export default function Admin_Usuarios() {
     }
   }
 
+  function openInviteModal() {
+    setInviteForm({ email: "", nombre: "", apellidos: "" });
+    setErr("");
+    setOk("");
+    setInviteOpen(true);
+  }
+
+  function closeInviteModal() {
+    if (inviteLoading) return;
+    setInviteOpen(false);
+  }
+
+  async function handleInviteSubmit(e) {
+    e.preventDefault();
+    if (inviteLoading) return;
+    const email = inviteForm.email.trim().toLowerCase();
+    const nombre = inviteForm.nombre.trim();
+    const apellidos = inviteForm.apellidos.trim();
+    if (!email) {
+      setErr("Introduce un correo válido para invitar");
+      return;
+    }
+
+    setInviteLoading(true);
+    setErr("");
+    setOk("");
+
+    try {
+      const resp = await fetch("/api/admin_invite_user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, nombre, apellidos }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        const message = data?.error || "No se pudo enviar la invitación";
+        throw new Error(message);
+      }
+
+      if (data?.profile?.id) {
+        setRows((prev) => {
+          if (prev.some((row) => row.id === data.profile.id)) return prev;
+          return [data.profile, ...prev];
+        });
+      }
+
+      setOk(`Invitación enviada a ${email}`);
+      setInviteOpen(false);
+      setInviteForm({ email: "", nombre: "", apellidos: "" });
+    } catch (error) {
+      console.error("[Admin] invite error:", error);
+      setErr(error?.message || "No se pudo invitar al usuario");
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  function openDeleteModal(user) {
+    if (!user) return;
+    if (user.id === selfId) {
+      setErr("No puedes borrar tu propio usuario desde aquí.");
+      setOk("");
+      return;
+    }
+    setDeleteTarget(user || null);
+    setDeleteConfirm("");
+    setErr("");
+    setOk("");
+    setDeleteOpen(true);
+  }
+
+  function closeDeleteModal() {
+    if (deleteLoading) return;
+    setDeleteOpen(false);
+  }
+
+  async function handleDeleteSubmit(e) {
+    e?.preventDefault?.();
+    if (!deleteTarget || deleteLoading) return;
+    if (deleteConfirm.trim().toUpperCase() !== "BORRAR") {
+      setErr('Escribe "BORRAR" para confirmar la eliminación');
+      return;
+    }
+
+    setDeleteLoading(true);
+    setErr("");
+    setOk("");
+
+    try {
+      const resp = await fetch("/api/admin_delete_user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deleteTarget.id, email: deleteTarget.email }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        const message = data?.error || "No se pudo borrar al usuario";
+        throw new Error(message);
+      }
+
+      setRows((prev) => prev.filter((row) => row.id !== deleteTarget.id));
+      setOk(`Usuario ${deleteTarget.email} eliminado`);
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error("[Admin] delete user error:", error);
+      setErr(error?.message || "No se pudo borrar al usuario");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -431,6 +565,20 @@ export default function Admin_Usuarios() {
             {err || ok}
           </div>
         )}
+
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 px-5 py-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-amber-900">Invitar a un profesional</h2>
+            <p className="text-sm text-amber-800/80">Envía un acceso por correo para que complete su perfil en SimuPed.</p>
+          </div>
+          <button
+            type="button"
+            onClick={openInviteModal}
+            className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            <EnvelopeOpenIcon className="h-4 w-4" /> Invitar usuario
+          </button>
+        </section>
 
         {/* Filtros */}
         <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_40px_-30px_rgba(15,23,42,0.35)]">
@@ -527,13 +675,13 @@ export default function Admin_Usuarios() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col style={{ width: "12rem" }} />  {/* Email */}
-                  <col style={{ width: "8rem" }} />   {/* Nombre */}
-                  <col style={{ width: "9rem" }} />   {/* Rol / Unidad */}
-                  <col style={{ width: "8rem" }} />   {/* DNI */}
-                  <col style={{ width: "8rem" }} />   {/* Alta */}
-                  <col style={{ width: "8rem" }} />   {/* Estado */}
-                  <col style={{ width: "10rem" }} />  {/* Acciones */}
+                  <col style={{ width: "12rem" }} />
+                  <col style={{ width: "8rem" }} />
+                  <col style={{ width: "9rem" }} />
+                  <col style={{ width: "8rem" }} />
+                  <col style={{ width: "8rem" }} />
+                  <col style={{ width: "8rem" }} />
+                  <col style={{ width: "10rem" }} />
                 </colgroup>
                 <thead className="bg-slate-50/80 sticky top-0 z-10">
                   <tr>
@@ -596,6 +744,14 @@ export default function Admin_Usuarios() {
                                 </button>
                               );
                             })()}
+                            <button
+                              onClick={() => openDeleteModal(u)}
+                              disabled={deleteLoading || u.id === selfId}
+                              className="px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60 text-xs"
+                              title="Eliminar usuario"
+                            >
+                              Borrar
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -620,13 +776,13 @@ export default function Admin_Usuarios() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
-                  <col style={{ width: "13rem" }} />  {/* Email */}
-                  <col style={{ width: "9rem" }} />   {/* Nombre */}
-                  <col style={{ width: "10rem" }} />  {/* Rol / Unidad */}
-                  <col style={{ width: "9rem" }} />   {/* DNI */}
-                  <col style={{ width: "12rem" }} />  {/* Fechas */}
-                  <col style={{ width: "9rem" }} />   {/* Estado */}
-                  <col style={{ width: "7.5rem" }} />   {/* Resultados */}
+                  <col style={{ width: "13rem" }} />
+                  <col style={{ width: "9rem" }} />
+                  <col style={{ width: "10rem" }} />
+                  <col style={{ width: "9rem" }} />
+                  <col style={{ width: "12rem" }} />
+                  <col style={{ width: "9rem" }} />
+                  <col style={{ width: "10rem" }} />
                 </colgroup>
                 <thead className="bg-slate-50/80 sticky top-0 z-10">
                   <tr>
@@ -636,7 +792,7 @@ export default function Admin_Usuarios() {
                     <th className="text-left px-3 py-2">DNI</th>
                     <th className="text-left px-3 py-2">Fechas</th>
                     <th className="text-left px-3 py-2">Estado</th>
-                    <th className="text-left px-3 py-2">Resultados</th>
+                    <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -669,13 +825,23 @@ export default function Admin_Usuarios() {
                           />
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            onClick={() => verIntentos(u)}
-                            className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs"
-                            title="Ver intentos del usuario"
-                          >
-                            Ver
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => verIntentos(u)}
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs"
+                              title="Ver intentos del usuario"
+                            >
+                              Ver
+                            </button>
+                            <button
+                              onClick={() => openDeleteModal(u)}
+                              disabled={deleteLoading || u.id === selfId}
+                              className="px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60 text-xs"
+                              title="Eliminar usuario"
+                            >
+                              Borrar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -686,6 +852,141 @@ export default function Admin_Usuarios() {
           )}
         </Card>
       </main>
+      {inviteOpen ? (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-900/50 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Invitar nuevo usuario</h3>
+                <p className="text-sm text-slate-500">Introduce el correo y nombre para enviar la invitación.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeInviteModal}
+                className="text-sm text-slate-500 hover:text-slate-700"
+              >
+                Cerrar
+              </button>
+            </div>
+            <form onSubmit={handleInviteSubmit} className="px-6 py-5 space-y-4">
+              <label className="block text-sm text-slate-600">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Correo electrónico</span>
+                <input
+                  ref={inviteEmailRef}
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm((prev) => ({ ...prev, email: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+                  placeholder="profesional@hospital.es"
+                />
+              </label>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Nombre</span>
+                  <input
+                    type="text"
+                    value={inviteForm.nombre}
+                    onChange={(e) => setInviteForm((prev) => ({ ...prev, nombre: e.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+                    placeholder="Nombre"
+                  />
+                </label>
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Apellidos</span>
+                  <input
+                    type="text"
+                    value={inviteForm.apellidos}
+                    onChange={(e) => setInviteForm((prev) => ({ ...prev, apellidos: e.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+                    placeholder="Apellidos"
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-slate-500">
+                El usuario recibirá un correo de SimuPed con instrucciones para acceder y completar su perfil.
+              </p>
+              <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={closeInviteModal}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  disabled={inviteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={inviteLoading}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {inviteLoading ? "Enviando…" : "Enviar invitación"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+      {deleteOpen ? (
+        <div className="fixed inset-0 z-[1250] flex items-center justify-center bg-slate-900/60 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Eliminar usuario</h3>
+                <p className="text-sm text-slate-500">Esta acción es definitiva. Para confirmar escribe <strong>BORRAR</strong>.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                className="text-sm text-slate-500 hover:text-slate-700"
+                disabled={deleteLoading}
+              >
+                Cerrar
+              </button>
+            </div>
+            <form onSubmit={handleDeleteSubmit} className="px-6 py-5 space-y-4">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-semibold">Se borrará el acceso de:</p>
+                <ul className="mt-2 space-y-1">
+                  <li><span className="font-medium">Email:</span> {deleteTarget?.email || "—"}</li>
+                  <li><span className="font-medium">Nombre:</span> {[deleteTarget?.nombre, deleteTarget?.apellidos].filter(Boolean).join(" ") || "—"}</li>
+                </ul>
+              </div>
+              <label className="block text-sm text-slate-600">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Escribe BORRAR para confirmar</span>
+                <input
+                  type="text"
+                  value={deleteConfirm}
+                  onChange={(e) => setDeleteConfirm(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/60 focus:border-transparent"
+                  placeholder="BORRAR"
+                />
+              </label>
+              <p className="text-xs text-slate-500">
+                Se eliminará la cuenta y su perfil de SimuPed. Podrás invitar de nuevo más adelante si es necesario.
+              </p>
+              <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={closeDeleteModal}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  disabled={deleteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleteLoading}
+                  className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-60"
+                >
+                  {deleteLoading ? "Eliminando…" : "Eliminar usuario"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

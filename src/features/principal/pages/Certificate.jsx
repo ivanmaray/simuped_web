@@ -45,50 +45,100 @@ export default function Certificate() {
   const summaryScaleRef = useRef(null);
   const [scaleCert, setScaleCert] = useState(1);
   const [scaleSummary, setScaleSummary] = useState(1);
+  const [exportingMode, setExportingMode] = useState(null);
+  const isExporting = Boolean(exportingMode);
+  const mmToPx = (mm) => Math.round((mm * 96) / 25.4);
   const wrapperRef = useRef(null);
 
-  async function loadHtml2Pdf() {
-    if (typeof window !== 'undefined' && window.html2pdf) return window.html2pdf;
-    return new Promise((resolve, reject) => {
-      try {
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-        script.async = true;
-        script.onload = () => resolve(window.html2pdf);
-        script.onerror = (e) => reject(e);
-        document.head.appendChild(script);
-      } catch (e) {
-        reject(e);
-      }
+  async function loadJsPDF() {
+    // html2pdf.bundle usually exposes window.jspdf.jsPDF; some builds expose window.jsPDF
+    let ctor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (ctor) return ctor;
+    // Load UMD build as fallback
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = (e) => reject(e);
+      document.head.appendChild(s);
     });
+    return (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
   }
+  const handleDownloadPdfBasic = async () => {
+    if (!eligible) return;
 
-  const handleDownloadPdf = async () => {
+    const a4w = mmToPx(297);
+    const a4h = mmToPx(210);
+    const wrapper = wrapperRef.current;
+    const originalStyles = wrapper
+      ? {
+          width: wrapper.style.width,
+          minWidth: wrapper.style.minWidth,
+          maxWidth: wrapper.style.maxWidth,
+          height: wrapper.style.height,
+          minHeight: wrapper.style.minHeight,
+          transform: wrapper.style.transform,
+          padding: wrapper.style.padding,
+          margin: wrapper.style.margin,
+          display: wrapper.style.display
+        }
+      : null;
+
+    setExportingMode('dom-to-image');
+    document.documentElement.classList.add('exporting-pdf');
+    document.body.classList.add('exporting-pdf');
+
+    if (wrapper) {
+      wrapper.style.width = `${a4w}px`;
+      wrapper.style.minWidth = `${a4w}px`;
+      wrapper.style.maxWidth = `${a4w}px`;
+      wrapper.style.height = `${a4h}px`;
+      wrapper.style.minHeight = `${a4h}px`;
+      wrapper.style.margin = '0 auto';
+      wrapper.style.padding = '0';
+      wrapper.style.transform = 'none';
+      wrapper.style.display = 'block';
+    }
+
     try {
-      const html2pdf = await loadHtml2Pdf();
-      if (!html2pdf || !wrapperRef.current) return;
+      const [JsPdfCtor, html2canvasModule] = await Promise.all([
+        loadJsPDF(),
+        import('html2canvas')
+      ]);
+      const html2canvas = html2canvasModule?.default || html2canvasModule;
 
-      // Disable on-screen transforms while capturing
-      document.body.classList.add('exporting-pdf');
-      setScaleCert(1);
-      setScaleSummary(1);
-      await new Promise((r) => requestAnimationFrame(r));
+      const ensureImagesLoaded = async (root) => {
+        if (!root) return;
+        const imgs = Array.from(root.querySelectorAll('img'));
+        await Promise.all(
+          imgs.map(
+            (img) =>
+              new Promise((resolve) => {
+                if (img.complete && img.naturalWidth > 0) return resolve();
+                const done = () => {
+                  img.removeEventListener('load', done);
+                  img.removeEventListener('error', done);
+                  resolve();
+                };
+                img.addEventListener('load', done, { once: true });
+                img.addEventListener('error', done, { once: true });
+              })
+          )
+        );
+      };
 
-      // Override styles that use unsupported color functions
-      const bgWhite10Elements = wrapperRef.current.querySelectorAll('.bg-white\\/10');
-      bgWhite10Elements.forEach(el => {
-        el.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-      });
-      const gradientElements = wrapperRef.current.querySelectorAll('.bg-gradient-to-b');
-      gradientElements.forEach(el => {
-        el.style.backgroundImage = 'linear-gradient(to bottom, #f8fafc 0%, #e2e8f0 100%)';
-      });
+      await Promise.all([
+        ensureImagesLoaded(certContainerRef.current),
+        ensureImagesLoaded(summaryContainerRef.current)
+      ]);
 
-      // Build friendly filename: Certificado-SimuPed-[Nombre-Apellido]-YYYY-MM-DD.pdf
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
       const safe = (str) =>
         String(str || '')
           .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '') // strip diacritics
+          .replace(/[\u0300-\u036f]/g, '')
           .replace(/[^a-zA-Z0-9]+/g, '-')
           .replace(/^-+|-+$/g, '')
           .toLowerCase();
@@ -96,23 +146,116 @@ export default function Certificate() {
       const dateStr = new Date().toISOString().slice(0, 10);
       const fileName = `Certificado-SimuPed-${nameSlug || 'participante'}-${dateStr}.pdf`;
 
-      const opt = {
-        margin: 10,
-        filename: fileName,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        pagebreak: { mode: ['css'], before: '#certificate-summary' }
+      const pdf = new JsPdfCtor({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(0, 0, pageW, pageH, 'F');
+
+      const pxPerMm = 96 / 25.4;
+      const placeCover = (imgWpx, imgHpx, bleedMm = 4, padMm = 5) => {
+        const areaW = Math.max(0, pageW - 2 * bleedMm);
+        const areaH = Math.max(0, pageH - 2 * bleedMm);
+        const usableH = Math.max(0, areaH - 2 * padMm);
+        const mmW = imgWpx / pxPerMm;
+        const mmH = imgHpx / pxPerMm;
+        let scale = areaW / mmW;
+        const maxHeight = usableH > 0 ? usableH : areaH;
+        if (mmH * scale > maxHeight) {
+          scale = maxHeight / mmH;
+        }
+        const outW = mmW * scale;
+        const outH = mmH * scale;
+        const x = bleedMm + (areaW - outW) / 2;
+        const y = bleedMm + padMm + Math.max(0, (usableH - outH) / 2);
+        return { x, y, outW, outH };
       };
 
-      await html2pdf().set(opt).from(wrapperRef.current).save();
+      const capture = async (el) => {
+        if (!el) return null;
+        const previous = {
+          width: el.style.width,
+          minWidth: el.style.minWidth,
+          maxWidth: el.style.maxWidth,
+          height: el.style.height,
+          minHeight: el.style.minHeight,
+          margin: el.style.margin
+        };
+        el.style.width = `${a4w}px`;
+        el.style.minWidth = `${a4w}px`;
+        el.style.maxWidth = `${a4w}px`;
+        el.style.height = 'auto';
+        el.style.minHeight = `${a4h}px`;
+        el.style.margin = '0 auto';
+        try {
+          const captureHeight = Math.max(el.scrollHeight || 0, a4h);
+          const canvas = await html2canvas(el, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: false,
+            backgroundColor: '#ffffff',
+            logging: false,
+            removeContainer: true,
+            width: a4w,
+            height: captureHeight,
+            windowWidth: a4w,
+            windowHeight: captureHeight,
+            x: 0,
+            y: 0
+          });
+          return {
+            dataUrl: canvas.toDataURL('image/png', 1.0),
+            width: canvas.width,
+            height: canvas.height
+          };
+        } finally {
+          el.style.width = previous.width;
+          el.style.minWidth = previous.minWidth;
+          el.style.maxWidth = previous.maxWidth;
+          el.style.height = previous.height;
+          el.style.minHeight = previous.minHeight;
+          el.style.margin = previous.margin;
+        }
+      };
+
+      const certImage = await capture(certContainerRef.current);
+      if (!certImage) throw new Error('No se pudo capturar el certificado');
+      const firstPlacement = placeCover(certImage.width, certImage.height);
+      pdf.addImage(certImage.dataUrl, 'PNG', firstPlacement.x, firstPlacement.y, firstPlacement.outW, firstPlacement.outH, undefined, 'SLOW');
+
+      if (hasSummary && summaryContainerRef.current) {
+        const summaryImage = await capture(summaryContainerRef.current);
+        if (summaryImage) {
+          pdf.addPage('a4', 'landscape');
+          const summaryPlacement = placeCover(summaryImage.width, summaryImage.height);
+          pdf.addImage(summaryImage.dataUrl, 'PNG', summaryPlacement.x, summaryPlacement.y, summaryPlacement.outW, summaryPlacement.outH, undefined, 'SLOW');
+        }
+      }
+
+      pdf.save(fileName);
     } catch (e) {
-      console.warn('Error exportando PDF', e);
+      console.warn('Error exportando PDF (alternativo)', e);
       alert('No se pudo exportar el PDF. Inténtalo de nuevo.');
     } finally {
+      if (wrapper) {
+        wrapper.style.width = originalStyles?.width || '';
+        wrapper.style.minWidth = originalStyles?.minWidth || '';
+        wrapper.style.maxWidth = originalStyles?.maxWidth || '';
+        wrapper.style.height = originalStyles?.height || '';
+        wrapper.style.minHeight = originalStyles?.minHeight || '';
+        wrapper.style.transform = originalStyles?.transform || '';
+        wrapper.style.padding = originalStyles?.padding || '';
+        wrapper.style.margin = originalStyles?.margin || '';
+        wrapper.style.display = originalStyles?.display || '';
+      }
+      document.documentElement.classList.remove('exporting-pdf');
       document.body.classList.remove('exporting-pdf');
+      setExportingMode(null);
     }
   };
+
+  const handleDownloadPdf = handleDownloadPdfBasic;
 
   useEffect(() => {
     // Ensure print exports use landscape A4 and hide surrounding chrome
@@ -121,7 +264,7 @@ export default function Certificate() {
     styleTag.innerHTML = `
       @page {
         size: A4 landscape;
-        margin: 10mm;
+        margin: 0mm 10mm 10mm 10mm;
       }
       @media print {
         body {
@@ -155,6 +298,8 @@ export default function Certificate() {
         #certificate-root .hero-section {
           overflow: visible !important;
         }
+        #certificate-root .hero-section .hero-bg { display: none !important; }
+        .bg-white\\/10 { background-color: rgba(255,255,255,0.1) !important; }
         #certificate-root .hero-section .hero-bg {
           top: 0 !important;
           bottom: auto !important;
@@ -177,7 +322,12 @@ export default function Certificate() {
         }
       }
       /* PDF export (html2pdf) should not apply transforms */
-      body.exporting-pdf .cert-content-scale { transform: none !important; }
+
+      /* Remove page padding and margin for flush-to-top PDF export */
+      body.exporting-pdf .certificate-page { padding: 0 !important; }
+      body.exporting-pdf .print\\:hidden { display: none !important; }
+      body.exporting-pdf .export-hide { display: none !important; }
+      body.exporting-pdf #certificate-root { margin: 0 auto !important; }
 
       /* During html2pdf export, override Tailwind v4 OKLCH/OKLAB variables with sRGB hex fallbacks
          to avoid html2canvas "unsupported color function oklch/oklab" parsing errors */
@@ -244,7 +394,7 @@ export default function Certificate() {
       }
 
       /* Override opacity backgrounds that use color-mix with oklab */
-      body.exporting-pdf .bg-white\/10 {
+      body.exporting-pdf .bg-white\\/10 {
         background-color: rgba(255, 255, 255, 0.1) !important;
       }
 
@@ -265,23 +415,76 @@ export default function Certificate() {
         background: linear-gradient(135deg, #0A3D91 0%, #1E6ACB 100%) !important;
         display: flex !important;
         align-items: center !important;
+        width: calc(100% + 24mm) !important;
+        margin-left: -12mm !important;
+        margin-right: -12mm !important;
       }
       body.exporting-pdf .hero-bg {
         display: none !important;
       }
       body.exporting-pdf .hero-content {
         position: relative !important;
-        padding: 24px 32px !important;
+        padding: 32px 40px !important;
         width: 100% !important;
         display: flex !important;
         flex-direction: row !important;
         justify-content: center !important;
         align-items: center !important;
         gap: 32px !important;
+        text-align: center !important;
+      }
+      body.exporting-pdf .hero-content .text-center {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
+        text-align: center !important;
+        gap: 6px !important;
+        padding-top: 12px !important;
       }
       body.exporting-pdf .hero-content > img,
       body.exporting-pdf .hero-content img {
         height: 64px !important;
+      }
+
+      /* NEW: Reset margins and enforce centering for export */
+      html.exporting-pdf, body.exporting-pdf { margin: 0 !important; padding: 0 !important; }
+      body.exporting-pdf [data-cert-wrapper] {
+        width: 297mm !important;
+        min-width: 297mm !important;
+        max-width: 297mm !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        display: block !important;
+      }
+      body.exporting-pdf #certificate-root,
+      body.exporting-pdf #certificate-summary {
+        margin: 0 auto !important;
+      }
+      body.exporting-pdf [data-cert-wrapper] .border,
+      body.exporting-pdf [data-cert-wrapper] [class*="border-"] {
+        border-width: 0 !important;
+        border-color: transparent !important;
+      }
+      body.exporting-pdf [data-cert-wrapper] [class*="shadow"] {
+        box-shadow: none !important;
+      }
+      body.exporting-pdf [data-cert-wrapper] .bg-slate-50,
+      body.exporting-pdf [data-cert-wrapper] .bg-slate-100,
+      body.exporting-pdf [data-cert-wrapper] .bg-white\/10 {
+        background-color: transparent !important;
+      }
+      /* Hard reset of outlines/shadows during export to avoid raster hairlines */
+      body.exporting-pdf [data-cert-wrapper] *,
+      body.exporting-pdf [data-cert-wrapper] *::before,
+      body.exporting-pdf [data-cert-wrapper] *::after {
+        outline: none !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+        image-rendering: -webkit-optimize-contrast !important;
       }
     `;
     document.head.appendChild(styleTag);
@@ -540,12 +743,20 @@ export default function Certificate() {
         <Navbar />
       </div>
   <main className="certificate-page max-w-none mx-auto px-6 py-8 print:max-w-none print:px-0 print:py-0">
-        <h1 className="text-2xl font-semibold mb-4 print:hidden">Certificado de Finalización</h1>
+        <h1 className="text-2xl font-semibold mb-4 print:hidden export-hide">Certificado de Finalización</h1>
 
         {loading ? (
           <div className="print:hidden">Cargando comprobación de elegibilidad…</div>
         ) : !eligible ? (
           <div className="bg-white p-6 rounded shadow print:hidden">
+            <div className="mb-4 text-slate-700 text-sm leading-relaxed">
+              <p className="font-semibold text-slate-800 mb-2">Requisitos para obtener el certificado:</p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Completar la totalidad de los escenarios <strong>online</strong> disponibles en la plataforma SimuPed.</li>
+                <li>Participar al menos en un <strong>25 %</strong> de las sesiones de simulación <strong>presencial</strong>.</li>
+                <li>Contar con un perfil completo y validado (nombre, apellidos y DNI) en SimuPed.</li>
+              </ul>
+            </div>
             <p className="text-red-600 font-medium">No eres elegible para el certificado</p>
             <p className="mt-3 text-slate-700">{message}</p>
             <div className="mt-4">
@@ -553,7 +764,7 @@ export default function Certificate() {
             </div>
           </div>
         ) : (
-          <div ref={wrapperRef}>
+          <div ref={wrapperRef} data-cert-wrapper>
             <div className="flex w-full justify-center overflow-x-auto">
               <div
                 id="certificate-root"
@@ -582,7 +793,7 @@ export default function Certificate() {
                 >
                   <div className="absolute inset-0 opacity-25 hero-bg" style={{ backgroundImage: 'url(/videohero3.gif)', backgroundSize: 'cover', backgroundPosition: 'center' }} />
                   <div className="relative hero-content px-10 py-8 flex flex-col md:flex-row items-center gap-6 md:gap-10">
-                    <img src="/logos/huca.png" alt="HUCA" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
+                    <img src="/logos/huca.png" crossOrigin="anonymous" alt="HUCA" className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
                     <div className="text-center flex-1">
                       <h2 className="text-3xl font-bold tracking-tight">SimuPed</h2>
                       <p className="text-sm uppercase tracking-[0.35em] text-sky-100">Hospital Universitario Central de Asturias</p>
@@ -590,6 +801,7 @@ export default function Certificate() {
                     {logoState.visible ? (
                       <img
                         src={logoState.src}
+                        crossOrigin="anonymous"
                         alt="SimuPed"
                         className="h-16 md:h-20 bg-white/10 backdrop-blur-md p-3 rounded-2xl"
                         onError={() => {
@@ -723,7 +935,7 @@ export default function Certificate() {
                   ref={summaryHeroRef}
                 >
                   <div className="relative px-10 py-6 flex flex-col md:flex-row items-center gap-6 md:gap-10">
-                    <img src="/logos/huca.png" alt="HUCA" className="h-14 md:h-16 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
+                    <img src="/logos/huca.png" crossOrigin="anonymous" alt="HUCA" className="h-14 md:h-16 bg-white/10 backdrop-blur-md p-3 rounded-2xl" />
                     <div className="text-center flex-1">
                       <h2 className="text-2xl font-semibold tracking-tight">Resumen de Participación</h2>
                       <p className="text-xs uppercase tracking-[0.35em] text-sky-100">SimuPed · HUCA</p>
@@ -731,6 +943,7 @@ export default function Certificate() {
                     {logoState.visible ? (
                       <img
                         src={logoState.src}
+                        crossOrigin="anonymous"
                         alt="SimuPed"
                         className="h-14 md:h-16 bg-white/10 backdrop-blur-md p-3 rounded-2xl"
                         onError={() => {
@@ -816,15 +1029,12 @@ export default function Certificate() {
             </>
           )}
 
-            <div className="mt-6 space-x-3 print:hidden">
+            <div className="mt-6 flex items-center gap-3 print:hidden">
               <button
-                className="px-4 py-2 rounded bg-blue-600 text-white"
-                onClick={() => window.print()}
-              >Imprimir / Guardar como PDF</button>
-              <button
-                className="px-4 py-2 rounded bg-emerald-600 text-white"
+                className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-60"
                 onClick={handleDownloadPdf}
-              >Descargar PDF</button>
+                disabled={isExporting}
+              >{exportingMode ? 'Generando…' : 'Descargar PDF'}</button>
               <a className="px-4 py-2 rounded border" href="/perfil">Volver al perfil</a>
             </div>
           </div>
