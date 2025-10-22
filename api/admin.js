@@ -144,13 +144,14 @@ async function handleInviteUser(req, res) {
 
     // Guard: if a profile already exists for this email, abort early with a clear error
     try {
-      const { data: existingByEmail, error: existingByEmailErr } = await admin
+      const { data: allProfiles, error: allErr } = await admin
         .from('profiles')
-        .select('id, email')
-        .ilike('email', emailNorm)
-        .maybeSingle();
-      if (existingByEmail && !existingByEmailErr) {
-        return res.status(400).json({ ok: false, error: 'profile_email_exists', profile_id: existingByEmail.id });
+        .select('id, email');
+      if (!allErr && allProfiles) {
+        const existing = allProfiles.find(p => p.email && p.email.toLowerCase() === emailNorm);
+        if (existing) {
+          return res.status(400).json({ ok: false, error: 'profile_email_exists', profile_id: existing.id });
+        }
       }
     } catch (checkErr) {
       console.warn('[admin_invite_user] profile email precheck warning', checkErr);
