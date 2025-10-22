@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
-import fetch from 'node-fetch';
 
 function signPayload(payload, secret) {
   const hmac = crypto.createHmac('sha256', secret);
