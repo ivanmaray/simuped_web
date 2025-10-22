@@ -146,7 +146,7 @@ async function handleInviteUser(req, res) {
       const { data: existingByEmail, error: existingByEmailErr } = await admin
         .from('profiles')
         .select('id, email')
-        .eq('email', email)
+        .ilike('email', email)
         .maybeSingle();
       if (existingByEmail && !existingByEmailErr) {
         return res.status(400).json({ ok: false, error: 'profile_email_exists', profile_id: existingByEmail.id });
@@ -202,6 +202,13 @@ async function handleInviteUser(req, res) {
       } catch (deleteErr) {
         console.error('[admin_invite_user] cleanup delete error', deleteErr);
       }
+      // If it's a unique violation on email or id, surface a conflict with a friendlier code
+      const msg = (profileError.message || '').toLowerCase();
+      const isUnique = profileError.code === '23505' || msg.includes('duplicate key') || msg.includes('unique constraint');
+      if (isUnique) {
+        return res.status(400).json({ ok: false, error: 'profile_email_exists' });
+      }
+      // Other DB errors
       return res.status(500).json({
         ok: false,
         error: 'failed_to_create_profile',
