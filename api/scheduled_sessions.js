@@ -130,7 +130,7 @@ async function handleSessionRoster(req, res) {
       .select(`
         session_id,
         confirmed_at,
-        profiles!inner (
+        profiles (
           id,
           nombre,
           apellidos,
@@ -143,7 +143,7 @@ async function handleSessionRoster(req, res) {
 
     if (error) {
       console.error('[scheduled_session_roster] Supabase error', error);
-      return res.status(500).json({ ok: false, error: 'supabase_error' });
+      return res.status(500).json({ ok: false, error: 'supabase_error', details: error.message });
     }
 
     const rosters = {};

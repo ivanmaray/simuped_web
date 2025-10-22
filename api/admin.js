@@ -188,7 +188,7 @@ async function handleInviteUser(req, res) {
       } catch (deleteErr) {
         console.error('[admin_invite_user] cleanup delete error', deleteErr);
       }
-      return res.status(500).json({ ok: false, error: 'failed_to_create_profile' });
+      return res.status(500).json({ ok: false, error: 'failed_to_create_profile', details: profileError.message });
     }
 
     // Send welcome email
