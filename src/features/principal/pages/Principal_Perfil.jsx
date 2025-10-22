@@ -400,18 +400,25 @@ export default function Principal_Perfil() {
 
       let earnedList = [];
       try {
-        const { data: badgeRows, error: badgeErr } = await supabase
-          .from("user_badges")
-          .select(
-            "badge_id, earned_date, earned_for"
-          )
-          .eq("user_id", sess.user.id)
-          .order("earned_date", { ascending: false });
+        const BADGES_ENABLED = String(import.meta.env.VITE_ENABLE_USER_BADGES ?? 'true').toLowerCase() !== 'false';
+        if (BADGES_ENABLED) {
+          const { data: badgeRows, error: badgeErr } = await supabase
+            .from("user_badges")
+            .select(
+              "badge_id, earned_date, earned_for"
+            )
+            .eq("user_id", sess.user.id)
+            .order("earned_date", { ascending: false });
 
-        if (badgeErr) throw badgeErr;
-        earnedList = (badgeRows || []).map(mapEarnedBadge);
+          if (badgeErr) throw badgeErr;
+          earnedList = (badgeRows || []).map(mapEarnedBadge);
+        }
       } catch (achErr) {
-        console.warn("[Perfil] error cargando logros:", achErr);
+        // Silencia el caso de tabla inexistente en el schema cache (PGRST205)
+        const msg = (achErr?.message || '').toLowerCase();
+        if (achErr?.code !== 'PGRST205' && !msg.includes("could not find the table 'public.user_badges'")) {
+          console.warn("[Perfil] error cargando logros:", achErr);
+        }
         earnedList = [];
       }
 
