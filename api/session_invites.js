@@ -312,7 +312,8 @@ async function handleResendInvite(req, res) {
     try { respJson = respText ? JSON.parse(respText) : null; } catch (e) { respJson = null; }
     if (!resp.ok) {
       console.warn('[resend_session_invite] resend send failed', resp.status, respText);
-      return res.status(500).json({ ok: false, error: 'email_send_failed', detail: respText, status: resp.status, resend: respJson });
+      // Do not fail the whole request to avoid breaking session creation UX
+      return res.status(200).json({ ok: false, error: 'email_send_failed', detail: respText, status: resp.status, resend: respJson });
     }
     console.log('[resend_session_invite] resend send success', resp.status, respJson);
 
