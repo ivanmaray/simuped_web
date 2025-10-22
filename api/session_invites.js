@@ -145,23 +145,23 @@ function buildInviteEmail({ userName, sessionName, sessionDate, sessionLocation,
 function buildOrganizerConfirmEmail({ participantName, participantEmail, sessionName, sessionDate, sessionLocation, logoUrl }) {
   const formattedDate = formatInviteDate(sessionDate);
   return `
-  <div style="background-color:#f5f7fb;padding:24px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:620px;margin:0 auto;background-color:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.12);">
       <tr>
-        <td style="background:#0A3D91;padding:20px;text-align:center;color:#ffffff;">
-          ${logoUrl ? `<img src="${logoUrl}" alt="SimuPed" style="width:110px;max-width:100%;display:block;margin:0 auto 10px;" />` : '<div style="font-size:22px;font-weight:700;">SimuPed</div>'}
-          <div style="margin-top:4px;font-size:14px;opacity:0.9;">Nueva confirmación de asistencia</div>
+        <td style="background:linear-gradient(135deg,#0A3D91,#1E6ACB);padding:18px;text-align:center;color:#ffffff;">
+          ${logoUrl ? `<img src="${logoUrl}" alt="SimuPed" style="width:96px;max-width:100%;display:block;margin:0 auto 8px;" />` : '<div style="font-size:22px;font-weight:700;">SimuPed</div>'}
+          <div style="margin-top:4px;font-size:13px;opacity:0.9;">Nueva confirmación de asistencia</div>
         </td>
       </tr>
       <tr>
         <td style="padding:22px 26px;color:#1f2937;">
-          <p style="margin:0 0 16px;font-size:15px;color:#334155;">Se ha confirmado la asistencia de:</p>
-          <div style="margin:0 0 16px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+          <p style="margin:0 0 14px;font-size:15px;color:#334155;">Se ha confirmado la asistencia de:</p>
+          <div style="margin:0 0 14px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
             <div style="font-size:16px;color:#0f172a;font-weight:600;">${participantName || 'Usuario'}</div>
             <div style="font-size:14px;color:#475569;">${participantEmail || ''}</div>
           </div>
-          <p style="margin:0 0 8px;font-size:15px;color:#334155;">Sesión: <strong style="color:#0A3D91;">${sessionName || 'Sesión programada'}</strong></p>
-          <p style="margin:0 0 8px;font-size:15px;color:#334155;">Fecha y hora: <strong>${formattedDate || 'Por confirmar'}</strong></p>
+          <p style="margin:0 0 6px;font-size:15px;color:#334155;">Sesión: <strong style="color:#0A3D91;">${sessionName || 'Sesión programada'}</strong></p>
+          <p style="margin:0 0 6px;font-size:15px;color:#334155;">Fecha y hora: <strong>${formattedDate || 'Por confirmar'}</strong></p>
           <p style="margin:0;font-size:15px;color:#334155;">Lugar: <strong>${sessionLocation || 'Pendiente'}</strong></p>
         </td>
       </tr>

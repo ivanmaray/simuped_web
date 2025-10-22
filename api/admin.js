@@ -198,20 +198,20 @@ async function handleInviteUser(req, res) {
     const logoUrl = resolveAssetUrl(assetBaseUrl, '/logo-simuped-Dtpd4WLf.avif');
 
     const html = `
-      <div style="background-color:#f5f7fb;padding:32px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
+      <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(15,23,42,0.12);">
           <tr>
-            <td style="background:linear-gradient(135deg,#0A3D91,#1E6ACB);padding:32px;text-align:center;color:#ffffff;">
+            <td style="background:linear-gradient(135deg,#0A3D91,#1E6ACB);padding:18px;text-align:center;color:#ffffff;">
               ${logoUrl
-                ? `<img src="${logoUrl}" alt="SimuPed" style="width:120px;max-width:100%;display:block;margin:0 auto 12px;" />
-                   <div style="font-size:18px;font-weight:600;letter-spacing:0.3px;">Simulación Pediátrica</div>`
-                : '<div style="font-size:26px;font-weight:700;letter-spacing:0.4px;">SimuPed</div>'}
-              <div style="margin-top:6px;font-size:15px;opacity:0.85;">Hospital Universitario Central de Asturias</div>
+                ? `<img src="${logoUrl}" alt="SimuPed" style="width:96px;max-width:100%;display:block;margin:0 auto 8px;" />
+                   <div style="font-size:16px;font-weight:600;letter-spacing:0.2px;">Simulación Pediátrica</div>`
+                : '<div style="font-size:22px;font-weight:700;letter-spacing:0.3px;">SimuPed</div>'}
+              <div style="margin-top:4px;font-size:13px;opacity:0.85;">Hospital Universitario Central de Asturias</div>
             </td>
           </tr>
           <tr>
             <td style="padding:32px 36px;color:#1f2937;">
-              <h1 style="margin:12px 0 20px;font-size:24px;color:#0f172a;">¡Bienvenido a SimuPed!</h1>
+              <h1 style="margin:10px 0 14px;font-size:22px;color:#0f172a;">¡Bienvenido a SimuPed!</h1>
               <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Hola ${nombre} ${apellidos},</p>
               <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Tu cuenta ha sido creada exitosamente en la plataforma SimuPed. Ya puedes acceder y comenzar tu formación.</p>
 
