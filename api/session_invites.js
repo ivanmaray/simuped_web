@@ -426,15 +426,61 @@ async function handleConfirmInvite(req, res) {
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {});
 
-    // Check if invite exists and is still valid
-    const { data: invite, error: inviteErr } = await sb
-      .from('scheduled_session_invites')
-      .select('*')
-      .eq('session_id', session_id)
-      .eq('invited_user_id', user_id)
-      .single();
+    // Load profile once (for email/name fallback) — continue even if missing
+    let prof = null;
+    let displayName = null;
+    try {
+      const { data: profRow } = await sb
+        .from('profiles')
+        .select('nombre, apellidos, email, rol')
+        .eq('id', user_id)
+        .maybeSingle();
+      prof = profRow || null;
+      displayName = prof ? [prof.nombre, prof.apellidos].filter(Boolean).join(' ').trim() : null;
+    } catch (_) {}
 
-    if (inviteErr || !invite) {
+    // Ensure an invite exists: try by user_id, fallback by email; create if still missing
+    let invite = null;
+    try {
+      const { data: byUser } = await sb
+        .from('scheduled_session_invites')
+        .select('*')
+        .eq('session_id', session_id)
+        .eq('invited_user_id', user_id)
+        .maybeSingle();
+      invite = byUser || null;
+
+      if (!invite && prof?.email) {
+        const { data: byEmail } = await sb
+          .from('scheduled_session_invites')
+          .select('*')
+          .eq('session_id', session_id)
+          .eq('invited_email', prof.email)
+          .maybeSingle();
+        invite = byEmail || null;
+      }
+
+      if (!invite) {
+        // Create a pending invite linked to this user
+        const toInsert = {
+          session_id,
+          invited_user_id: user_id,
+          invited_email: prof?.email || null,
+          invited_name: displayName || null,
+          status: 'pending'
+        };
+        const { data: created } = await sb
+          .from('scheduled_session_invites')
+          .insert(toInsert)
+          .select('*')
+          .maybeSingle();
+        invite = created || null;
+      }
+    } catch (invLookupErr) {
+      console.warn('[confirm_session_invite] invite ensure error', invLookupErr);
+    }
+
+    if (!invite) {
       if (req.method === 'GET') return res.status(404).send('Invite not found');
       return res.status(404).json({ ok: false, error: 'invite_not_found' });
     }
@@ -449,12 +495,17 @@ async function handleConfirmInvite(req, res) {
       return res.status(400).json({ ok: false, error: 'invite_cancelled' });
     }
 
-    // Update invite status
-    const { error: updateErr } = await sb
+    // Update invite status (match by user_id when present, else by email)
+    let upd = sb
       .from('scheduled_session_invites')
       .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
-      .eq('session_id', session_id)
-      .eq('invited_user_id', user_id);
+      .eq('session_id', session_id);
+    if (invite?.invited_user_id) {
+      upd = upd.eq('invited_user_id', user_id);
+    } else if (prof?.email) {
+      upd = upd.eq('invited_email', prof.email);
+    }
+    const { error: updateErr } = await upd;
 
     if (updateErr) {
       console.error('[confirm_session_invite] update error', updateErr);
@@ -464,14 +515,6 @@ async function handleConfirmInvite(req, res) {
 
     // Ensure participant is registered and confirmed
     try {
-      // Load profile for user_name/email enrichment
-      const { data: prof, error: profErr } = await sb
-        .from('profiles')
-        .select('nombre, apellidos, email, rol')
-        .eq('id', user_id)
-        .maybeSingle();
-
-      const displayName = prof ? [prof.nombre, prof.apellidos].filter(Boolean).join(' ').trim() : null;
       const nowIso = new Date().toISOString();
 
       // Try upsert participant record

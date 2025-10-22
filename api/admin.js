@@ -147,7 +147,7 @@ async function handleInviteUser(req, res) {
       const { data: existingByEmail, error: existingByEmailErr } = await admin
         .from('profiles')
         .select('id, email')
-        .eq('email', emailNorm)
+        .ilike('email', emailNorm)
         .maybeSingle();
       if (existingByEmail && !existingByEmailErr) {
         return res.status(400).json({ ok: false, error: 'profile_email_exists', profile_id: existingByEmail.id });
@@ -158,7 +158,7 @@ async function handleInviteUser(req, res) {
 
     // Check if user already exists
     const { data: existingUser } = await admin.auth.admin.listUsers();
-    const userExists = existingUser.users.some(u => u.email === email);
+    const userExists = existingUser.users.some(u => u.email.toLowerCase() === emailNorm);
 
     if (userExists) {
       return res.status(400).json({ ok: false, error: 'user_already_exists' });
