@@ -278,9 +278,9 @@ async function handleInviteUser(req, res) {
           </tr>
           <tr>
             <td style="padding:32px 36px;color:#1f2937;">
-              <h1 style="margin:10px 0 14px;font-size:22px;color:#0f172a;">¡Bienvenido a SimuPed!</h1>
+              <h1 style="margin:10px 0 14px;font-size:22px;color:#0f172a;">Has sido invitado/a a SimuPed</h1>
               <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Hola ${nombre} ${apellidos},</p>
-              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Tu cuenta ha sido creada exitosamente en la plataforma SimuPed. Ya puedes acceder y comenzar tu formación.</p>
+              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Has sido invitado/a a la plataforma <strong style="color:#0A3D91;">SimuPed</strong>. Ya puedes acceder y completar tu perfil para empezar.</p>
 
               <div style="margin:20px 0;padding:20px 24px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
                 <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📧 Email:</strong> ${email}</p>
@@ -289,10 +289,10 @@ async function handleInviteUser(req, res) {
               </div>
 
               <div style="text-align:center;margin:28px 0;">
-                <a href="${baseUrl}/auth" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Acceder a SimuPed</a>
+                <a href="${baseUrl}/auth" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Entrar y completar perfil</a>
               </div>
 
-              <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Si tienes alguna duda sobre cómo usar la plataforma, no dudes en contactar con el equipo de soporte.</p>
+              <p style="margin:16px 0 12px;font-size:14px;line-height:1.6;color:#475569;">Si tienes dudas sobre el acceso o tu rol, puedes responder a este correo directamente.</p>
               <p style="margin:0;font-size:13px;line-height:1.7;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a>.</p>
             </td>
           </tr>
@@ -309,7 +309,7 @@ async function handleInviteUser(req, res) {
     await resend.emails.send({
       from: 'SimuPed <notificaciones@simuped.com>',
       to: emailNorm,
-      subject: 'Cuenta creada - Bienvenido a SimuPed',
+      subject: 'Invitación a SimuPed',
       html,
     });
 

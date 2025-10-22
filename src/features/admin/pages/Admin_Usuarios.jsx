@@ -130,7 +130,7 @@ export default function Admin_Usuarios() {
   const [, setMailStatus] = useState({}); // { [userId]: "ok" | "fail" }
   const [mailTime, setMailTime] = useState({}); // { [userId]: ISOString when notified via our API }
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: "", nombre: "", apellidos: "" });
+  const [inviteForm, setInviteForm] = useState({ email: "", nombre: "", apellidos: "", rol: "", unidad: "" });
   const [inviteLoading, setInviteLoading] = useState(false);
   const inviteEmailRef = useRef(null);
   const [selfId, setSelfId] = useState(null);
@@ -408,7 +408,7 @@ export default function Admin_Usuarios() {
   }
 
   function openInviteModal() {
-    setInviteForm({ email: "", nombre: "", apellidos: "" });
+    setInviteForm({ email: "", nombre: "", apellidos: "", rol: "", unidad: "" });
     setErr("");
     setOk("");
     setInviteOpen(true);
@@ -423,8 +423,10 @@ export default function Admin_Usuarios() {
     e.preventDefault();
     if (inviteLoading) return;
     const email = inviteForm.email.trim().toLowerCase();
-    const nombre = inviteForm.nombre.trim();
-    const apellidos = inviteForm.apellidos.trim();
+  const nombre = inviteForm.nombre.trim();
+  const apellidos = inviteForm.apellidos.trim();
+  const rol = inviteForm.rol.trim();
+  const unidad = inviteForm.unidad.trim();
     if (!email) {
       setErr("Introduce un correo válido para invitar");
       return;
@@ -438,7 +440,7 @@ export default function Admin_Usuarios() {
       const resp = await fetch("/api/admin?action=invite_user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, nombre, apellidos }),
+        body: JSON.stringify({ email, nombre, apellidos, rol, unidad }),
       });
       const data = await resp.json().catch(() => null);
       if (!resp.ok || data?.ok === false) {
@@ -472,9 +474,9 @@ export default function Admin_Usuarios() {
         });
       }
 
-      setOk(`Invitación enviada a ${email}`);
+  setOk(`Invitación enviada a ${email}`);
       setInviteOpen(false);
-      setInviteForm({ email: "", nombre: "", apellidos: "" });
+  setInviteForm({ email: "", nombre: "", apellidos: "", rol: "", unidad: "" });
     } catch (error) {
       console.error("[Admin] invite error:", error);
       setErr(error?.message || "No se pudo invitar al usuario");
@@ -877,7 +879,7 @@ export default function Admin_Usuarios() {
             <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Invitar nuevo usuario</h3>
-                <p className="text-sm text-slate-500">Introduce el correo y nombre para enviar la invitación.</p>
+                <p className="text-sm text-slate-500">Introduce el correo, nombre y datos opcionales (rol y unidad) para enviar la invitación.</p>
               </div>
               <button
                 type="button"
@@ -923,8 +925,30 @@ export default function Admin_Usuarios() {
                   />
                 </label>
               </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Rol (opcional)</span>
+                  <input
+                    type="text"
+                    value={inviteForm.rol}
+                    onChange={(e) => setInviteForm((prev) => ({ ...prev, rol: e.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+                    placeholder="Pediatra, Enfermería, Farmacia..."
+                  />
+                </label>
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Unidad (opcional)</span>
+                  <input
+                    type="text"
+                    value={inviteForm.unidad}
+                    onChange={(e) => setInviteForm((prev) => ({ ...prev, unidad: e.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+                    placeholder="UCI Pediátrica, Urgencias..."
+                  />
+                </label>
+              </div>
               <p className="text-xs text-slate-500">
-                El usuario recibirá un correo de SimuPed con instrucciones para acceder y completar su perfil.
+                La persona invitada recibirá un correo de SimuPed con un acceso directo para entrar y completar su perfil.
               </p>
               <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
                 <button
