@@ -82,6 +82,8 @@ function getLogoUrl(appBaseUrl, assetBaseUrl) {
   const candidates = [
     process.env.LOGO_URL,
     process.env.VITE_LOGO_URL,
+    `${assetBaseUrl}/logo-negative.png`,
+    `${appBaseUrl}/logo-negative.png`,
     `${assetBaseUrl}/logo-simuped-Dtpd4WLf.avif`,
     `${appBaseUrl}/logo-simuped-Dtpd4WLf.avif`
   ];
@@ -273,6 +275,40 @@ async function handleResendInvite(req, res) {
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { fetch });
     const { data: profile, error: profErr } = await sb.from('profiles').select('id, nombre, apellidos, email').eq('id', user_id).single();
   if (profErr || !profile) return res.status(200).json({ ok: false, error: 'profile_not_found', detail: profErr?.message, code: profErr?.code });
+
+    // Ensure an invite row exists for this (session_id, invited_user_id)
+    const invited_name = [profile?.nombre, profile?.apellidos].filter(Boolean).join(' ').trim() || null;
+    try {
+      const { error: upsertErr } = await sb
+        .from('scheduled_session_invites')
+        .upsert({
+          session_id,
+          invited_user_id: user_id,
+          invited_email: profile.email,
+          invited_name,
+          status: 'pending'
+        }, { onConflict: 'session_id,invited_user_id' });
+      if (upsertErr) {
+        // fallback: try insert if upsert not supported
+        const { data: existing, error: findErr } = await sb
+          .from('scheduled_session_invites')
+          .select('session_id')
+          .eq('session_id', session_id)
+          .eq('invited_user_id', user_id)
+          .maybeSingle();
+        if (!existing && !findErr) {
+          await sb.from('scheduled_session_invites').insert({
+            session_id,
+            invited_user_id: user_id,
+            invited_email: profile.email,
+            invited_name,
+            status: 'pending'
+          });
+        }
+      }
+    } catch (inviteEnsureErr) {
+      console.warn('[resend_session_invite] ensure invite row error', inviteEnsureErr);
+    }
 
     const tokenPayload = { session_id, user_id, exp: Date.now() + (1000 * 60 * 60 * 24 * 7) };
     const sig = signPayload(tokenPayload, INVITE_SECRET);
