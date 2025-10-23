@@ -217,7 +217,7 @@ async function handleInviteUser(req, res) {
 
       if (existingById) {
         // Update minimal fields and ensure approved = true
-        const { error: updErr } = await admin
+        let { error: updErr } = await admin
           .from('profiles')
           .update({
             nombre: nombre || existingById.nombre || null,
@@ -228,7 +228,32 @@ async function handleInviteUser(req, res) {
             approved: true
           })
           .eq('id', profileId);
-        if (updErr) profileError = updErr;
+        if (updErr) {
+          // If update fails (likely constraint on rol/unidad), retry with safest defaults
+          const msg = (updErr.message || '').toLowerCase();
+          const det = (updErr.details || '').toLowerCase();
+          const likelyConstraint = msg.includes('constraint') || det.includes('constraint') || det.includes('failing row contains') || msg.includes('invalid') || det.includes('invalid');
+          if (likelyConstraint) {
+            const { error: retryUpdErr } = await admin
+              .from('profiles')
+              .update({
+                nombre: nombre || existingById.nombre || null,
+                apellidos: apellidos || existingById.apellidos || null,
+                email: emailNorm || existingById.email || null,
+                rol: null,
+                unidad: null,
+                approved: true
+              })
+              .eq('id', profileId);
+            if (retryUpdErr) {
+              profileError = retryUpdErr;
+            } else {
+              updErr = null;
+            }
+          } else {
+            profileError = updErr;
+          }
+        }
       } else {
         const { error: insErr } = await admin
           .from('profiles')
