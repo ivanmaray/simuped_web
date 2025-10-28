@@ -551,15 +551,12 @@ async function handleConfirmInvite(req, res) {
     try {
       const nowIso = new Date().toISOString();
 
-      // Try upsert participant record
+      // Try upsert participant record (restricted to existing columns)
       const { error: partUpsertErr } = await sb
         .from('scheduled_session_participants')
         .upsert({
           session_id,
           user_id,
-          user_name: displayName || null,
-          user_email: prof?.email || null,
-          user_role: prof?.rol || 'confirmado',
           confirmed_at: nowIso,
           registered_at: nowIso
         }, { onConflict: 'session_id,user_id' });
@@ -568,12 +565,7 @@ async function handleConfirmInvite(req, res) {
         // Fallback: update existing row if present
         await sb
           .from('scheduled_session_participants')
-          .update({
-            user_name: displayName || null,
-            user_email: prof?.email || null,
-            user_role: prof?.rol || 'confirmado',
-            confirmed_at: nowIso
-          })
+          .update({ confirmed_at: nowIso })
           .eq('session_id', session_id)
           .eq('user_id', user_id);
       }
