@@ -476,12 +476,39 @@ async function handleConfirmInvite(req, res) {
           invited_name: displayName || null,
           status: 'pending'
         };
-        const { data: created } = await sb
+        const { data: created, error: createErr } = await sb
           .from('scheduled_session_invites')
           .insert(toInsert)
           .select('*')
           .maybeSingle();
-        invite = created || null;
+        if (createErr) {
+          console.warn('[confirm_session_invite] invite insert error', createErr);
+          // Fallback: fetch by email (likely duplicate) and reuse existing row
+          const { data: existingAfterInsert } = await sb
+            .from('scheduled_session_invites')
+            .select('*')
+            .eq('session_id', session_id)
+            .eq('invited_email', prof?.email || null)
+            .maybeSingle();
+          invite = existingAfterInsert || null;
+        } else {
+          invite = created || null;
+        }
+      }
+
+      // If we recovered an invite without invited_user_id, attach it now
+      if (invite && !invite.invited_user_id && user_id) {
+        try {
+          const { error: linkErr } = await sb
+            .from('scheduled_session_invites')
+            .update({ invited_user_id: user_id })
+            .eq('id', invite.id);
+          if (!linkErr) {
+            invite.invited_user_id = user_id;
+          }
+        } catch (linkAttachErr) {
+          console.warn('[confirm_session_invite] link invite to user warning', linkAttachErr);
+        }
       }
     } catch (invLookupErr) {
       console.warn('[confirm_session_invite] invite ensure error', invLookupErr);
