@@ -126,7 +126,14 @@ async function handleInviteUser(req, res) {
 
   try {
   const { email, nombre, apellidos, rol, unidad } = req.body || {};
-    if (!email || !nombre || !apellidos) {
+    const sanitizeName = (value) =>
+      (value || "")
+        .toString()
+        .replace(/\s+/g, " ")
+        .trim();
+    const nombreClean = sanitizeName(nombre);
+    const apellidosClean = sanitizeName(apellidos);
+    if (!email || !nombreClean || !apellidosClean) {
       return res.status(400).json({ ok: false, error: 'missing_required_fields' });
     }
     const emailNorm = String(email).trim().toLowerCase();
@@ -145,23 +152,33 @@ async function handleInviteUser(req, res) {
     });
 
     // Normalize and sanitize role/unidad to avoid DB constraint failures
-    const normalizeRol = (v) => {
-      const k = (v || '').toString().trim().toLowerCase();
-      if (k === 'médico' || k === 'medico') return 'medico';
-      if (k === 'enfermería' || k === 'enfermeria') return 'enfermeria';
-      if (k === 'farmacia' || k === 'farmacéutico' || k === 'farmaceutico') return 'farmacia';
-      return '';
+    const stripAccents = (value) =>
+      (value || "")
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    const normalizeRol = (value) => {
+      const raw = stripAccents(value).toLowerCase();
+      if (!raw) return null;
+      if (raw.startsWith('medic')) return 'medico';
+      if (raw.startsWith('enfermer')) return 'enfermeria';
+      if (raw.startsWith('farmac')) return 'farmacia';
+      return null;
     };
-    const normalizeUnidad = (v) => {
-      const s = (v || '').toString().trim();
-      if (!s) return null;
-      // Minimal guard: require 3+ chars, else null
-      return s.length >= 3 ? s : null;
+    const normalizeUnidad = (value) => {
+      const trimmed = (value || '').toString().trim();
+      if (!trimmed) return null;
+      const raw = stripAccents(trimmed).toLowerCase();
+      if (raw === 'farmacia') return 'Farmacia';
+      if (raw === 'uci' || raw === 'u.c.i') return 'UCI';
+      if (raw === 'urgencias') return 'Urgencias';
+      if (raw === 'pediatria' || raw === 'pediatría') return 'Pediatría';
+      return trimmed;
     };
     const rolNorm = normalizeRol(rol);
     const unidadNorm = normalizeUnidad(unidad);
-    // Be conservative with DB constraints: if role 'farmacia' is not accepted by DB, set null
-    const rolForDb = (rolNorm === 'farmacia') ? null : (rolNorm || null);
+    const rolForDb = rolNorm || null;
     const unidadForDb = unidadNorm;
 
     // Guard: if a profile already exists for this email, abort early with a clear error
@@ -193,10 +210,10 @@ async function handleInviteUser(req, res) {
       password: Math.random().toString(36).slice(-12) + 'Aa1!',
       email_confirm: true,
       user_metadata: {
-        nombre,
-        apellidos,
-        rol: rol || '',
-        unidad: unidad || ''
+        nombre: nombreClean,
+        apellidos: apellidosClean,
+        rol: rolNorm || stripAccents(rol).toLowerCase() || '',
+        unidad: unidadNorm || (unidad || '').toString().trim()
       }
     });
 
@@ -220,8 +237,8 @@ async function handleInviteUser(req, res) {
         let { error: updErr } = await admin
           .from('profiles')
           .update({
-            nombre: nombre || existingById.nombre || null,
-            apellidos: apellidos || existingById.apellidos || null,
+            nombre: nombreClean || existingById.nombre || null,
+            apellidos: apellidosClean || existingById.apellidos || null,
             email: emailNorm || existingById.email || null,
             rol: rolForDb,
             unidad: unidadForDb,
@@ -237,8 +254,8 @@ async function handleInviteUser(req, res) {
             const { error: retryUpdErr } = await admin
               .from('profiles')
               .update({
-                nombre: nombre || existingById.nombre || null,
-                apellidos: apellidos || existingById.apellidos || null,
+                nombre: nombreClean || existingById.nombre || null,
+                apellidos: apellidosClean || existingById.apellidos || null,
                 email: emailNorm || existingById.email || null,
                 rol: null,
                 unidad: null,
@@ -259,8 +276,8 @@ async function handleInviteUser(req, res) {
           .from('profiles')
           .insert([{
             id: profileId,
-            nombre,
-            apellidos,
+            nombre: nombreClean,
+            apellidos: apellidosClean,
             email: emailNorm,
             rol: rolForDb,
             unidad: unidadForDb,
@@ -278,8 +295,8 @@ async function handleInviteUser(req, res) {
               .from('profiles')
               .insert([{
                 id: profileId,
-                nombre,
-                apellidos,
+                nombre: nombreClean,
+                apellidos: apellidosClean,
                 email: emailNorm,
                 rol: null,
                 unidad: null,
@@ -365,12 +382,17 @@ async function handleInviteUser(req, res) {
     }
 
     const roleLabel = (v) => {
-      const k = (v || '').toString().trim().toLowerCase();
-      if (k === 'medico') return 'Médico';
-      if (k === 'enfermeria') return 'Enfermería';
-      if (k === 'farmacia') return 'Farmacia';
+      const k = stripAccents((v || '').toString()).toLowerCase();
+      if (k.startsWith('medic')) return 'Médico';
+      if (k.startsWith('enfermer')) return 'Enfermería';
+      if (k.startsWith('farmac')) return 'Farmacia';
       return v || 'No especificado';
     };
+
+  const roleForEmail = roleLabel(rolNorm || rol);
+  const unidadForEmail = unidadNorm || (unidad || '').toString().trim() || 'No especificada';
+  const nombreForEmail = nombreClean || nombre || '';
+  const apellidosForEmail = apellidosClean || apellidos || '';
 
     const html = `
       <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
@@ -387,13 +409,13 @@ async function handleInviteUser(req, res) {
           <tr>
             <td style="padding:32px 36px;color:#1f2937;">
               <h1 style="margin:10px 0 14px;font-size:22px;color:#0f172a;">Has sido invitado/a a SimuPed</h1>
-              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Hola ${nombre} ${apellidos},</p>
+              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Hola ${nombreForEmail} ${apellidosForEmail},</p>
               <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Has sido invitado/a a la plataforma <strong style="color:#0A3D91;">SimuPed</strong>. Ya puedes acceder y completar tu perfil para empezar.</p>
 
               <div style="margin:20px 0;padding:20px 24px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
                 <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📧 Email:</strong> ${email}</p>
-                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">👤 Rol:</strong> ${roleLabel(rol)}</p>
-                <p style="margin:0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">🏥 Unidad:</strong> ${unidad || 'No especificada'}</p>
+                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">👤 Rol:</strong> ${roleForEmail}</p>
+                <p style="margin:0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">🏥 Unidad:</strong> ${unidadForEmail}</p>
               </div>
 
               <div style="text-align:center;margin:28px 0;">
@@ -423,7 +445,19 @@ async function handleInviteUser(req, res) {
       html,
     });
 
-    return res.status(200).json({ ok: true, user_id: userData.user.id, profile: { id: profileId, email: emailNorm, nombre, apellidos } });
+    return res.status(200).json({
+      ok: true,
+      user_id: userData.user.id,
+      profile: {
+        id: profileId,
+        email: emailNorm,
+        nombre: nombreClean,
+        apellidos: apellidosClean,
+        rol: rolForDb,
+        unidad: unidadForDb,
+        approved: true
+      }
+    });
   } catch (err) {
     console.error('[admin_invite_user] error', err);
     return res.status(500).json({ ok: false, error: 'internal_error' });

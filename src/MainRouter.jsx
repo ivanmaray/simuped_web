@@ -31,6 +31,7 @@ const SimulacionConfirm = React.lazy(() => import("./features/online/pages/Onlin
 const Evaluacion = React.lazy(() => import("./features/evaluacion/pages/Evaluacion_Main.jsx"));
 const Perfil = React.lazy(() => import("./features/principal/pages/Principal_Perfil.jsx"));
 const Certificate = React.lazy(() => import("./features/principal/pages/Certificate.jsx"));
+const QuickTraining = React.lazy(() => import("./features/quicktraining/pages/QuickTraining.jsx"));
 const Registro = React.lazy(() => import("./auth/pages/Auth_Registro.jsx"));
 const Pendiente = React.lazy(() => import("./auth/pages/Auth_Pendiente.jsx"));
 const AttemptReview = React.lazy(() => import("./features/online/pages/Online_AttemptReview.jsx"));
@@ -130,6 +131,7 @@ export default function MainRouter() {
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Suspense fallback={<Spinner centered />}><Dashboard /></Suspense>} />
           <Route path="/sesiones-programadas" element={<Suspense fallback={<Spinner centered />}><ScheduledSessions /></Suspense>} />
+          <Route path="/entrenamiento-rapido" element={<Suspense fallback={<Spinner centered />}><QuickTraining /></Suspense>} />
           <Route element={<RequireAdmin />}>
             <Route path="/sesiones-programadas/crear" element={<Suspense fallback={<Spinner centered />}><CreateScheduledSession /></Suspense>} />
           </Route>

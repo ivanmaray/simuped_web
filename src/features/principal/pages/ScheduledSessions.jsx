@@ -516,49 +516,64 @@ const ScheduledSessions = () => {
                       <p className="mt-3 text-sm text-slate-500">Aún no hay participantes inscritos en esta sesión.</p>
                     ) : (
                       <ul className="mt-4 space-y-2">
-                        {session.participants.map((participant) => (
-                          <li
-                            key={participant.id}
-                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
-                          >
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">
-                                {participant.name}
-                              </p>
-                              {participant.email ? (
-                                <p className="text-xs text-slate-500">{participant.email}</p>
-                              ) : null}
-                            </div>
-                            <div className="text-right text-xs text-slate-500">
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${
-                                  participant.confirmed_at
-                                    ? 'bg-emerald-100 text-emerald-700'
-                                    : 'bg-amber-100 text-amber-700'
-                                }`}
-                              >
-                                {participant.confirmed_at ? 'Confirmado' : 'Pendiente'}
-                              </span>
-                              <div className="mt-1">
-                                {participant.confirmed_at
-                                  ? `Confirmado: ${new Date(participant.confirmed_at).toLocaleString('es-ES', {
-                                      day: '2-digit',
-                                      month: 'short',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}`
-                                  : participant.registered_at
-                                    ? `Registrado: ${new Date(participant.registered_at).toLocaleString('es-ES', {
+                        {session.participants.map((participant) => {
+                          const fullNameParts = [participant?.nombre, participant?.apellidos]
+                            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+                            .filter(Boolean);
+                          const fallbackName = [participant?.display_name, participant?.name, participant?.email]
+                            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+                            .find(Boolean) || 'Participante sin nombre';
+                          const displayName = fullNameParts.length > 0 ? fullNameParts.join(' ') : fallbackName;
+                          const roleText = typeof participant?.rol === 'string' ? participant.rol.trim() : '';
+                          const unitText = typeof participant?.unidad === 'string' ? participant.unidad.trim() : '';
+                          const detailLine = [roleText ? `Rol: ${roleText}` : '', unitText ? `Unidad: ${unitText}` : '']
+                            .filter(Boolean)
+                            .join(' · ');
+
+                          return (
+                            <li
+                              key={participant.id}
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                            >
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">
+                                  {displayName}
+                                </p>
+                                {detailLine ? (
+                                  <p className="text-xs text-slate-500">{detailLine}</p>
+                                ) : null}
+                              </div>
+                              <div className="text-right text-xs text-slate-500">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${
+                                    participant.confirmed_at
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-amber-100 text-amber-700'
+                                  }`}
+                                >
+                                  {participant.confirmed_at ? 'Confirmado' : 'Pendiente'}
+                                </span>
+                                <div className="mt-1">
+                                  {participant.confirmed_at
+                                    ? `Confirmado: ${new Date(participant.confirmed_at).toLocaleString('es-ES', {
                                         day: '2-digit',
                                         month: 'short',
                                         hour: '2-digit',
                                         minute: '2-digit'
                                       })}`
-                                    : 'Registro sin fecha'}
+                                    : participant.registered_at
+                                      ? `Registrado: ${new Date(participant.registered_at).toLocaleString('es-ES', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}`
+                                      : 'Registro sin fecha'}
+                                </div>
                               </div>
-                            </div>
-                          </li>
-                        ))}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>

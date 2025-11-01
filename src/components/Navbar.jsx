@@ -58,6 +58,7 @@ export default function Navbar({ variant = "auto" }) {
               )}
 
               {isPrivate && <NavItem to="/simulacion" label="Simulación online" />}
+              {isPrivate && <NavItem to="/entrenamiento-rapido" label="Entrenamiento rápido" />}
               {isPrivate && (
                 isAdmin ? (
                   <NavItem to="/presencial" label="Simulación Presencial" />
@@ -136,6 +137,7 @@ export default function Navbar({ variant = "auto" }) {
                 <MobileItem to="/presencial?flow=dual" label="Presencial (dual)" onClick={() => setOpen(false)} />
               )}
               {isPrivate && <MobileItem to="/simulacion" label="Simulación online" onClick={() => setOpen(false)} />}
+              {isPrivate && <MobileItem to="/entrenamiento-rapido" label="Entrenamiento rápido" onClick={() => setOpen(false)} />}
               {isPrivate && <MobileItem to="/evaluacion" label="Evaluación" onClick={() => setOpen(false)} />}
               {isAdmin && <MobileItem to="/admin" label="Admin" emphasize onClick={() => setOpen(false)} />}
 

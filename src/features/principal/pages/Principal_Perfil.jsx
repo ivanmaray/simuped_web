@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { TrophyIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 import { MEDICAL_BADGES, BADGE_CATEGORIES } from "../../../utils/badgeSystem.js";
@@ -19,6 +20,21 @@ const BADGE_LOOKUP = Object.values(MEDICAL_BADGES).reduce((acc, badge) => {
 }, {});
 
 const DEFAULT_BADGE_STYLES = "bg-slate-200 text-slate-700";
+
+const PASSWORD_RULES = [
+  { key: "length", label: "Al menos 8 caracteres", test: (value) => (value || "").length >= 8 },
+  { key: "uppercase", label: "Una letra mayúscula", test: (value) => /[A-Z]/.test(value || "") },
+  { key: "lowercase", label: "Una letra minúscula", test: (value) => /[a-z]/.test(value || "") },
+  { key: "number", label: "Un número", test: (value) => /\d/.test(value || "") },
+  { key: "special", label: "Un símbolo especial (!@#…)", test: (value) => /[^A-Za-z0-9]/.test(value || "") }
+];
+
+function evaluatePassword(password) {
+  return PASSWORD_RULES.reduce((acc, rule) => {
+    acc[rule.key] = rule.test(password || "");
+    return acc;
+  }, {});
+}
 
 function mapEarnedBadge(row) {
   const joined = row?.badges || row?.badge || null;
@@ -240,6 +256,7 @@ export default function Principal_Perfil() {
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
   const [pwMsg, setPwMsg] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -515,34 +532,54 @@ export default function Principal_Perfil() {
 
   async function handleUpdatePassword(e) {
     e?.preventDefault?.();
+    if (pwLoading) return;
     setPwMsg("");
-    if (!newPassword || newPassword.length < 8) {
-      setPwMsg("La contraseña debe tener al menos 8 caracteres.");
+
+    const passwordValue = newPassword || "";
+    const checks = evaluatePassword(passwordValue);
+    const missingRules = PASSWORD_RULES.filter((rule) => !checks[rule.key]).map((rule) => rule.label);
+
+    if (!passwordValue) {
+      setPwMsg("Introduce una contraseña.");
       return;
     }
     if (newPassword !== newPassword2) {
       setPwMsg("Las contraseñas no coinciden.");
       return;
     }
+    if (missingRules.length > 0) {
+      setPwMsg("La contraseña debe cumplir todos los requisitos indicados.");
+      return;
+    }
+
+    setPwLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      const { error } = await supabase.auth.updateUser({ password: passwordValue });
       if (error) {
         const raw = (error.message || '').toLowerCase();
-        if (raw.includes('weak')) setPwMsg('La contraseña no cumple los requisitos.');
-        else setPwMsg(error.message || 'No se pudo actualizar la contraseña.');
+        if (raw.includes('weak') || raw.includes('least')) {
+          setPwMsg("La contraseña no cumple las políticas de seguridad. Revisa los requisitos.");
+        } else {
+          setPwMsg(error.message || "No se pudo actualizar la contraseña.");
+        }
         return;
       }
       setPwMsg("Contraseña actualizada ✔");
-      setShowSetPassword(false);
-      setNewPassword("");
-      setNewPassword2("");
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('set_password');
-        window.history.replaceState({}, '', url.toString());
-      } catch {}
+      setTimeout(() => {
+        setShowSetPassword(false);
+        setNewPassword("");
+        setNewPassword2("");
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('set_password');
+          window.history.replaceState({}, '', url.toString());
+        } catch {}
+        setPwMsg("");
+      }, 1500);
     } catch (ex) {
       setPwMsg("Error inesperado actualizando la contraseña.");
+    } finally {
+      setPwLoading(false);
     }
   }
 
@@ -678,6 +715,13 @@ export default function Principal_Perfil() {
 
   if (!session) return null;
 
+  const passwordChecklist = PASSWORD_RULES.map((rule) => ({
+    key: rule.key,
+    label: rule.label,
+    met: rule.test(newPassword)
+  }));
+  const isPasswordReady = passwordChecklist.every((rule) => rule.met) && newPassword && newPassword === newPassword2;
+
   const heroStats = [
     {
       key: "estado",
@@ -747,18 +791,42 @@ export default function Principal_Perfil() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="block">
                 <span className="text-sm text-slate-700">Nueva contraseña</span>
-                <input type="password" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} placeholder="••••••••" required />
+                <input type="password" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} placeholder="••••••••" required autoComplete="new-password" />
               </label>
               <label className="block">
                 <span className="text-sm text-slate-700">Confirmar contraseña</span>
-                <input type="password" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]" value={newPassword2} onChange={(e)=>setNewPassword2(e.target.value)} placeholder="••••••••" required />
+                <input type="password" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1d99bf]" value={newPassword2} onChange={(e)=>setNewPassword2(e.target.value)} placeholder="••••••••" required autoComplete="new-password" />
+                {newPassword2 && newPassword && newPassword !== newPassword2 ? (
+                  <p className="mt-1 text-xs text-red-600">Las contraseñas no coinciden.</p>
+                ) : null}
               </label>
+            </div>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="text-xs font-medium text-slate-600 mb-2">La contraseña debe incluir:</p>
+              <ul className="space-y-1">
+                {passwordChecklist.map((rule) => (
+                  <li key={rule.key} className="flex items-center gap-2">
+                    {rule.met ? (
+                      <CheckCircleIcon className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <XCircleIcon className="h-4 w-4 text-slate-300" />
+                    )}
+                    <span className={`text-sm ${rule.met ? 'text-slate-600' : 'text-slate-500'}`}>{rule.label}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
             {pwMsg && (
               <div className={`mt-3 rounded border px-3 py-2 text-sm ${pwMsg.includes('✔') ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>{pwMsg}</div>
             )}
             <div className="mt-4">
-              <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-sky-700 text-white px-4 py-2 hover:bg-sky-800">Guardar contraseña</button>
+              <button
+                type="submit"
+                disabled={pwLoading || !isPasswordReady}
+                className="inline-flex items-center gap-2 rounded-lg bg-sky-700 text-white px-4 py-2 hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {pwLoading ? "Guardando…" : "Guardar contraseña"}
+              </button>
             </div>
           </form>
         )}

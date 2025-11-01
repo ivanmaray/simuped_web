@@ -148,7 +148,7 @@ async function handleSessionRoster(req, res) {
     if (userIds.length > 0) {
       const { data: profileRows, error: profileErr } = await client
         .from('profiles')
-        .select('id, nombre, apellidos, email')
+        .select('id, nombre, apellidos, email, rol, unidad')
         .in('id', userIds);
 
       if (profileErr) {
@@ -174,16 +174,25 @@ async function handleSessionRoster(req, res) {
       }
 
       const profile = row.user_id ? profilesById[row.user_id] : null;
-      const nameParts = profile ? [profile.nombre, profile.apellidos].filter(Boolean) : [];
-      const displayName = nameParts.length > 0 ? nameParts.join(' ').trim() : (profile?.email || 'Participante sin nombre');
+      const rawNombre = typeof profile?.nombre === 'string' ? profile.nombre.trim() : '';
+      const rawApellidos = typeof profile?.apellidos === 'string' ? profile.apellidos.trim() : '';
+      const rawRol = typeof profile?.rol === 'string' ? profile.rol.trim() : null;
+      const rawUnidad = typeof profile?.unidad === 'string' ? profile.unidad.trim() : null;
+      const rawEmail = typeof profile?.email === 'string' ? profile.email.trim() : null;
+
+      const nameParts = [rawNombre, rawApellidos].filter(Boolean);
+      const displayName = nameParts.length > 0 ? nameParts.join(' ').trim() : (rawEmail || 'Participante sin nombre');
 
       rosters[row.session_id].push({
         id: row.id,
         user_id: row.user_id,
-        nombre: profile?.nombre || null,
-        apellidos: profile?.apellidos || null,
-        email: profile?.email || null,
+        nombre: rawNombre || null,
+        apellidos: rawApellidos || null,
+        rol: rawRol,
+        unidad: rawUnidad,
+        email: rawEmail,
         display_name: displayName,
+        name: displayName,
         registered_at: row.registered_at,
         confirmed_at: row.confirmed_at
       });
