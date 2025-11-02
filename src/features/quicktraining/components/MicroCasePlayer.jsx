@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
+const ROLE_LABELS = {
+  medico: "Medicina",
+  enfermeria: "Enfermeria",
+  farmacia: "Farmacia"
+};
+
 function useNodeGraph(microCase) {
   return useMemo(() => {
     const nodeMap = new Map();
@@ -25,7 +31,7 @@ function Toast({ message, tone = "info" }) {
 
 const FEEDBACK_DELAY_MS = 400;
 
-export default function MicroCasePlayer({ microCase, onSubmitAttempt }) {
+export default function MicroCasePlayer({ microCase, onSubmitAttempt, participantRole }) {
   const { nodeMap, startId } = useNodeGraph(microCase);
   const [currentNodeId, setCurrentNodeId] = useState(startId);
   const [history, setHistory] = useState([]);
@@ -56,6 +62,11 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt }) {
   }, [startId]);
 
   const currentNode = currentNodeId ? nodeMap.get(currentNodeId) : null;
+  const roleLabel = participantRole ? (ROLE_LABELS[participantRole] || participantRole) : null;
+  const totalDecisionNodes = useMemo(() => {
+    return (microCase?.nodes || []).filter((node) => node.kind === "decision").length || 0;
+  }, [microCase]);
+  const progressRatio = totalDecisionNodes > 0 ? Math.min(1, history.length / totalDecisionNodes) : 0;
   const hasNode = Boolean(currentNode);
   const isTerminalNode = hasNode ? (currentNode.is_terminal || (currentNode.options?.length ?? 0) === 0) : false;
 
@@ -141,20 +152,40 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt }) {
     );
   }
 
+  const progressPercent = showSummary ? 100 : Math.round(progressRatio * 100);
+  const progressBarWidth = `${Math.min(100, Math.max(0, progressPercent))}%`;
+
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
       <div className="space-y-4">
-        <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
-          <header className="mb-4 flex items-start justify-between gap-3">
+        <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-5 py-5 text-white shadow-[0_26px_48px_-30px_rgba(15,23,42,0.8)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Paso clínico</p>
-              <h3 className="text-xl font-semibold text-slate-900">{microCase.title}</h3>
+              <p className="text-xs uppercase tracking-[0.28em] text-white/60">Microcaso activo</p>
+              <h3 className="mt-1 text-lg font-semibold text-white">{microCase.title}</h3>
+              <p className="mt-1 text-xs text-white/65">
+                {showSummary ? 'Resumen final' : `Paso ${history.length + 1} de ${Math.max(totalDecisionNodes, history.length + 1)}`}
+                {` • ${elapsedSeconds}s`}
+              </p>
             </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-              {showSummary ? "Resumen final" : `${history.length + 1}º paso`}
-            </span>
-          </header>
+            {roleLabel ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white/90">
+                {roleLabel}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-[11px] uppercase tracking-widest text-white/60">
+              <span>Progreso</span>
+              <span>{progressPercent}%</span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/15">
+              <div className="h-full rounded-full bg-white transition-all" style={{ width: progressBarWidth }}></div>
+            </div>
+          </div>
+        </div>
 
+        <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
           {showSummary ? (
             <div className="space-y-4">
               <Toast message="Has completado este microcaso." tone="success" />
@@ -185,14 +216,14 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt }) {
                 <ReactMarkdown>{currentNode.body_md || "Escenario sin descripción"}</ReactMarkdown>
               </div>
 
-              {lastFeedback && (
+              {lastFeedback ? (
                 <div className="mt-4">
                   <Toast
                     message={<ReactMarkdown>{lastFeedback.content}</ReactMarkdown>}
                     tone={lastFeedback.tone}
                   />
                 </div>
-              )}
+              ) : null}
 
               {!isTerminalNode ? (
                 <div className="mt-6 grid gap-3">
@@ -204,11 +235,6 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt }) {
                       className="text-left rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/5"
                     >
                       <ReactMarkdown>{option.label}</ReactMarkdown>
-                      {option.is_critical ? (
-                        <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-                          Decisión crítica
-                        </span>
-                      ) : null}
                     </button>
                   ))}
                 </div>

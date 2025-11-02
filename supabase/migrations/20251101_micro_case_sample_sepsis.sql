@@ -306,47 +306,65 @@ BEGIN
   ) VALUES
     (
       v_start_node,
-      'Administrar bolo de 20 ml/kg de cristaloides isotonicos y reevaluar la perfusion.',
+      'Iniciar bolo de 20 ml/kg de cristaloides e indicar reevaluacion completa a los 5 minutos.',
       v_fluid_response_node,
-      'Correcto. La resucitacion con fluidos es prioritaria para restaurar la perfusion. Reevaluar tras cada bolo y preparar antibioticos tempranos.',
+      'Correcto. Completar el primer bolo y reevaluar rapidamente te permite medir la respuesta y planear la siguiente intervencion.',
       2,
       false,
-      ARRAY['medico','enfermeria']::text[]
-    ),
-    (
-      v_start_node,
-      'Esperar resultados de laboratorio antes de iniciar reanimacion agresiva.',
-      v_delay_node,
-      'El retraso agrava el choque. Debes iniciar fluidos y antibioticos de inmediato para recuperar terreno perdido.',
-      -2,
-      true,
       ARRAY['medico']::text[]
     ),
     (
       v_start_node,
-      'Iniciar soporte vasopresor sin fluidos iniciales.',
-      v_delay_node,
-      'Los vasopresores sin resucitacion previa limitan la respuesta. Prioriza la correccion de hipovolemia y luego escala.',
-      -2,
-      true,
+      'Comenzar norepinefrina en el acceso disponible mientras organizas mas volumen.',
+      v_inotrope_node,
+      'La catecolamina puede ayudar, pero iniciarla antes de completar la resucitacion con volumen limita la respuesta. Prioriza los bolos y ajusta despues.',
+      -1,
+      false,
       ARRAY['medico']::text[]
     ),
     (
       v_start_node,
-      'Verificar peso y calcular dosis de ceftriaxona + vancomicina para mezclado inmediato mientras se mantiene la reanimacion.',
+      'Solicitar panel completo de laboratorio y aguardar los resultados antes de nuevos bolos.',
+      v_delay_node,
+      'Retrasar la resucitacion esperando examenes pierde tiempo valioso. Toma laboratorios en paralelo y continua con el soporte inicial.',
+      -2,
+      false,
+      ARRAY['medico']::text[]
+    ),
+    (
+      v_start_node,
+      'Asegurar un segundo acceso periférico, monitorizar presion y saturacion continua y sostener el bolo indicado.',
       v_fluid_response_node,
-      'Excelente. La farmacia agiliza la preparacion sin retrasar los bolos; comunica al equipo cuando las dosis estan listas para administrar.',
+      'Excelente. Enfermeria mantiene accesos redundantes y monitoreo estrecho para detectar cambios tempranos durante la resucitacion.',
+      2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_start_node,
+      'Priorizar la actualizacion de registros y esperar la siguiente valoracion medica antes de intervenir en la reanimacion.',
+      v_delay_node,
+      'La documentacion es clave, pero en choque debes centrarte en accesos, monitorizacion y apoyo al bolo para evitar retrasos.',
+      -1,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_start_node,
+      'Verificar peso y calcular dosis de ceftriaxona y vancomicina para mezclarlas en cuanto confirmen la via.',
+      v_fluid_response_node,
+      'Perfecto. Farmacia adelanta la preparacion sin interferir con los bolos y acorta el tiempo a antibiotico.',
       2,
       false,
       ARRAY['farmacia']::text[]
     ),
     (
       v_start_node,
-      'Postergar mezcla de antibioticos hasta recibir todos los cultivos y ajustes definitivos.',
+      'Esperar los hemocultivos para ajustar concentraciones antes de preparar la mezcla antibiotica.',
       v_delay_node,
-      'Esperar la confirmacion microbiologica retrasa la terapia empirica y perpetua el choque. Debes liberar la mezcla inmediatamente.',
+      'Demorar la mezcla a la espera de cultivos retrasa la primera dosis. Prepara la cobertura empirica y ajusta despues.',
       -2,
-      true,
+      false,
       ARRAY['farmacia']::text[]
     );
 
@@ -362,30 +380,66 @@ BEGIN
   ) VALUES
     (
       v_fluid_response_node,
-      'Administrar antibioticos de amplio espectro en los primeros 15 minutos.',
+      'Indicar antibioticos de amplio espectro dentro de los primeros 15 minutos y documentar el tiempo de administracion.',
       v_antibiotics_node,
-      'Clave. La administracion temprana de antibioticos reduce mortalidad en sepsis. Continua con cultivos y soporte hemodinamico.',
+      'Clave. Iniciar antibioticos tempranos reduce mortalidad; deja indicadas las dosis y sigue con soporte hemodinamico.',
       2,
       false,
       ARRAY['medico']::text[]
     ),
     (
       v_fluid_response_node,
-      'Solicitar TAC abdominal urgente antes de iniciar antibioticos.',
+      'Solicitar TAC abdominal urgente y posponer la dosis empirica hasta contar con imagen.',
       v_delay_node,
-      'La imagen puede esperar. Reanuda reanimacion y antibioticos ahora; la TAC vendra al estabilizar.',
+      'La imagen aporta informacion, pero diferir el antibiotico prolonga la bacteriemia. Coordina la TAC una vez administrada la terapia inicial.',
       -2,
-      true,
+      false,
       ARRAY['medico']::text[]
     ),
     (
       v_fluid_response_node,
-      'Suspender fluidos y mantener solo mantenimiento estandar.',
+      'Reducir los bolos a mantenimiento hasta ver evolucion ulterior sin reevaluacion estructurada.',
       v_observation_node,
-      'Suspender la reanimacion perpetua la hipoperfusion. Deberas decidir pronto si escalas o el paciente se deteriorara.',
+      'Detenerte temprano puede dejar hipoperfusion persistente. Define objetivos claros y continua la reanimacion guiada.',
       -1,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      false,
+      ARRAY['medico']::text[]
+    ),
+    (
+      v_fluid_response_node,
+      'Coordinar un segundo acceso, preparar bomba de infusion y anticipar requerimientos de vasopresor segun la respuesta.',
+      v_antibiotics_node,
+      'Excelente coordinacion de enfermeria: aseguras vias efectivas y rapidez cuando se escale a vasopresores.',
+      2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_fluid_response_node,
+      'Disminuir la velocidad del bolo actual por temor a sobrecarga sin revisar signos de perfusion en equipo.',
+      v_observation_node,
+      'Ajustar sin evaluacion compartida puede perpetuar la hipoperfusion. Usa criterios clinicos y comunica cambios antes de reducir la reanimacion.',
+      -1,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_fluid_response_node,
+      'Liberar la mezcla antibiotica preparada y confirmar compatibilidades con las perfusiones activas.',
+      v_antibiotics_node,
+      'Gran aporte de farmacia: reduces retrasos y evitas incompatibilidades con soporte vasoactivo.',
+      2,
+      false,
+      ARRAY['farmacia']::text[]
+    ),
+    (
+      v_fluid_response_node,
+      'Mantener los antibioticos reservados en la central hasta tener culturas para ajustar la dilucion.',
+      v_delay_node,
+      'Retener la dosis empirica a la espera de resultados prolonga el choque. Dispensa la terapia base y ajusta luego con los cultivos.',
+      -2,
+      false,
+      ARRAY['farmacia']::text[]
     ),
     (
       v_fluid_response_node,
@@ -418,38 +472,56 @@ BEGIN
   ) VALUES
     (
       v_antibiotics_node,
-      'Administrar un segundo bolo de 20 ml/kg y preparar inicio de soporte vasoactivo.',
+      'Indicar un segundo bolo de 20 ml/kg y dejar listo el inicio de adrenalina si persiste la hipotension.',
       v_inotrope_node,
-      'Adecuado: continua reanimacion guiada y prepara soporte vasoactivo si la hipotension persiste.',
+      'Adecuado: continuar con reanimacion guiada y anticipar soporte vasoactivo evita nuevas caidas hemodinamicas.',
       1,
       false,
-      ARRAY['medico','enfermeria']::text[]
+      ARRAY['medico']::text[]
     ),
     (
       v_antibiotics_node,
-      'Esperar evolucion sin mas bolos porque ya mejoro la TA inicial.',
+      'Reducir los bolos a 10 ml/kg y observar la tendencia de TA antes de decidir una escalada.',
       v_observation_node,
-      'Detenerte demasiado pronto mantiene la perfusion comprometida. Debes reevaluar indicadores y decidir escalada.',
+      'Quedarte corto con volumen puede mantener la hipoperfusion. Usa las guias de reanimacion completa antes de observar.',
       -1,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_antibiotics_node,
-      'Ajustar dosis segun funcion renal y confirmar estabilidad de la infusion antibiotica.',
+      'Verificar accesos, preparar bomba de perfusion y coordinar monitorizacion continua durante la administracion del segundo bolo.',
       v_inotrope_node,
-      'Gran aporte desde farmacia: garantizas dosis seguras mientras se escalan soportes.',
+      'Excelente soporte de enfermeria: aseguras vias seguras, bombas listas y datos hemodinamicos en tiempo real.',
+      1,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_antibiotics_node,
+      'Esperar 20 minutos para revisar si la TA permanece estable antes de solicitar nuevo bolo.',
+      v_observation_node,
+      'La mejoria parcial puede revertirse. Reevaluar de inmediato y solicitar bolos adicionales segun guias es preferible a esperar sin accion.',
+      -1,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_antibiotics_node,
+      'Ajustar dosis segun funcion renal estimada y confirmar compatibilidades de las mezclas con las lineas activas.',
+      v_inotrope_node,
+      'Gran aporte farmaceutico: garantizas dosis seguras y evitas interacciones mientras el equipo escalara soporte.',
       1,
       false,
       ARRAY['farmacia']::text[]
     ),
     (
       v_antibiotics_node,
-      'Retrasar la liberacion de antibioticos hasta contar con cultivos definitivos.',
+      'Reservar la segunda dosis hasta tener cultivos que orienten la cobertura definitiva.',
       v_delay_node,
-      'Demorar la terapia dirigida permite progresion del choque. Debes sostener la cobertura empirica.',
+      'Diferir la segunda dosis favorece recurrencias hemodinamicas. Mantén la cobertura empirica completa mientras llegan los resultados.',
       -2,
-      true,
+      false,
       ARRAY['farmacia']::text[]
     );
 
@@ -468,34 +540,61 @@ BEGIN
       'Reiniciar reanimacion agresiva: bolos secuenciales y antibioticos inmediatos.',
       v_fluid_response_node,
       'Corregir el retraso abre la posibilidad de revertir el choque, pero has perdido tiempo valioso. Sigue reanimando.',
-      -1,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      1,
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_delay_node,
       'Mantener observacion y esperar laboratoriales completos.',
       v_multiorgan_failure_node,
       'No actuar profundiza el choque y precipita falla multiorganica. La demora es letal.',
-      -4,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      -3,
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_delay_node,
       'Trasladar a otro hospital sin estabilizar previamente.',
       v_transfer_failure_node,
       'Un traslado sin soporte reproduce eventos catastroficos. Debes estabilizar antes de derivar.',
-      -4,
-      true,
+      -3,
+      false,
       ARRAY['medico']::text[]
     ),
     (
       v_delay_node,
-      'Activar alerta sepsis y coordinar liberacion inmediata de los antibioticos preparados.',
+      'Coordinar bolos escalonados, monitor continuo y avisar a farmacia para que libere antibioticos ya preparados.',
       v_fluid_response_node,
-      'Excelente practica farmaceutica: reactivas la terapia en tiempo y comunicas urgencia al equipo.',
+      'Excelente reaccion del equipo: sincronizas reanimacion, monitorizacion y antimicrobianos para recuperar terreno.',
       1,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_delay_node,
+      'Registrar signos cada 30 minutos mientras observas si la TA se recupera sin nuevas intervenciones.',
+      v_multiorgan_failure_node,
+      'La observacion pasiva en choque prolonga la hipoperfusion. Comunica la urgencia y participa de la reanimacion activa.',
+      -2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_delay_node,
+      'Activar alerta sepsis y liberar inmediatamente los antibioticos preparados para aplicar en cuanto haya acceso seguro.',
+      v_fluid_response_node,
+      'Excelente practica farmaceutica: reduces el tiempo a la primera dosis y comunicas la urgencia al equipo.',
+      1,
+      false,
+      ARRAY['farmacia']::text[]
+    ),
+    (
+      v_delay_node,
+      'Esperar confirmacion medica antes de reconfeccionar la mezcla, aun si eso retrasa unos minutos la administracion.',
+      v_transfer_failure_node,
+      'En esta fase cada minuto cuenta. Ajusta la mezcla si luego cambian el plan, pero no demores la dispensa inicial.',
+      -2,
       false,
       ARRAY['farmacia']::text[]
     );
@@ -512,30 +611,66 @@ BEGIN
   ) VALUES
     (
       v_observation_node,
-      'Escalar a adrenalina en perfusion continua y monitorizar respuesta minuto a minuto.',
+      'Titular adrenalina a 0.08 mcg/kg/min, solicitar acceso arterial y ajustar segun respuesta cada pocos minutos.',
       v_inotrope_node,
-      'Escalar a catecolaminas adecuadas alivia el choque distributivo. Ajusta segun respuesta y lactato.',
-      -1,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      'Buena decision: combinas catecolaminas con monitorizacion avanzada para guiar el soporte en tiempo real.',
+      2,
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_observation_node,
-      'Continuar solo con mantenimiento y esperar diuresis.',
+      'Mantener solo el aporte de mantenimiento y reevaluar cuando haya cambios en la diuresis.',
       v_renal_failure_node,
-      'No escalar mantiene hipoperfusion renal y precipita falla aguda. Debiste intensificar el soporte.',
+      'La diuresis tardará en reponerse si no corriges la hipoperfusion. Necesitas escalar soporte antes de esperar resultados urinarios.',
       -3,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_observation_node,
-      'Administrar bolo adicional grande sin monitorizar balance ni presion.',
+      'Indicar otro bolo completo de 20 ml/kg pese a signos de congestión venosa y sin guia hemodinamica adicional.',
       v_pulmonary_edema_node,
-      'Sobrecargar sin control deriva en edema pulmonar y deterioro respiratorio severo.',
-      -3,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      'Aumentar volumen a ciegas con signos de congestión favorece edema pulmonar. Busca datos hemodinamicos antes de repetir bolos completos.',
+      -2,
+      false,
+      ARRAY['medico']::text[]
+    ),
+    (
+      v_observation_node,
+      'Preparar la bomba de adrenalina, reforzar monitoreo continuo y reportar cambios de presion y perfusion cada 3 minutos.',
+      v_inotrope_node,
+      'Enfermeria sostiene la titulacion de catecolaminas y aporta datos constantes para ajustar el soporte.',
+      2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_observation_node,
+      'Reducir la frecuencia de controles a cada 30 minutos para evitar alarmas mientras se estabiliza el paciente.',
+      v_renal_failure_node,
+      'Disminuir la vigilancia en choque puede pasar por alto deterioros. Mantén controles estrechos y comunica cambios de inmediato.',
+      -2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_observation_node,
+      'Confirmar diluciones de adrenalina y proponer uso de bomba de jeringa para ajustes finos sin interrupciones.',
+      v_inotrope_node,
+      'Gran aporte farmaceutico: aseguras estabilidad de concentraciones y evitas errores al titular la catecolamina.',
+      1,
+      false,
+      ARRAY['farmacia']::text[]
+    ),
+    (
+      v_observation_node,
+      'Sugerir cambiar a coloides para ganar volumen sostenido en lugar de revisar la estrategia vasoactiva.',
+      v_pulmonary_edema_node,
+      'Agregar coloides sin reevaluar la perfusion ni la sobrecarga puede empeorar el cuadro respiratorio. Prioriza la optimizacion vasoactiva.',
+      -2,
+      false,
+      ARRAY['farmacia']::text[]
     );
 
   -- Opciones de escalada vasoactiva
@@ -555,7 +690,7 @@ BEGIN
       'Escalada apropiada a catecolaminas tras fluidos agresivos. Reevalua parametros cada pocos minutos y considera soporte endocrino si persiste la inestabilidad.',
       3,
       false,
-      ARRAY['medico','enfermeria']::text[]
+      ARRAY['medico']::text[]
     ),
     (
       v_inotrope_node,
@@ -563,7 +698,7 @@ BEGIN
       v_renal_failure_node,
       'La dopamina a dosis bajas no corrige la hipotension y retrasa el soporte efectivo. Selecciona catecolaminas apropiadas.',
       -2,
-      true,
+      false,
       ARRAY['medico']::text[]
     ),
     (
@@ -572,17 +707,35 @@ BEGIN
       v_pulmonary_edema_node,
       'El exceso de fluidos precipita edema pulmonar y empeora oxigenacion. Ajusta fluidos segun respuesta.',
       -2,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_inotrope_node,
-      'Verificar la dilucion y compatibilidad de adrenalina con las soluciones en curso y apoyar la titulacion segura.',
+      'Ajustar la dilucion y compatibilidad de adrenalina con las soluciones en curso y apoyar la titulacion segura.',
       v_hemodynamic_reassessment_node,
-      'Gran aporte farmaceutico: minimizas riesgos de precipitacion y aseguras ajustes segun estabilidad.',
+      'Gran aporte farmaceutico: minimizas riesgos de precipitacion y respaldas la titulacion fina del vasopresor.',
       1,
       false,
       ARRAY['farmacia']::text[]
+    ),
+    (
+      v_inotrope_node,
+      'Preparar bombas dedicadas para vasopresores, comunicar signos de extravasacion y acompañar la titulacion segun objetivos.',
+      v_hemodynamic_reassessment_node,
+      'Enfermeria garantiza administracion segura, monitorea complicaciones y documenta ajustes oportunamente.',
+      2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_inotrope_node,
+      'Mantener la adrenalina en dosis bajas de mantenimiento y enfocar el esfuerzo en nuevos bolos de cristaloides.',
+      v_pulmonary_edema_node,
+      'Sin ajustar la catecolamina ni monitor avanzado puedes terminar con sobrecarga y persistencia de hipoperfusion.',
+      -1,
+      false,
+      ARRAY['enfermeria']::text[]
     );
 
   -- Opciones tras la reevaluacion hemodinamica
@@ -609,8 +762,8 @@ BEGIN
       'Esperar resultados de laboratorio endocrino antes de añadir esteroides.',
       v_adrenal_crisis_node,
       'Retrasar el soporte hormonal permite progresion a choque refractario. Los esteroides deben iniciarse de inmediato en sepsis catecolamina resistente.',
-      -3,
-      true,
+      -2,
+      false,
       ARRAY['medico']::text[]
     ),
     (
@@ -619,8 +772,8 @@ BEGIN
       v_pulmonary_edema_node,
       'Sobrecargar al paciente en esta fase aumenta edema pulmonar y dificulta la ventilacion sin mejorar perfusion.',
       -2,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_hemodynamic_reassessment_node,
@@ -637,6 +790,24 @@ BEGIN
       v_steroid_info_node,
       'Aporte farmaceutico decisivo: evitas interacciones y aseguras administracion segura del esteroide.',
       1,
+      false,
+      ARRAY['farmacia']::text[]
+    ),
+    (
+      v_hemodynamic_reassessment_node,
+      'Limitar el monitoreo a controles cada media hora para dar tiempo a que actuen los vasopresores adicionales.',
+      v_adrenal_crisis_node,
+      'Reducir la frecuencia de controles puede pasar por alto deterioros; mantén vigilancia estrecha y comunica variaciones.',
+      -1,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_hemodynamic_reassessment_node,
+      'Esperar confirmacion por escrito antes de liberar hidrocortisona aunque ya este indicada verbalmente.',
+      v_adrenal_crisis_node,
+      'Cuando el equipo ya la indico verbalmente en un choque refractario, demorar la dispensa prolonga la inestabilidad. Documenta despues pero libera el medicamento.',
+      -2,
       false,
       ARRAY['farmacia']::text[]
     );
@@ -666,7 +837,7 @@ BEGIN
       v_uncontrolled_focus_node,
       'Esperar la normalizacion del lactato sin drenar el foco permite progresion de la infeccion y empeora el pronostico.',
       -2,
-      true,
+      false,
       ARRAY['medico']::text[]
     ),
     (
@@ -674,9 +845,9 @@ BEGIN
       'Suspender vasopresores ahora que la PAM mejoro a 55 mmHg.',
       v_multiorgan_failure_node,
       'Retirar soporte demasiado pronto precipita nueva caida hemodinamica y riesgo de paro circulatorio.',
-      -3,
-      true,
-      ARRAY['medico','enfermeria']::text[]
+      -2,
+      false,
+      ARRAY['medico']::text[]
     ),
     (
       v_steroid_info_node,
@@ -693,6 +864,24 @@ BEGIN
       v_source_control_node,
       'Aporte farmaceutico clave: garantizas terapia adecuada antes del control del foco.',
       1,
+      false,
+      ARRAY['farmacia']::text[]
+    ),
+    (
+      v_steroid_info_node,
+      'Suspender momentaneamente la bomba de adrenalina porque la PAM parece estable tras los esteroides.',
+      v_multiorgan_failure_node,
+      'Reducir vasopresores sin un periodo de estabilidad sostenida puede provocar recaida hemodinamica. Mantén ajustes graduales.',
+      -2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_steroid_info_node,
+      'Continuar con el plan antibiotico previo sin revisar sinergias o niveles ahora que se sospecha foco abdominal.',
+      v_uncontrolled_focus_node,
+      'Al no revisar cobertura y sinergias puedes dejar brechas contra patogenos abdominales. Revisa el esquema y ajusta con el equipo.',
+      -1,
       false,
       ARRAY['farmacia']::text[]
     );
@@ -722,7 +911,7 @@ BEGIN
       v_uncontrolled_focus_node,
       'Sin control del foco la infeccion persiste y se generaliza, anulando el beneficio de las catecolaminas.',
       -3,
-      true,
+      false,
       ARRAY['medico']::text[]
     ),
     (
@@ -731,7 +920,7 @@ BEGIN
       v_transfer_failure_node,
       'El traslado en choque sin control del foco y sin soporte completo incrementa mortalidad y complica la resucitacion.',
       -3,
-      true,
+      false,
       ARRAY['medico']::text[]
     ),
     (
@@ -749,6 +938,33 @@ BEGIN
       v_recovery_node,
       'Farmacia asegura continuidad antimicrobiana y reduce fallas de cobertura durante el control quirurgico.',
       2,
+      false,
+      ARRAY['farmacia']::text[]
+    ),
+    (
+      v_source_control_node,
+      'Retrasar la coordinacion quirurgica hasta que el lactato descienda por debajo de 2 mmol/L.',
+      v_uncontrolled_focus_node,
+      'Esperar marcadores perfectos antes de drenar el foco permite progresion de la infeccion. Coordina el control de foco en paralelo al soporte.',
+      -2,
+      false,
+      ARRAY['medico']::text[]
+    ),
+    (
+      v_source_control_node,
+      'Reducir las bombas a modo mantenimiento durante el traslado para simplificar la logistica.',
+      v_transfer_failure_node,
+      'Disminuir el soporte para facilitar el traslado provoca recaidas hemodinamicas. Ajusta gradualmente y mantén equipos dedicados.',
+      -2,
+      false,
+      ARRAY['enfermeria']::text[]
+    ),
+    (
+      v_source_control_node,
+      'Aplazar la reposicion de antibioticos porque se administraron hace menos de una hora.',
+      v_uncontrolled_focus_node,
+      'Sin redosificar intraoperatoriamente puedes quedar sin cobertura adecuada. Prepara dosis de refuerzo acorde a la duracion del procedimiento.',
+      -1,
       false,
       ARRAY['farmacia']::text[]
     );

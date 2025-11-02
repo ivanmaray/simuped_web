@@ -11,6 +11,20 @@ const ROLE_LABELS = {
   enfermeria: "Enfermeria",
   farmacia: "Farmacia"
 };
+const ROLE_DETAILS = {
+  medico: {
+    headline: "Decisiones clínicas prioritarias",
+    description: "Define la estrategia de reanimacion, los ajustes hemodinamicos y los hitos de control definitivo."
+  },
+  enfermeria: {
+    headline: "Ejecucion y monitorizacion",
+    description: "Garantiza accesos, administra terapias, anticipa complicaciones y mantiene vigilancia continua."
+  },
+  farmacia: {
+    headline: "Soporte farmacoterapeutico",
+    description: "Optimiza mezclas y dispensaciones, valida compatibilidades y propone ajustes seguros."
+  }
+};
 const API_BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MICROCASE_API_BASE_URL) || "/api";
 
 async function parseJsonResponse(response, fallbackErrorMessage) {
@@ -36,10 +50,25 @@ function formatDuration(minutes) {
   return remaining ? `${hours} h ${remaining} min` : `${hours} h`;
 }
 
-function CaseCard({ microCase, onSelect }) {
+function RoleSummary({ role }) {
+  if (!role) return null;
+  const info = ROLE_DETAILS[role];
+  if (!info) return null;
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition overflow-hidden">
-      <div className="p-5">
+    <div className="rounded-2xl border border-white/25 bg-white/10 px-4 py-3 text-white shadow-sm backdrop-blur">
+      <p className="text-xs uppercase tracking-[0.3em] text-white/70">Enfoque del rol</p>
+      <h3 className="mt-1 text-base font-semibold text-white">{info.headline}</h3>
+      <p className="mt-1 text-sm text-white/80">{info.description}</p>
+    </div>
+  );
+}
+
+function CaseCard({ microCase, onSelect, isSelected }) {
+  return (
+    <article
+      className={`rounded-2xl border transition overflow-hidden ${isSelected ? 'border-[#0A3D91] shadow-[0_18px_32px_-18px_rgba(10,61,145,0.55)]' : 'border-slate-200 shadow-sm hover:shadow-md'} bg-white`}
+    >
+      <div className="p-5 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{microCase.title}</h3>
@@ -52,14 +81,14 @@ function CaseCard({ microCase, onSelect }) {
           </span>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
           {microCase.difficulty ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">
               {microCase.difficulty === "facil" ? "Nivel básico" : microCase.difficulty === "avanzado" ? "Nivel avanzado" : "Nivel intermedio"}
             </span>
           ) : null}
           {(microCase.recommended_roles || []).map((role) => (
-            <span key={`role-${role}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+            <span key={`role-${role}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 font-medium text-sky-700">
               {ROLE_LABELS[role] || role}
             </span>
           ))}
@@ -70,13 +99,13 @@ function CaseCard({ microCase, onSelect }) {
           ))}
         </div>
 
-        <div className="mt-5">
+        <div className="pt-2">
           <button
             type="button"
             onClick={() => onSelect(microCase.id)}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0A3D91]/90"
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${isSelected ? 'bg-[#0A3D91] text-white shadow-sm' : 'bg-slate-900 text-white hover:bg-slate-700'}`}
           >
-            Iniciar microcaso
+            {isSelected ? 'Revisando…' : 'Iniciar microcaso'}
           </button>
         </div>
       </div>
@@ -233,31 +262,38 @@ export default function QuickTraining() {
       <Navbar variant="private" />
 
       <main className="max-w-6xl mx-auto px-5 py-10 space-y-8">
-        <header className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Entrenamiento rápido</p>
-          <h1 className="text-3xl md:text-4xl font-semibold text-slate-900">Microcasos interactivos</h1>
-          <p className="text-slate-600 max-w-2xl">
-            Resuelve situaciones clínicas en menos de 10 minutos. Cada decisión ofrece feedback inmediato para reforzar habilidades clave entre sesiones presenciales.
-          </p>
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Selecciona Rol</span>
-            <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
-              {ROLE_OPTIONS.map((role) => {
-                const isActive = participantRole === role;
-                return (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => setParticipantRole(role)}
-                    className={`px-3 py-1 text-xs font-semibold rounded-full transition ${isActive ? 'bg-[#0A3D91] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-                  >
-                    {ROLE_LABELS[role]}
-                  </button>
-                );
-              })}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0A3D91] via-[#0B4FC2] to-[#1B72E8] p-6 shadow-[0_28px_48px_-30px_rgba(11,79,194,0.7)]">
+          <div className="absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-3xl" aria-hidden="true"></div>
+          <div className="absolute -bottom-12 left-8 h-32 w-32 rounded-full bg-white/5 blur-2xl" aria-hidden="true"></div>
+          <div className="relative z-10 grid gap-6 md:grid-cols-[2fr_1fr] md:items-start">
+            <div className="space-y-3 text-white">
+              <p className="text-xs uppercase tracking-[0.35em] text-white/70">Entrenamiento rápido</p>
+              <h1 className="text-3xl md:text-4xl font-semibold">Microcasos interactivos</h1>
+              <p className="max-w-2xl text-sm md:text-base text-white/85">
+                Cambia de rol para entrenar la coordinación entre equipos. Cada enfoque ofrece preguntas y respuestas adaptadas a tu responsabilidad.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/70">Selecciona Rol</span>
+                <div className="inline-flex rounded-full border border-white/25 bg-white/10 p-1">
+                  {ROLE_OPTIONS.map((role) => {
+                    const isActive = participantRole === role;
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setParticipantRole(role)}
+                        className={`px-3 py-1 text-xs font-semibold rounded-full transition ${isActive ? 'bg-white text-[#0A3D91] shadow-sm' : 'text-white/85 hover:bg-white/15'}`}
+                      >
+                        {ROLE_LABELS[role]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+            <RoleSummary role={participantRole} />
           </div>
-        </header>
+        </section>
 
         {completedAttempts.length > 0 && (
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
@@ -300,6 +336,7 @@ export default function QuickTraining() {
                   key={microCase.id}
                   microCase={microCase}
                   onSelect={handleSelectCase}
+                  isSelected={selectedCaseId === microCase.id}
                 />
               ))
             )}
@@ -312,6 +349,18 @@ export default function QuickTraining() {
               <div>
                 <h2 className="text-2xl font-semibold text-slate-900">{selectedCase.title}</h2>
                 <p className="mt-1 text-sm text-slate-500">Sigue el flujo clínico y registra tus decisiones.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  {(selectedCase.recommended_roles || []).map((role) => (
+                    <span key={`detail-role-${role}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 font-medium text-sky-700">
+                      {ROLE_LABELS[role] || role}
+                    </span>
+                  ))}
+                  {(caseData?.available_roles || []).map((role) => (
+                    <span key={`available-role-${role}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+                      Disponible: {ROLE_LABELS[role] || role}
+                    </span>
+                  ))}
+                </div>
               </div>
               <button
                 type="button"
