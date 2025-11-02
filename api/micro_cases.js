@@ -1,5 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
+const ROLE_ALIASES = {
+  medico: ['medico', 'medica', 'doctor', 'doctora', 'medicos', 'facultativo'],
+  enfermeria: ['enfermeria', 'enfermera', 'enfermero', 'enfermeros', 'enfermeras'],
+  farmacia: ['farmacia', 'farmaceutico', 'farmaceutica', 'farmaceuticos', 'farmaceuticas']
+};
+
 function getServiceClient() {
   const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
@@ -12,6 +18,32 @@ function getServiceClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch }
+  });
+}
+
+function normalizeRole(rawRole) {
+  if (!rawRole || typeof rawRole !== 'string') return null;
+  const value = rawRole.trim().toLowerCase();
+  if (!value) return null;
+  for (const [normalized, variants] of Object.entries(ROLE_ALIASES)) {
+    if (normalized === value || variants.includes(value)) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function matchesRole(targetRoles, requestedRole) {
+  if (!requestedRole) return true;
+  if (!Array.isArray(targetRoles) || targetRoles.length === 0) return true;
+  return targetRoles.some((role) => {
+    if (!role) return false;
+    const value = role.toString().trim().toLowerCase();
+    if (!value) return false;
+    if (value === requestedRole) return true;
+    if (value === 'comun' || value === 'general') return true;
+    const aliasMatch = ROLE_ALIASES[requestedRole] || [];
+    return aliasMatch.includes(value);
   });
 }
 
@@ -77,6 +109,8 @@ async function handleGetCase(req, res) {
       return res.status(400).json({ ok: false, error: 'missing_case_id' });
     }
 
+    const requestedRole = normalizeRole(req.query.role || req.body?.role);
+
     const { data: caseRows, error: caseErr } = await client
       .from('micro_cases')
       .select('id, slug, title, summary, estimated_minutes, difficulty, recommended_roles, recommended_units, is_published, start_node_id')
@@ -111,7 +145,7 @@ async function handleGetCase(req, res) {
 
     const { data: nodeRows, error: nodesErr } = await client
       .from('micro_case_nodes')
-      .select('id, case_id, kind, body_md, media_url, order_index, is_terminal, auto_advance_to, metadata')
+      .select('id, case_id, kind, body_md, media_url, order_index, is_terminal, auto_advance_to, metadata, target_roles')
       .eq('case_id', id)
       .order('order_index', { ascending: true });
 
@@ -126,7 +160,7 @@ async function handleGetCase(req, res) {
       ? { data: [], error: null }
       : await client
         .from('micro_case_options')
-        .select('id, node_id, label, next_node_id, feedback_md, score_delta, is_critical')
+        .select('id, node_id, label, next_node_id, feedback_md, score_delta, is_critical, target_roles')
         .in('node_id', nodeIds)
         .order('created_at', { ascending: true });
 
@@ -141,12 +175,66 @@ async function handleGetCase(req, res) {
       optionsByNode[option.node_id].push(option);
     }
 
-    const nodes = (nodeRows || []).map((node) => ({
+    const availableRolesSet = new Set();
+
+    const hydratedNodes = (nodeRows || []).map((node) => {
+      const targetRoles = Array.isArray(node.target_roles) ? node.target_roles : [];
+      targetRoles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) availableRolesSet.add(normalized);
+        const value = role?.toString().trim().toLowerCase();
+        if (value === 'comun' || value === 'general') availableRolesSet.add('comun');
+      });
+      return {
+        ...node,
+        target_roles: targetRoles,
+        options: (optionsByNode[node.id] || []).map((option) => {
+          const optionTargets = Array.isArray(option.target_roles) ? option.target_roles : [];
+          optionTargets.forEach((role) => {
+            const normalized = normalizeRole(role);
+            if (normalized) availableRolesSet.add(normalized);
+          });
+          return {
+            ...option,
+            target_roles: optionTargets
+          };
+        })
+      };
+    });
+
+    const filteredNodes = requestedRole
+      ? hydratedNodes.filter((node) => matchesRole(node.target_roles, requestedRole))
+      : hydratedNodes;
+
+    const allowedNodeIds = new Set(filteredNodes.map((node) => node.id));
+
+    const nodes = filteredNodes.map((node) => ({
       ...node,
-      options: optionsByNode[node.id] || []
+      options: (node.options || []).filter((option) => {
+        if (!matchesRole(option.target_roles, requestedRole)) return false;
+        if (!option.next_node_id) return true;
+        return allowedNodeIds.has(option.next_node_id);
+      })
     }));
 
-    return res.status(200).json({ ok: true, case: { ...microCase, nodes } });
+    let effectiveStartNodeId = microCase.start_node_id;
+    if (requestedRole && effectiveStartNodeId && !allowedNodeIds.has(effectiveStartNodeId)) {
+      effectiveStartNodeId = nodes.find((node) => node.kind === 'decision')?.id || nodes[0]?.id || null;
+    }
+
+    const availableRoles = Array.from(availableRolesSet).filter(Boolean).sort();
+
+    return res.status(200).json({
+      ok: true,
+      case: {
+        ...microCase,
+        original_start_node_id: microCase.start_node_id,
+        start_node_id: effectiveStartNodeId,
+        nodes,
+        available_roles: availableRoles,
+        requested_role: requestedRole
+      }
+    });
   } catch (err) {
     if (err.message === 'server_not_configured') {
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
@@ -168,10 +256,12 @@ async function handleSubmitAttempt(req, res) {
       return res.status(401).json({ ok: false, error: 'missing_token' });
     }
 
-    const { caseId, steps, completed, scoreTotal, durationSeconds, status } = req.body || {};
+    const { caseId, steps, completed, scoreTotal, durationSeconds, status, participantRole } = req.body || {};
     if (!caseId || !Array.isArray(steps)) {
       return res.status(400).json({ ok: false, error: 'invalid_payload' });
     }
+
+    const normalizedRole = normalizeRole(participantRole);
 
     const attemptPayload = {
       case_id: caseId,
@@ -179,7 +269,8 @@ async function handleSubmitAttempt(req, res) {
       score_total: typeof scoreTotal === 'number' ? scoreTotal : 0,
       duration_seconds: typeof durationSeconds === 'number' ? durationSeconds : null,
       status: completed ? 'completed' : (status || 'in_progress'),
-      completed_at: completed ? new Date().toISOString() : null
+      completed_at: completed ? new Date().toISOString() : null,
+      attempt_role: normalizedRole
     };
 
     const { data: attemptRows, error: insertErr } = await client

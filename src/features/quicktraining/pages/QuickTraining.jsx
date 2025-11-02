@@ -5,25 +5,35 @@ import MicroCasePlayer from "../components/MicroCasePlayer.jsx";
 import Spinner from "../../../components/Spinner.jsx";
 
 const EMPTY_STATE = [];
+const ROLE_OPTIONS = ["medico", "enfermeria", "farmacia"];
+const ROLE_LABELS = {
+  medico: "Medicina",
+  enfermeria: "Enfermeria",
+  farmacia: "Farmacia"
+};
 const API_BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MICROCASE_API_BASE_URL) || "/api";
 
-async function parseJsonResponse(response, devHint) {
+async function parseJsonResponse(response, fallbackErrorMessage) {
   const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    const baseMessage = devHint || "Respuesta inesperada del servicio de microcasos.";
-    const suffix = import.meta.env?.DEV
-      ? " En desarrollo levanta el backend (p.ej. con `vercel dev`) o configura VITE_MICROCASE_API_BASE_URL para apuntar a tu entorno remoto."
-      : "";
-    throw new Error(`${baseMessage}${suffix}`);
+  if (contentType.includes("application/json")) {
+    return response.json();
   }
-  return response.json();
+
+  try {
+    const text = await response.text();
+    return JSON.parse(text);
+  } catch (err) {
+    console.warn("[QuickTraining] No JSON body", err);
+    throw new Error(fallbackErrorMessage);
+  }
 }
 
 function formatDuration(minutes) {
-  if (!minutes || Number.isNaN(minutes)) return "5 min aprox.";
-  if (minutes < 1) return "< 1 min";
-  if (minutes === 1) return "1 minuto";
-  return `${minutes} minutos`;
+  if (!minutes || Number.isNaN(Number(minutes))) return "Sin estimación";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  return remaining ? `${hours} h ${remaining} min` : `${hours} h`;
 }
 
 function CaseCard({ microCase, onSelect }) {
@@ -50,7 +60,7 @@ function CaseCard({ microCase, onSelect }) {
           ) : null}
           {(microCase.recommended_roles || []).map((role) => (
             <span key={`role-${role}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
-              {role}
+              {ROLE_LABELS[role] || role}
             </span>
           ))}
           {(microCase.recommended_units || []).map((unit) => (
@@ -63,7 +73,7 @@ function CaseCard({ microCase, onSelect }) {
         <div className="mt-5">
           <button
             type="button"
-            onClick={() => onSelect(microCase)}
+            onClick={() => onSelect(microCase.id)}
             className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0A3D91]/90"
           >
             Iniciar microcaso
@@ -79,15 +89,22 @@ export default function QuickTraining() {
   const [loading, setLoading] = useState(true);
   const [cases, setCases] = useState(EMPTY_STATE);
   const [error, setError] = useState("");
-  const [selectedCase, setSelectedCase] = useState(null);
+  const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseData, setCaseData] = useState(null);
   const [fetchingCase, setFetchingCase] = useState(false);
   const [completedAttempts, setCompletedAttempts] = useState([]);
+  const [participantRole, setParticipantRole] = useState("medico");
+  const [caseRequestNonce, setCaseRequestNonce] = useState(0);
 
   const token = useMemo(() => session?.access_token ?? null, [session]);
+  const selectedCase = useMemo(
+    () => cases.find((item) => item.id === selectedCaseId) || null,
+    [cases, selectedCaseId]
+  );
 
   useEffect(() => {
     if (!ready || !token) return;
+    let isMounted = true;
 
     async function loadCases() {
       setLoading(true);
@@ -102,47 +119,80 @@ export default function QuickTraining() {
           throw new Error(`No se pudo cargar el listado (${response.status})`);
         }
         const json = await parseJsonResponse(response, "No se pudo leer la lista de microcasos.");
-        if (json?.ok) {
-          setCases(json.cases || EMPTY_STATE);
-        } else {
+        if (!json?.ok) {
           throw new Error(json?.error || 'Respuesta inválida del servidor');
+        }
+        if (isMounted) {
+          setCases(json.cases || EMPTY_STATE);
         }
       } catch (err) {
         console.error('[QuickTraining] list error', err);
-        setError(err.message || 'No se pudo obtener el listado de microcasos.');
+        if (isMounted) {
+          setError(err.message || 'No se pudo obtener el listado de microcasos.');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
     loadCases();
+    return () => {
+      isMounted = false;
+    };
   }, [ready, token]);
 
-  async function handleSelectCase(microCase) {
-    setSelectedCase(microCase);
-    setCaseData(null);
-    setFetchingCase(true);
-    setError("");
+  useEffect(() => {
+    if (!selectedCaseId || !token) return;
+    let isMounted = true;
 
-    try {
-      const params = new URLSearchParams({ action: 'get', id: microCase.id });
-      const response = await fetch(`${API_BASE_URL}/micro_cases?${params.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar el microcaso (${response.status})`);
+    async function fetchCase() {
+      setFetchingCase(true);
+      setCaseData(null);
+      setError("");
+      try {
+        const params = new URLSearchParams({ action: 'get', id: selectedCaseId });
+        if (participantRole) {
+          params.set('role', participantRole);
+        }
+        const response = await fetch(`${API_BASE_URL}/micro_cases?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!response.ok) {
+          throw new Error(`No se pudo cargar el microcaso (${response.status})`);
+        }
+        const json = await parseJsonResponse(response, "No se pudo leer el detalle del microcaso seleccionado.");
+        if (!json?.ok) {
+          throw new Error(json?.error || 'Respuesta inválida del servidor');
+        }
+        if (isMounted) {
+          setCaseData(json.case);
+        }
+      } catch (err) {
+        console.error('[QuickTraining] case error', err);
+        if (isMounted) {
+          setError(err.message || 'No se pudo cargar el microcaso seleccionado.');
+        }
+      } finally {
+        if (isMounted) {
+          setFetchingCase(false);
+        }
       }
-      const json = await parseJsonResponse(response, "No se pudo leer el detalle del microcaso seleccionado.");
-      if (!json?.ok) {
-        throw new Error(json?.error || 'Respuesta inválida del servidor');
-      }
-      setCaseData(json.case);
-    } catch (err) {
-      console.error('[QuickTraining] case error', err);
-      setError(err.message || 'No se pudo cargar el microcaso seleccionado.');
-    } finally {
-      setFetchingCase(false);
     }
+
+    fetchCase();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedCaseId, participantRole, token, caseRequestNonce]);
+
+  function handleSelectCase(caseId) {
+    if (!caseId) return;
+    setCaseData(null);
+    setError("");
+    setSelectedCaseId(caseId);
+    setCaseRequestNonce((prev) => prev + 1);
   }
 
   async function handleSubmitAttempt(payload) {
@@ -154,18 +204,24 @@ export default function QuickTraining() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ action: 'submit', ...payload })
+        body: JSON.stringify({ action: 'submit', participantRole, ...payload })
       });
       if (!response.ok) {
         console.warn('[QuickTraining] submit attempt failed', response.status);
-      } else {
-        const json = await parseJsonResponse(response, 'No se pudo procesar la respuesta del intento.');
-        if (json?.ok) {
-          setCompletedAttempts((prev) => [
-            { caseId: payload.caseId, attemptId: json.attempt_id, score: payload.scoreTotal, completedAt: new Date().toISOString() },
-            ...prev
-          ].slice(0, 10));
-        }
+        return;
+      }
+      const json = await parseJsonResponse(response, 'No se pudo procesar la respuesta del intento.');
+      if (json?.ok) {
+        setCompletedAttempts((prev) => [
+          {
+            caseId: payload.caseId,
+            attemptId: json.attempt_id,
+            score: payload.scoreTotal,
+            role: participantRole,
+            completedAt: new Date().toISOString()
+          },
+          ...prev
+        ].slice(0, 10));
       }
     } catch (err) {
       console.warn('[QuickTraining] submit attempt error', err);
@@ -183,6 +239,24 @@ export default function QuickTraining() {
           <p className="text-slate-600 max-w-2xl">
             Resuelve situaciones clínicas en menos de 10 minutos. Cada decisión ofrece feedback inmediato para reforzar habilidades clave entre sesiones presenciales.
           </p>
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">Selecciona Rol</span>
+            <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
+              {ROLE_OPTIONS.map((role) => {
+                const isActive = participantRole === role;
+                return (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => setParticipantRole(role)}
+                    className={`px-3 py-1 text-xs font-semibold rounded-full transition ${isActive ? 'bg-[#0A3D91] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+                  >
+                    {ROLE_LABELS[role]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </header>
 
         {completedAttempts.length > 0 && (
@@ -191,7 +265,14 @@ export default function QuickTraining() {
             <ul className="text-sm text-emerald-900 space-y-1">
               {completedAttempts.map((attempt) => (
                 <li key={attempt.attemptId} className="flex items-center justify-between">
-                  <span>Microcaso completado ✓</span>
+                  <span>
+                    Microcaso completado ✓
+                    {attempt.role ? (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-emerald-700">
+                        {ROLE_LABELS[attempt.role] || attempt.role}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="text-emerald-700 font-medium">{attempt.score ?? 0} pts</span>
                 </li>
               ))}
@@ -236,8 +317,9 @@ export default function QuickTraining() {
                 type="button"
                 className="text-sm text-slate-500 hover:text-slate-700"
                 onClick={() => {
-                  setSelectedCase(null);
+                  setSelectedCaseId(null);
                   setCaseData(null);
+                  setError("");
                 }}
               >
                 Cerrar
@@ -250,8 +332,9 @@ export default function QuickTraining() {
               )}
               {!fetchingCase && caseData && (
                 <MicroCasePlayer
-                  key={caseData.id}
+                  key={`${caseData.id}-${participantRole}`}
                   microCase={caseData}
+                  participantRole={participantRole}
                   onSubmitAttempt={handleSubmitAttempt}
                 />
               )}
