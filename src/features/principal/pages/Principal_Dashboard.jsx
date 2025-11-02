@@ -451,13 +451,11 @@ export default function Principal_Dashboard() {
         <main className="max-w-6xl mx-auto px-5 py-8">
           {/* Accesos rápidos */}
           <h2 className="text-xl font-semibold mb-4 text-slate-800">Accesos rápidos</h2>
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
             <Card
               title="Simulación online"
               description="Escoge un escenario y practica con casos interactivos."
               to="/simulacion"
-              badge="Nuevo"
-              badgeColor="bg-emerald-100 text-emerald-700"
               icon={DevicePhoneMobileIcon}
             />
             <Card
@@ -467,6 +465,26 @@ export default function Principal_Dashboard() {
               stateObj={{ forceSelf: true }}
               icon={ChartBarIcon}
             />
+            {isAdmin ? (
+              <Card
+                title="Entrenamiento rápido"
+                description="Microcasos interactivos con decisiones que impactan la evolución."
+                to="/entrenamiento-rapido"
+                badge="En desarrollo"
+                badgeColor="bg-amber-100 text-amber-700"
+                icon={ArrowsRightLeftIcon}
+              />
+            ) : null}
+            {isAdmin ? (
+              <Card
+                title="Entrenamiento interactivo"
+                description="Escenarios con motor 3D y evaluación paso a paso aún en construcción."
+                to="/entrenamiento-interactivo"
+                badge="En desarrollo"
+                badgeColor="bg-amber-100 text-amber-700"
+                icon={PlayCircleIcon}
+              />
+            ) : null}
           </section>
 
           {/* Simulación presencial (modos + acciones) */}
@@ -700,15 +718,13 @@ function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon,
         {Icon ? <Icon className="h-6 w-6 text-[#0A3D91] drop-shadow-sm" /> : null}
       </div>
       <div className="flex-1">
-        <div className="flex items-center gap-3">
-          <h3 className="text-lg font-semibold group-hover:underline decoration-2 decoration-[#0A3D91]/40">{title}</h3>
-          {badge ? (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-black/10 ${badgeColor}`}>
-              {badge}
-            </span>
-          ) : null}
-        </div>
+        <h3 className="text-lg font-semibold group-hover:underline decoration-2 decoration-[#0A3D91]/40">{title}</h3>
         <p className="text-slate-600 mt-1">{description}</p>
+        {badge ? (
+          <span className={`mt-2 inline-flex w-fit rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-[0.2em] whitespace-nowrap ring-1 ring-black/10 ${badgeColor}`}>
+            {badge}
+          </span>
+        ) : null}
       </div>
     </div>
   );

@@ -44,7 +44,10 @@ export default function Navbar({ variant = "auto" }) {
             </Link>
 
             {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-2">
+            <nav
+              className="hidden md:flex items-center justify-center gap-2 px-2 py-1 lg:gap-3 xl:gap-4"
+              aria-label="Navegacion principal"
+            >
               <NavItem to="/" label="Inicio" />
 
               {/* Enlaces a secciones públicas cuando NO hay sesión */}
@@ -58,33 +61,28 @@ export default function Navbar({ variant = "auto" }) {
               )}
 
               {isPrivate && <NavItem to="/simulacion" label="Simulación online" />}
-              {isPrivate && <NavItem to="/entrenamiento-rapido" label="Entrenamiento rápido" />}
               {isPrivate && (
-                isAdmin ? (
-                  <NavItem to="/presencial" label="Simulación Presencial" />
-                ) : (
-                  <NavItem to="/presencial-info" label="Presencial (info)" />
-                )
+                <NavItem
+                  to={isAdmin ? "/presencial" : "/presencial-info"}
+                  label="Simulación presencial"
+                />
               )}
               {isPrivate && isAdmin && (
-                <NavItem to="/presencial?flow=dual" label="Presencial (dual)" />
+                <NavItem to="/entrenamiento-rapido" label="Entrenamiento rápido" tag="En desarrollo" />
+              )}
+              {isPrivate && isAdmin && (
+                <NavItem to="/entrenamiento-interactivo" label="Entrenamiento interactivo" tag="En desarrollo" />
               )}
               {isPrivate && <NavItem to="/evaluacion" label="Evaluación" />}
               {isAdmin && <NavItem to="/admin" label="Admin" emphasize />}
 
               {isPrivate ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-3 pl-1">
                   <NavItem to="/perfil" label="Perfil" />
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    className="px-3 py-2 text-sm font-medium rounded-lg text-slate-700 hover:bg-slate-100 transition"
-                  >
-                    Cerrar sesión
-                  </button>
+                  <LogoutButton onClick={handleSignOut} />
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-3 pl-1">
                   <NavItem to="/registro" label="Registro" />
                   {/* Botón de login que lleva al hero de la home */}
                   <NavItem to="/" label="Entrar" />
@@ -126,18 +124,30 @@ export default function Navbar({ variant = "auto" }) {
                 </>
               )}
 
+              {isPrivate && <MobileItem to="/simulacion" label="Simulación online" onClick={() => setOpen(false)} />}
               {isPrivate && (
-                isAdmin ? (
-                  <MobileItem to="/presencial" label="Presencial" onClick={() => setOpen(false)} />
-                ) : (
-                  <MobileItem to="/presencial-info" label="Presencial (info)" onClick={() => setOpen(false)} />
-                )
+                <MobileItem
+                  to={isAdmin ? "/presencial" : "/presencial-info"}
+                  label="Simulación presencial"
+                  onClick={() => setOpen(false)}
+                />
               )}
               {isPrivate && isAdmin && (
-                <MobileItem to="/presencial?flow=dual" label="Presencial (dual)" onClick={() => setOpen(false)} />
+                <MobileItem
+                  to="/entrenamiento-rapido"
+                  label="Entrenamiento rápido"
+                  tag="En desarrollo"
+                  onClick={() => setOpen(false)}
+                />
               )}
-              {isPrivate && <MobileItem to="/simulacion" label="Simulación online" onClick={() => setOpen(false)} />}
-              {isPrivate && <MobileItem to="/entrenamiento-rapido" label="Entrenamiento rápido" onClick={() => setOpen(false)} />}
+              {isPrivate && isAdmin && (
+                <MobileItem
+                  to="/entrenamiento-interactivo"
+                  label="Entrenamiento interactivo"
+                  tag="En desarrollo"
+                  onClick={() => setOpen(false)}
+                />
+              )}
               {isPrivate && <MobileItem to="/evaluacion" label="Evaluación" onClick={() => setOpen(false)} />}
               {isAdmin && <MobileItem to="/admin" label="Admin" emphasize onClick={() => setOpen(false)} />}
 
@@ -147,9 +157,16 @@ export default function Navbar({ variant = "auto" }) {
                   <button
                     type="button"
                     onClick={async () => { setOpen(false); await handleSignOut(); }}
-                    className="w-full px-3 py-2 text-base rounded-lg border border-slate-200 bg-white text-slate-800 text-left"
+                    className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-slate-800"
                   >
-                    Cerrar sesión
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M10 17l5-5-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                    Salir
                   </button>
                 </>
               ) : (
@@ -169,23 +186,30 @@ export default function Navbar({ variant = "auto" }) {
   );
 }
 
-function NavItem({ to, label, emphasize = false }) {
-  const base = "px-3 py-2 text-sm font-medium rounded-lg hover:bg-slate-100 transition whitespace-nowrap";
-  const cls = emphasize ? base + " text-white bg-slate-900 hover:bg-slate-800" : base + " text-slate-700";
+function NavItem({ to, label, emphasize = false, tag }) {
+  const base = "inline-flex min-h-[42px] max-w-[120px] flex-col items-center justify-center gap-1 px-2 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg hover:bg-slate-100 transition";
+  const defaultCls = base + " text-slate-700";
+  const activeCls = base + " text-slate-900 bg-slate-100";
+  const emphasizeCls = base + " text-white bg-slate-900 hover:bg-slate-800";
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
-        isActive && !emphasize ? base + " text-slate-900 bg-slate-100" : cls
+        emphasize ? emphasizeCls : isActive ? activeCls : defaultCls
       }
     >
-      {label}
+      <span className="leading-tight">{label}</span>
+      {tag ? (
+        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.15em] text-amber-700 whitespace-nowrap">
+          {tag}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
 
 function AnchorItem({ href, label }) {
-  const base = "px-3 py-2 text-sm font-medium rounded-lg hover:bg-slate-100 transition whitespace-nowrap text-slate-700";
+  const base = "inline-flex min-h-[42px] max-w-[110px] items-center justify-center px-2 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg hover:bg-slate-100 transition text-slate-700";
   return (
     <a href={href} className={base}>
       {label}
@@ -193,7 +217,25 @@ function AnchorItem({ href, label }) {
   );
 }
 
-function MobileItem({ to, label, emphasize = false, onClick }) {
+function LogoutButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+      aria-label="Cerrar sesión"
+      title="Cerrar sesión"
+    >
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M10 17l5-5-5-5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+function MobileItem({ to, label, emphasize = false, tag, onClick }) {
   const base = "w-full px-3 py-2 text-base rounded-lg border border-slate-200";
   const cls = emphasize ? base + " bg-slate-900 text-white" : base + " bg-white text-slate-800";
   return (
@@ -204,7 +246,14 @@ function MobileItem({ to, label, emphasize = false, onClick }) {
         isActive && !emphasize ? base + " bg-slate-100 text-slate-900 border-slate-300" : cls
       }
     >
-      {label}
+      <div className="flex flex-col gap-1">
+        <span>{label}</span>
+        {tag ? (
+          <span className="inline-flex w-fit rounded-full bg-amber-100 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.18em] text-amber-700 whitespace-nowrap">
+            {tag}
+          </span>
+        ) : null}
+      </div>
     </NavLink>
   );
 }

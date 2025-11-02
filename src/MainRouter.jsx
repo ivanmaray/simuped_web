@@ -32,6 +32,8 @@ const Evaluacion = React.lazy(() => import("./features/evaluacion/pages/Evaluaci
 const Perfil = React.lazy(() => import("./features/principal/pages/Principal_Perfil.jsx"));
 const Certificate = React.lazy(() => import("./features/principal/pages/Certificate.jsx"));
 const QuickTraining = React.lazy(() => import("./features/quicktraining/pages/QuickTraining.jsx"));
+const InteractiveLibrary = React.lazy(() => import("./features/interactive/pages/InteractiveLibrary.jsx"));
+const InteractiveCase = React.lazy(() => import("./features/interactive/pages/InteractiveCase.jsx"));
 const Registro = React.lazy(() => import("./auth/pages/Auth_Registro.jsx"));
 const Pendiente = React.lazy(() => import("./auth/pages/Auth_Pendiente.jsx"));
 const AttemptReview = React.lazy(() => import("./features/online/pages/Online_AttemptReview.jsx"));
@@ -132,6 +134,8 @@ export default function MainRouter() {
           <Route path="/dashboard" element={<Suspense fallback={<Spinner centered />}><Dashboard /></Suspense>} />
           <Route path="/sesiones-programadas" element={<Suspense fallback={<Spinner centered />}><ScheduledSessions /></Suspense>} />
           <Route path="/entrenamiento-rapido" element={<Suspense fallback={<Spinner centered />}><QuickTraining /></Suspense>} />
+          <Route path="/entrenamiento-interactivo" element={<Suspense fallback={<Spinner centered />}><InteractiveLibrary /></Suspense>} />
+          <Route path="/entrenamiento-interactivo/:caseId" element={<Suspense fallback={<Spinner centered />}><InteractiveCase /></Suspense>} />
           <Route element={<RequireAdmin />}>
             <Route path="/sesiones-programadas/crear" element={<Suspense fallback={<Spinner centered />}><CreateScheduledSession /></Suspense>} />
           </Route>

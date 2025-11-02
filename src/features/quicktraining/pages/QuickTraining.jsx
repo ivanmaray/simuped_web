@@ -13,16 +13,16 @@ const ROLE_LABELS = {
 };
 const ROLE_DETAILS = {
   medico: {
-    headline: "Decisiones clínicas prioritarias",
-    description: "Define la estrategia de reanimacion, los ajustes hemodinamicos y los hitos de control definitivo."
+    headline: "Visión clínica integradora",
+    description: "Marca prioridades, integra datos dinamicos y coordina la escalada terapeutica con el resto del equipo."
   },
   enfermeria: {
-    headline: "Ejecucion y monitorizacion",
-    description: "Garantiza accesos, administra terapias, anticipa complicaciones y mantiene vigilancia continua."
+    headline: "Ejecucion y vigilancia continua",
+    description: "Opera el plan, asegura vias y dispositivos, monitoriza tendencias y comunica cambios oportunamente."
   },
   farmacia: {
-    headline: "Soporte farmacoterapeutico",
-    description: "Optimiza mezclas y dispensaciones, valida compatibilidades y propone ajustes seguros."
+    headline: "Gestión farmacologica segura",
+    description: "Evalua dosis y compatibilidades, anticipa interacciones y sostiene decisiones seguras en terapias combinadas."
   }
 };
 const API_BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MICROCASE_API_BASE_URL) || "/api";

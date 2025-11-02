@@ -200,11 +200,11 @@ export default function Presencial_Listado() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
               <p className="text-white/70 text-sm uppercase tracking-wide">Simulación presencial</p>
-              <h1 className="text-3xl md:text-4xl font-semibold">{isDual ? 'Modo dual (instructor + alumnos)' : 'Modo instructor (1 pantalla)'}</h1>
+              <h1 className="text-3xl md:text-4xl font-semibold">{isDual ? 'Modo dual (instructor + alumnos)' : 'Consola presencial'}</h1>
               <p className="opacity-95 max-w-2xl text-lg">
                 {isDual
-                  ? 'Selecciona un escenario para generar el código de sesión dual, sincroniza pantallas y coordina al equipo en tiempo real.'
-                  : 'Selecciona un escenario para ejecutar la consola presencial en una pantalla y guiar la checklist del equipo.'}
+                  ? 'Selecciona un escenario, genera el código dual y sincroniza pantallas para coordinar al equipo en tiempo real.'
+                  : 'Selecciona un escenario y configura si la experiencia será en una o dos pantallas durante la confirmación.'}
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
