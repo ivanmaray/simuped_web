@@ -2,11 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { SourceMapConsumer } from 'source-map-js';
 
 const frames = [
-  { file: 'vendor.react-8OAAvjFX.js', line: 17, column: 4340 },
-  { file: 'vendor.react-8OAAvjFX.js', line: 17, column: 7915 },
-  { file: 'vendor.other-D08RHtzm.js', line: 3876, column: 52 },
-  { file: 'vendor.other-D08RHtzm.js', line: 3876, column: 867 },
-  { file: 'vendor.other-D08RHtzm.js', line: 3876, column: 891 }
+  { file: 'vendor.react-C9N6CaHR.js', line: 9, column: 3944 },
+  { file: 'vendor.react-C9N6CaHR.js', line: 9, column: 6791 },
+  { file: 'vendor.other-BYWVlRRX.js', line: 3877, column: 52 },
+  { file: 'vendor.other-BYWVlRRX.js', line: 3877, column: 867 },
+  { file: 'vendor.other-BYWVlRRX.js', line: 3877, column: 891 }
 ];
 
 async function mapFrame({ file, line, column }) {

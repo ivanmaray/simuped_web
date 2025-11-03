@@ -1,6 +1,4 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas } from "@react-three/fiber";
-import { ContactShadows, Environment, OrbitControls, useGLTF } from "@react-three/drei";
 
 function ModelAsset({ url, scale = 1 }) {
   const { scene } = useGLTF(url, true);
@@ -368,54 +366,9 @@ export default function SimulationStage({
 
   return (
     <div className="relative h-full w-full">
-      <Canvas
-        shadows
-        camera={{ position: cameraPosition, fov: 40 }}
-        dpr={[1, 1.5]}
-        gl={{ antialias: true, alpha: true }}
-        onCreated={handleCreated}
-        frameloop={autoRotate ? "always" : "demand"}
-      >
-        <color attach="background" args={["#0f172a"]} />
-        <ambientLight intensity={0.65} />
-        <directionalLight
-          position={[4, 6, 5]}
-          intensity={1.1}
-          castShadow
-          shadow-mapSize-width={1024}
-          shadow-mapSize-height={1024}
-        />
-        <group position={[0, 0, 0]}>
-          {modelPath ? (
-            <Suspense fallback={<ProceduralPatient />}>
-              <ModelAsset url={modelPath} scale={modelScale} />
-            </Suspense>
-          ) : proceduralVariant === "trauma" ? (
-            <ProceduralTraumaRoom />
-          ) : (
-            <ProceduralPatient />
-          )}
-        </group>
-        <ContactShadows
-          opacity={0.45}
-          scale={14}
-          blur={2.8}
-          far={5}
-          resolution={1024}
-          color="#0f172a"
-        />
-        <Environment preset="city" />
-        <OrbitControls
-          makeDefault
-          enablePan={false}
-          enableZoom
-          autoRotate={autoRotate}
-          autoRotateSpeed={0.6}
-          minDistance={2.2}
-          maxDistance={7}
-          target={[0, 0.5, 0]}
-        />
-      </Canvas>
+      <div className="flex items-center justify-center h-full text-white bg-slate-900">
+        3D Simulation Temporarily Disabled
+      </div>
       {overlayMessage ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-[min(360px,85%)] rounded-2xl bg-slate-900/70 px-4 py-3 text-center text-sm text-white">
           {overlayMessage}
