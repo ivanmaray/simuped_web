@@ -1,10 +1,16 @@
-const http = require('http');
-const path = require('path');
-const serveHandler = require('serve-handler');
-const puppeteer = require('puppeteer');
+import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import serveHandler from 'serve-handler';
+import puppeteer from 'puppeteer';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 const PORT = 4173;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 (async () => {
   const server = http.createServer((request, response) => {
@@ -32,7 +38,7 @@ const PORT = 4173;
 
   try {
     await page.goto(`http://127.0.0.1:${PORT}`, { waitUntil: 'load' });
-    await page.waitForTimeout(5000);
+    await delay(5000);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
