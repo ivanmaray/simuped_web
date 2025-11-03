@@ -20,7 +20,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^9.1.0",
-    "react-router-dom": "^7.8.1",
+    "react-router-dom": "^6.28.0",
     "resend": "^6.0.1",
     "three": "^0.169.0"
   },
@@ -38,6 +38,8 @@
     "postcss": "^8.5.6",
     "puppeteer": "^24.27.0",
     "rollup-plugin-visualizer": "^5.14.0",
+    "serve-handler": "^6.1.6",
+    "source-map-js": "^1.2.1",
     "tailwindcss": "^4.1.12",
     "tailwindcss-cli": "^0.1.2",
     "vite": "^7.1.2"
