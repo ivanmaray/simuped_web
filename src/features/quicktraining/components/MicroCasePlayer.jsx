@@ -68,7 +68,17 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   }, [microCase]);
   const progressRatio = totalDecisionNodes > 0 ? Math.min(1, history.length / totalDecisionNodes) : 0;
   const hasNode = Boolean(currentNode);
-  const isTerminalNode = hasNode ? (currentNode.is_terminal || (currentNode.options?.length ?? 0) === 0) : false;
+  const isTerminalNode = hasNode ? currentNode.is_terminal : false;
+
+  // Auto-advance for info nodes
+  useEffect(() => {
+    if (currentNode && currentNode.kind === 'info' && currentNode.auto_advance_to) {
+      const timer = setTimeout(() => {
+        setCurrentNodeId(currentNode.auto_advance_to);
+      }, 3000); // 3 seconds delay for reading
+      return () => clearTimeout(timer);
+    }
+  }, [currentNode]);
 
   function handleOptionSelect(option) {
     const nextScore = score + (option.score_delta || 0);
@@ -239,8 +249,55 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   ))}
                 </div>
               ) : (
-                <div className="mt-6 space-y-3">
-                  <Toast message="Has alcanzado un desenlace del caso." tone="success" />
+                <div className="mt-6 space-y-4">
+                  {/* Visual outcome display */}
+                  <div className="rounded-2xl border-2 p-6 text-center">
+                    {currentNode.metadata?.is_correct === true ? (
+                      <div className="space-y-3">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                          <svg className="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-semibold text-emerald-900">¡Paciente Estabilizado!</h3>
+                        <p className="text-sm text-emerald-700">
+                          El paciente ha respondido bien al tratamiento y presenta signos de recuperación.
+                        </p>
+                      </div>
+                    ) : currentNode.metadata?.is_correct === false ? (
+                      <div className="space-y-3">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+                          <svg className="h-8 w-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-semibold text-amber-900">Escalada Requerida</h3>
+                        <p className="text-sm text-amber-700">
+                          Se requiere intervención de un especialista superior o derivación a centro de mayor complejidad.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                          <svg className="h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-semibold text-slate-900">Desenlace del Caso</h3>
+                        <p className="text-sm text-slate-700">
+                          Has completado el microcaso. Revisa los detalles del desenlace.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Outcome content */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="prose prose-sm max-w-none text-slate-800">
+                      <ReactMarkdown>{currentNode.body_md || "Caso completado."}</ReactMarkdown>
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
