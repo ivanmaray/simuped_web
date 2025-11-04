@@ -74,25 +74,29 @@ function CaseCard({ microCase, onSelect }) {
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-700">
-              {microCase.difficulty || 'Sin dificultad'}
+              {microCase.difficulty ? String(microCase.difficulty).charAt(0).toUpperCase() + String(microCase.difficulty).slice(1) : 'Sin dificultad'}
             </span>
             {microCase.estimated_minutes ? (
-              <span className="text-xs text-slate-500">{microCase.estimated_minutes} min</span>
+              <span className="text-xs text-slate-500">{formatDuration(microCase.estimated_minutes)}</span>
             ) : null}
           </div>
         </div>
-
         <div className="mt-4 flex flex-wrap items-center gap-2">
+          {/* Roles first (if any) */}
           {(microCase.recommended_roles || []).map((role) => (
             <span key={`role-${role}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 font-medium text-sky-700">
               {ROLE_LABELS[role] || role}
             </span>
           ))}
+
+          {/* Then units / locations */}
           {(microCase.recommended_units || []).map((unit) => (
             <span key={`unit-${unit}`} className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">
               {unit}
             </span>
           ))}
+
+          {/* Finally tags */}
           {(microCase.tags || []).map((tag) => (
             <span key={`tag-${tag}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
               {tag}
