@@ -142,7 +142,7 @@ useEffect(() => {
         }
       `}</style>
       {/* NAVBAR */}
-      <Navbar />
+      <Navbar variant="public" />
       <div className="h-8 bg-white"></div>
     
       {/* HERO */}
