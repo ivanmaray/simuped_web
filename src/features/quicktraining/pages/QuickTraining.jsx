@@ -97,6 +97,11 @@ function CaseCard({ microCase, onSelect, isSelected }) {
               {unit}
             </span>
           ))}
+          {(microCase.tags || []).map((tag) => (
+            <span key={`tag-${tag}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+              {tag}
+            </span>
+          ))}
         </div>
 
         <div className="pt-2">
@@ -261,18 +266,19 @@ export default function QuickTraining() {
     <div className="min-h-screen bg-slate-50">
       <Navbar variant="private" />
 
-      <main className="max-w-6xl mx-auto px-5 py-10 space-y-8">
-        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0A3D91] via-[#0B4FC2] to-[#1B72E8] p-6 shadow-[0_28px_48px_-30px_rgba(11,79,194,0.7)]">
-          <div className="absolute -top-16 -right-10 h-40 w-40 rounded-full bg-white/10 blur-3xl" aria-hidden="true"></div>
-          <div className="absolute -bottom-12 left-8 h-32 w-32 rounded-full bg-white/5 blur-2xl" aria-hidden="true"></div>
-          <div className="relative z-10 grid gap-6 md:grid-cols-[2fr_1fr] md:items-start">
-            <div className="space-y-3 text-white">
-              <p className="text-xs uppercase tracking-[0.35em] text-white/70">Entrenamiento rápido</p>
-              <h1 className="text-3xl md:text-4xl font-semibold">Microcasos interactivos</h1>
-              <p className="max-w-2xl text-sm md:text-base text-white/85">
+      {/* Hero */}
+      <section className="relative overflow-hidden border-b border-white/10">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
+        <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_15%_15%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
+        <div className="max-w-6xl mx-auto px-5 py-12 text-white relative">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-white/70 text-sm uppercase tracking-wide">Entrenamiento rápido</p>
+              <h1 className="text-3xl md:text-4xl font-semibold mt-1">Microcasos interactivos</h1>
+              <p className="opacity-95 mt-3 text-lg max-w-xl">
                 Cambia de rol para entrenar la coordinación entre equipos. Cada enfoque ofrece preguntas y respuestas adaptadas a tu responsabilidad.
               </p>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 mt-4">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/70">Selecciona Rol</span>
                 <div className="inline-flex rounded-full border border-white/25 bg-white/10 p-1">
                   {ROLE_OPTIONS.map((role) => {
@@ -293,8 +299,10 @@ export default function QuickTraining() {
             </div>
             <RoleSummary role={participantRole} />
           </div>
-        </section>
+        </div>
+      </section>
 
+      <main className="max-w-6xl mx-auto px-5 py-8">
         {completedAttempts.length > 0 && (
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
             <h2 className="text-sm font-semibold text-emerald-900 mb-3">Historial reciente</h2>

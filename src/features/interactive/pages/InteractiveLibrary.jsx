@@ -106,23 +106,18 @@ export default function InteractiveLibrary() {
     <div className="min-h-screen bg-slate-50">
       <Navbar variant="private" />
 
-      <main className="mx-auto max-w-6xl px-5 py-10 space-y-10">
-        <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] p-8 text-white shadow-[0_36px_60px_-40px_rgba(10,61,145,0.55)]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_60%),radial-gradient(circle_at_85%_15%,rgba(255,255,255,0.12),transparent_55%)]" aria-hidden="true"></div>
-          <div className="relative z-10 grid gap-8 md:grid-cols-[3fr_2fr] md:items-start">
-            <div className="space-y-4">
-              <p className="text-xs uppercase tracking-[0.4em] text-white/70">Entrenamiento interactivo</p>
-              <h1 className="text-3xl font-semibold md:text-4xl">Simulaciones guiadas con feedback inmediato</h1>
-              <p className="max-w-2xl text-sm text-white/85 md:text-base">
+      {/* Hero */}
+      <section className="relative overflow-hidden border-b border-white/10">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
+        <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_15%_15%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
+        <div className="max-w-6xl mx-auto px-5 py-12 text-white relative">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-white/70 text-sm uppercase tracking-wide">Entrenamiento interactivo</p>
+              <h1 className="text-3xl md:text-4xl font-semibold mt-1">Simulaciones guiadas con feedback inmediato</h1>
+              <p className="opacity-95 mt-3 text-lg max-w-xl">
                 Navega por bibliotecas de casos, elige un escenario y sumate a un circuito de practica donde cada decision actualiza los sistemas del paciente en tiempo real.
               </p>
-              <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-white/70">
-                <span>Evaluacion dinamica</span>
-                <span className="h-1 w-1 rounded-full bg-white/35" aria-hidden="true"></span>
-                <span>Trabajo en equipo</span>
-                <span className="h-1 w-1 rounded-full bg-white/35" aria-hidden="true"></span>
-                <span>Protocolos actualizados</span>
-              </div>
             </div>
             <div className="space-y-4 rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur">
               <h2 className="text-sm font-semibold uppercase tracking-[0.25em] text-white/80">Panel de busqueda</h2>
@@ -162,7 +157,10 @@ export default function InteractiveLibrary() {
               </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
+
+      <main className="max-w-6xl mx-auto px-5 py-8">
 
         <section className="space-y-6">
           <div className="flex flex-wrap items-center gap-3">
