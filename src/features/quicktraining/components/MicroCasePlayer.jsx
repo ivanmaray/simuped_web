@@ -30,6 +30,7 @@ function Toast({ message, tone = "info" }) {
 }
 
 const FEEDBACK_DELAY_MS = 400;
+const INFO_AUTO_ADVANCE_DELAY_MS = 1400;
 
 export default function MicroCasePlayer({ microCase, onSubmitAttempt, participantRole }) {
   const { nodeMap, startId } = useNodeGraph(microCase);
@@ -69,6 +70,22 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const progressRatio = totalDecisionNodes > 0 ? Math.min(1, history.length / totalDecisionNodes) : 0;
   const hasNode = Boolean(currentNode);
   const isTerminalNode = hasNode ? currentNode.is_terminal : false;
+
+  // Auto-advance non-decision nodes when a next step is specified so the user avoids extra clicks.
+  useEffect(() => {
+    if (!currentNode || !currentNode.auto_advance_to || currentNode.kind === "decision") {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCurrentNodeId(currentNode.auto_advance_to);
+    }, INFO_AUTO_ADVANCE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [currentNode]);
+  const autoAdvanceActive = Boolean(
+    currentNode && currentNode.auto_advance_to && currentNode.kind !== "decision"
+  );
 
   function handleOptionSelect(option) {
     const nextScore = score + (option.score_delta || 0);
@@ -225,9 +242,25 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                 </div>
               ) : null}
 
-              {isTerminalNode ? (
+              {autoAdvanceActive ? (
+                <div className="mt-6 text-sm text-slate-500">
+                  Avanzando automáticamente al siguiente paso…
+                </div>
+              ) : !isTerminalNode ? (
+                <div className="mt-6 grid gap-3">
+                  {(currentNode.options || []).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleOptionSelect(option)}
+                      className="text-left rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/5"
+                    >
+                      <ReactMarkdown>{option.label}</ReactMarkdown>
+                    </button>
+                  ))}
+                </div>
+              ) : (
                 <div className="mt-6 space-y-4">
-                  {/* Visual outcome display */}
                   <div className="rounded-2xl border-2 p-6 text-center">
                     {currentNode.metadata?.is_correct === true ? (
                       <div className="space-y-3">
@@ -268,7 +301,6 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                     )}
                   </div>
 
-                  {/* Outcome content */}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="prose prose-sm max-w-none text-slate-800">
                       <ReactMarkdown>{currentNode.body_md || "Caso completado."}</ReactMarkdown>
@@ -292,29 +324,6 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                       Reintentar microcaso
                     </button>
                   </div>
-                </div>
-              ) : currentNode.kind === 'info' && currentNode.auto_advance_to ? (
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                  >
-                    Continuar
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-6 grid gap-3">
-                  {currentNode.options.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => handleOptionSelect(option)}
-                      className="text-left rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/5"
-                    >
-                      <ReactMarkdown>{option.label}</ReactMarkdown>
-                    </button>
-                  ))}
                 </div>
               )}
             </>

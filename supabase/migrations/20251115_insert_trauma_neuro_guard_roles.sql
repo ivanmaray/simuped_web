@@ -41,7 +41,7 @@ BEGIN
 
   -- 3) Insert info node
   INSERT INTO public.micro_case_nodes
-    (case_id, kind, body_md, metadata, order_index, is_terminal, auto_advance_to)
+    (case_id, kind, body_md, metadata, order_index, is_terminal, auto_advance_to, target_roles)
   VALUES
     (v_case_id,
      'info',
@@ -158,7 +158,8 @@ BEGIN
     }'::jsonb,
      0,
      false,
-     NULL)
+     NULL,
+     ARRAY['medico', 'farmacia', 'enfermeria'])
   RETURNING id INTO v_info_id;
 
   -- 4) Insert decision node
