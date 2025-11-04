@@ -3,13 +3,13 @@
 
 DO $$
 DECLARE
-  case_id UUID;
-  info_id UUID;
-  decision_id UUID;
-  epidural_id UUID;
-  subdural_id UUID;
-  axonal_id UUID;
-  concusion_id UUID;
+  v_case_id UUID;
+  v_info_id UUID;
+  v_decision_id UUID;
+  v_epidural_id UUID;
+  v_subdural_id UUID;
+  v_axonal_id UUID;
+  v_concusion_id UUID;
 BEGIN
 
   -- 1) Upsert the micro_case row
@@ -32,18 +32,18 @@ BEGIN
         recommended_roles = ARRAY[]::text[],
         is_published = EXCLUDED.is_published,
         updated_at = now()
-  RETURNING id INTO case_id;
+  RETURNING id INTO v_case_id;
 
   -- 2) Remove any previous roles-info node
   DELETE FROM public.micro_case_nodes
-  WHERE case_id = case_id
+  WHERE case_id = v_case_id
     AND (metadata->>'roles_source') = 'interactiveTrainingData_v1';
 
   -- 3) Insert info node
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal, auto_advance_to)
   VALUES
-    (case_id,
+    (v_case_id,
      'info',
      'Roles y orientaciones para el equipo: farmacia y enfermería. Incluye responsabilidades, lista de fármacos clave, checks y criterios de scoring.',
      '{"roles_source":"interactiveTrainingData_v1", "roles": {
@@ -159,82 +159,82 @@ BEGIN
      0,
      false,
      NULL)
-  RETURNING id INTO info_id;
+  RETURNING id INTO v_info_id;
 
   -- 4) Insert decision node
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
   VALUES
-    (case_id,
+    (v_case_id,
      'decision',
      'Selecciona el diagnóstico más probable basado en los hallazgos clínicos y de imagen.',
      '{}'::jsonb,
      1,
      false)
-  RETURNING id INTO decision_id;
+  RETURNING id INTO v_decision_id;
 
   -- 5) Insert outcome nodes
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
   VALUES
-    (case_id,
+    (v_case_id,
      'outcome',
      '¡Correcto! El hematoma epidural agudo explica la anisocoria progresiva y el desplazamiento de línea media en la TAC. Se requiere evacuación neuroquirúrgica urgente.',
      '{"is_correct": true}'::jsonb,
      2,
      true)
-  RETURNING id INTO epidural_id;
+  RETURNING id INTO v_epidural_id;
 
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
   VALUES
-    (case_id,
+    (v_case_id,
      'outcome',
      'Incorrecto. El hematoma subdural agudo es posible, pero la TAC muestra una colección biconvexa típica de epidural. Revisa los hallazgos de imagen.',
      '{"is_correct": false}'::jsonb,
      3,
      true)
-  RETURNING id INTO subdural_id;
+  RETURNING id INTO v_subdural_id;
 
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
   VALUES
-    (case_id,
+    (v_case_id,
      'outcome',
      'Incorrecto. La lesión axonal difusa no explica la colección focal con efecto de masa. Considera lesiones extraaxiales.',
      '{"is_correct": false}'::jsonb,
      4,
      true)
-  RETURNING id INTO axonal_id;
+  RETURNING id INTO v_axonal_id;
 
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
   VALUES
-    (case_id,
+    (v_case_id,
      'outcome',
      'Incorrecto. La conmoción cerebral leve no produce anisocoria ni desplazamiento de línea media. Requiere evaluación más detallada.',
      '{"is_correct": false}'::jsonb,
      5,
      true)
-  RETURNING id INTO concusion_id;
+  RETURNING id INTO v_concusion_id;
 
   -- 6) Insert options for the decision node
   INSERT INTO public.micro_case_options
     (node_id, label, next_node_id, feedback_md, score_delta, is_critical)
   VALUES
-    (decision_id, 'Hematoma epidural agudo', epidural_id, 'Diagnóstico correcto. Evacuación urgente requerida.', 100, true),
-    (decision_id, 'Hematoma subdural agudo', subdural_id, 'Incorrecto. Revisa la morfología de la colección.', -20, false),
-    (decision_id, 'Lesión axonal difusa', axonal_id, 'Incorrecto. No explica el efecto de masa focal.', -20, false),
-    (decision_id, 'Conmoción cerebral leve', concusion_id, 'Incorrecto. Los signos requieren intervención.', -20, false);
+    (v_decision_id, 'Hematoma epidural agudo', v_epidural_id, 'Diagnóstico correcto. Evacuación urgente requerida.', 100, true),
+    (v_decision_id, 'Hematoma subdural agudo', v_subdural_id, 'Incorrecto. Revisa la morfología de la colección.', -20, false),
+    (v_decision_id, 'Lesión axonal difusa', v_axonal_id, 'Incorrecto. No explica el efecto de masa focal.', -20, false),
+    (v_decision_id, 'Conmoción cerebral leve', v_concusion_id, 'Incorrecto. Los signos requieren intervención.', -20, false);
 
   -- 7) Update info node to auto-advance to decision
   UPDATE public.micro_case_nodes
-  SET auto_advance_to = decision_id
-  WHERE id = info_id;
+  SET auto_advance_to = v_decision_id
+  WHERE id = v_info_id;
 
   -- 8) Set the case start_node_id to the inserted info node
   UPDATE public.micro_cases
-  SET start_node_id = info_id
-  WHERE id = case_id;
+  SET start_node_id = v_info_id
+  WHERE id = v_case_id;
 
 END $$;
