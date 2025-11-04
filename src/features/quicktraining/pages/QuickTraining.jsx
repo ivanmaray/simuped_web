@@ -64,55 +64,83 @@ function RoleSummary({ role }) {
 }
 
 function CaseCard({ microCase, onSelect }) {
+  const EXCLUDED_TAGS = [
+    "pediatria",
+    "uci pediatrica",
+    "uci pediátrica",
+    "urgencias",
+    "emergencias"
+  ];
+
+  function normalizeText(t) {
+    if (!t) return "";
+    try {
+      return String(t).toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+    } catch (err) {
+      // Fallback for environments without unicode property escapes
+      return String(t).toLowerCase().replace(/[áÁ]/g, "a").replace(/[éÉ]/g, "e").replace(/[íÍ]/g, "i").replace(/[óÓ]/g, "o").replace(/[úÚ]/g, "u");
+    }
+  }
+  const DIFFICULTY_TONE = {
+    basico: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    intermedio: "bg-amber-50 text-amber-700 border-amber-200",
+    avanzado: "bg-red-50 text-red-700 border-red-200",
+  };
+
+  const isPublished = microCase.is_published !== false;
+  const statusBadge = isPublished ? { label: "Disponible", tone: "bg-emerald-50 text-emerald-700 border-emerald-200", button: { label: "Iniciar microcaso", variant: "bg-[#0A3D91] text-white hover:bg-[#0A3D91]/90" } } : { label: "Bloqueado", tone: "bg-slate-100 text-slate-500 border-slate-200", button: { label: "Ver opciones", variant: "bg-slate-900 text-white hover:bg-slate-800" } };
+
   return (
     <article className="relative flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-[0_24px_48px_-32px_rgba(10,61,145,0.35)]">
-      <div>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">{microCase.title}</h3>
-            <p className="mt-1 text-sm text-slate-600 line-clamp-2">{microCase.summary}</p>
+      { !isPublished ? (
+        <div className="absolute right-6 top-6 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">Bloqueado</div>
+      ) : null }
+
+      <div className="space-y-3">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-xl font-semibold text-slate-900">{microCase.title}</h3>
+          {microCase.summary ? <p className="text-sm text-slate-500">{microCase.summary}</p> : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {microCase.difficulty ? (
+            <span className={`rounded-full border px-3 py-1 font-semibold ${DIFFICULTY_TONE[String(microCase.difficulty).toLowerCase()] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
+              {microCase.difficulty ? String(microCase.difficulty).charAt(0).toUpperCase() + String(microCase.difficulty).slice(1) : ''}
+            </span>
+          ) : null}
+          {microCase.estimated_minutes ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">{formatDuration(microCase.estimated_minutes)}</span>
+          ) : null}
+          <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusBadge.tone}`}>
+            {statusBadge.label}
+          </span>
+        </div>
+
+        {microCase.summary ? (
+          <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">{microCase.summary}</p>
+        ) : null}
+
+        {(microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).length ? (
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+            {(microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).map((tag) => (
+              <span key={`tag-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium uppercase tracking-wider">{tag}</span>
+            ))}
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-700">
-              {microCase.difficulty ? String(microCase.difficulty).charAt(0).toUpperCase() + String(microCase.difficulty).slice(1) : 'Sin dificultad'}
-            </span>
-            {microCase.estimated_minutes ? (
-              <span className="text-xs text-slate-500">{formatDuration(microCase.estimated_minutes)}</span>
-            ) : null}
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {/* Roles first (if any) */}
-          {(microCase.recommended_roles || []).map((role) => (
-            <span key={`role-${role}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 font-medium text-sky-700">
-              {ROLE_LABELS[role] || role}
-            </span>
-          ))}
+        ) : null}
+      </div>
 
-          {/* Then units / locations */}
-          {(microCase.recommended_units || []).map((unit) => (
-            <span key={`unit-${unit}`} className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">
-              {unit}
-            </span>
-          ))}
-
-          {/* Finally tags */}
-          {(microCase.tags || []).map((tag) => (
-            <span key={`tag-${tag}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
-              {tag}
-            </span>
-          ))}
-        </div>
-
-        <div className="pt-2">
-          <button
-            type="button"
-            onClick={() => onSelect(microCase.id)}
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-          >
-            Iniciar microcaso
-          </button>
-        </div>
+      <div className="mt-5 space-y-3">
+        <button
+          type="button"
+          onClick={() => onSelect(microCase.id)}
+          className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${statusBadge.button.variant}`}
+        >
+          {statusBadge.button.label}
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M5 12h14" strokeLinecap="round" />
+            <path d="m12 5 7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </div>
     </article>
   );
