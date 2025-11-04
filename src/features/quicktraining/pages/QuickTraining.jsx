@@ -167,47 +167,6 @@ export default function QuickTraining() {
   }, [ready, token]);
 
   function handleSelectCase(caseId) {
-    let isMounted = true;
-
-    async function fetchCase() {
-      setFetchingCase(true);
-      setCaseData(null);
-      setError("");
-      try {
-        const params = new URLSearchParams({ action: 'get', id: selectedCaseId });
-        if (participantRole) {
-          params.set('role', participantRole);
-        }
-        const response = await fetch(`${API_BASE_URL}/micro_cases?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!response.ok) {
-          throw new Error(`No se pudo cargar el microcaso (${response.status})`);
-        }
-        const json = await parseJsonResponse(response, "No se pudo leer el detalle del microcaso seleccionado.");
-        if (!json?.ok) {
-          throw new Error(json?.error || 'Respuesta inválida del servidor');
-        }
-        if (isMounted) {
-          setCaseData(json.case);
-        }
-      } catch (err) {
-        console.error('[QuickTraining] case error', err);
-        if (isMounted) {
-          setError(err.message || 'No se pudo cargar el microcaso seleccionado.');
-        }
-      } finally {
-        if (isMounted) {
-          setFetchingCase(false);
-        }
-      }
-    }
-
-    fetchCase();
-    return () => {
-      isMounted = false;
-    };
-  function handleSelectCase(caseId) {
     if (!caseId) return;
     navigate(`/entrenamiento-rapido/${caseId}`);
   }

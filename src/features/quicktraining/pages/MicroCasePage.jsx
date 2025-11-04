@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
-import Navbar from "../../components/Navbar.jsx";
+import Navbar from "../../../components/Navbar.jsx";
 import MicroCasePlayer from "../components/MicroCasePlayer.jsx";
-import { useAuth } from "../../auth.jsx";
+import { useAuth } from "../../../auth";
 import { useEffect, useState } from "react";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
@@ -129,12 +129,6 @@ export default function MicroCasePage() {
       </main>
     </div>
   );
-}
-
-function parseJsonResponse(response, errorMessage) {
-  return response.json().catch(() => {
-    throw new Error(errorMessage);
-  });
 }
 
 function parseJsonResponse(response, errorMessage) {
