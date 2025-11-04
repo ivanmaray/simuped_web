@@ -1,10 +1,18 @@
 -- Migration: Upsert trauma-neuro-guard roles and roleScoring
 -- Fecha: 2025-11-15
 
-BEGIN;
+DO $$
+DECLARE
+  case_id UUID;
+  info_id UUID;
+  decision_id UUID;
+  epidural_id UUID;
+  subdural_id UUID;
+  axonal_id UUID;
+  concusion_id UUID;
+BEGIN
 
--- 1) Upsert the micro_case row (create or update by slug)
-WITH upsert_case AS (
+  -- 1) Upsert the micro_case row
   INSERT INTO public.micro_cases
     (slug, title, summary, estimated_minutes, difficulty, recommended_roles, is_published, created_at, updated_at)
   VALUES
@@ -24,25 +32,21 @@ WITH upsert_case AS (
         recommended_roles = ARRAY[]::text[],
         is_published = EXCLUDED.is_published,
         updated_at = now()
-  RETURNING id
-),
+  RETURNING id INTO case_id;
 
--- 2) Remove any previous roles-info node created by this migration (idempotency)
-deleted AS (
+  -- 2) Remove any previous roles-info node
   DELETE FROM public.micro_case_nodes
-  WHERE case_id = (SELECT id FROM upsert_case)
-    AND (metadata->>'roles_source') = 'interactiveTrainingData_v1'
-),
+  WHERE case_id = case_id
+    AND (metadata->>'roles_source') = 'interactiveTrainingData_v1';
 
--- 3) Insert new info node that stores the roles content and scoring in metadata
-inserted_info AS (
+  -- 3) Insert info node
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal, auto_advance_to)
-  SELECT
-    (SELECT id FROM upsert_case),
-    'info',
-    'Roles y orientaciones para el equipo: farmacia y enfermería. Incluye responsabilidades, lista de fármacos clave, checks y criterios de scoring.',
-    '{"roles_source":"interactiveTrainingData_v1", "roles": {
+  VALUES
+    (case_id,
+     'info',
+     'Roles y orientaciones para el equipo: farmacia y enfermería. Incluye responsabilidades, lista de fármacos clave, checks y criterios de scoring.',
+     '{"roles_source":"interactiveTrainingData_v1", "roles": {
         "pharmacy": {
           "responsibilities": [
             "Verificar alergias y antecedentes farmacologicos antes de dispensar",
@@ -152,98 +156,85 @@ inserted_info AS (
         }
       }
     }'::jsonb,
-    0,
-    false,
-    NULL
-  RETURNING id
-),
+     0,
+     false,
+     NULL)
+  RETURNING id INTO info_id;
 
--- 4) Insert decision node
-inserted_decision AS (
+  -- 4) Insert decision node
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
-  SELECT
-    (SELECT id FROM upsert_case),
-    'decision',
-    'Selecciona el diagnóstico más probable basado en los hallazgos clínicos y de imagen.',
-    '{}'::jsonb,
-    1,
-    false
-  RETURNING id
-),
+  VALUES
+    (case_id,
+     'decision',
+     'Selecciona el diagnóstico más probable basado en los hallazgos clínicos y de imagen.',
+     '{}'::jsonb,
+     1,
+     false)
+  RETURNING id INTO decision_id;
 
--- 5) Insert outcome nodes
-outcome_epidural AS (
+  -- 5) Insert outcome nodes
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
-  SELECT
-    (SELECT id FROM upsert_case),
-    'outcome',
-    '¡Correcto! El hematoma epidural agudo explica la anisocoria progresiva y el desplazamiento de línea media en la TAC. Se requiere evacuación neuroquirúrgica urgente.',
-    '{"is_correct": true}'::jsonb,
-    2,
-    true
-  RETURNING id
-),
+  VALUES
+    (case_id,
+     'outcome',
+     '¡Correcto! El hematoma epidural agudo explica la anisocoria progresiva y el desplazamiento de línea media en la TAC. Se requiere evacuación neuroquirúrgica urgente.',
+     '{"is_correct": true}'::jsonb,
+     2,
+     true)
+  RETURNING id INTO epidural_id;
 
-outcome_subdural AS (
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
-  SELECT
-    (SELECT id FROM upsert_case),
-    'outcome',
-    'Incorrecto. El hematoma subdural agudo es posible, pero la TAC muestra una colección biconvexa típica de epidural. Revisa los hallazgos de imagen.',
-    '{"is_correct": false}'::jsonb,
-    3,
-    true
-  RETURNING id
-),
+  VALUES
+    (case_id,
+     'outcome',
+     'Incorrecto. El hematoma subdural agudo es posible, pero la TAC muestra una colección biconvexa típica de epidural. Revisa los hallazgos de imagen.',
+     '{"is_correct": false}'::jsonb,
+     3,
+     true)
+  RETURNING id INTO subdural_id;
 
-outcome_axonal AS (
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
-  SELECT
-    (SELECT id FROM upsert_case),
-    'outcome',
-    'Incorrecto. La lesión axonal difusa no explica la colección focal con efecto de masa. Considera lesiones extraaxiales.',
-    '{"is_correct": false}'::jsonb,
-    4,
-    true
-  RETURNING id
-),
+  VALUES
+    (case_id,
+     'outcome',
+     'Incorrecto. La lesión axonal difusa no explica la colección focal con efecto de masa. Considera lesiones extraaxiales.',
+     '{"is_correct": false}'::jsonb,
+     4,
+     true)
+  RETURNING id INTO axonal_id;
 
-outcome_conmocion AS (
   INSERT INTO public.micro_case_nodes
     (case_id, kind, body_md, metadata, order_index, is_terminal)
-  SELECT
-    (SELECT id FROM upsert_case),
-    'outcome',
-    'Incorrecto. La conmoción cerebral leve no produce anisocoria ni desplazamiento de línea media. Requiere evaluación más detallada.',
-    '{"is_correct": false}'::jsonb,
-    5,
-    true
-  RETURNING id
-),
+  VALUES
+    (case_id,
+     'outcome',
+     'Incorrecto. La conmoción cerebral leve no produce anisocoria ni desplazamiento de línea media. Requiere evaluación más detallada.',
+     '{"is_correct": false}'::jsonb,
+     5,
+     true)
+  RETURNING id INTO concusion_id;
 
--- 6) Insert options for the decision node
-options_insert AS (
+  -- 6) Insert options for the decision node
   INSERT INTO public.micro_case_options
     (node_id, label, next_node_id, feedback_md, score_delta, is_critical)
   VALUES
-    ((SELECT id FROM inserted_decision), 'Hematoma epidural agudo', (SELECT id FROM outcome_epidural), 'Diagnóstico correcto. Evacuación urgente requerida.', 100, true),
-    ((SELECT id FROM inserted_decision), 'Hematoma subdural agudo', (SELECT id FROM outcome_subdural), 'Incorrecto. Revisa la morfología de la colección.', -20, false),
-    ((SELECT id FROM inserted_decision), 'Lesión axonal difusa', (SELECT id FROM outcome_axonal), 'Incorrecto. No explica el efecto de masa focal.', -20, false),
-    ((SELECT id FROM inserted_decision), 'Conmoción cerebral leve', (SELECT id FROM outcome_conmocion), 'Incorrecto. Los signos requieren intervención.', -20, false)
-)
+    (decision_id, 'Hematoma epidural agudo', epidural_id, 'Diagnóstico correcto. Evacuación urgente requerida.', 100, true),
+    (decision_id, 'Hematoma subdural agudo', subdural_id, 'Incorrecto. Revisa la morfología de la colección.', -20, false),
+    (decision_id, 'Lesión axonal difusa', axonal_id, 'Incorrecto. No explica el efecto de masa focal.', -20, false),
+    (decision_id, 'Conmoción cerebral leve', concusion_id, 'Incorrecto. Los signos requieren intervención.', -20, false);
 
--- 7) Update info node to auto-advance to decision
-UPDATE public.micro_case_nodes
-SET auto_advance_to = (SELECT id FROM inserted_decision)
-WHERE id = (SELECT id FROM inserted_info);
+  -- 7) Update info node to auto-advance to decision
+  UPDATE public.micro_case_nodes
+  SET auto_advance_to = decision_id
+  WHERE id = info_id;
 
--- 4) Set the case start_node_id to the inserted info node
-UPDATE public.micro_cases
-SET start_node_id = (SELECT id FROM inserted_info)
-WHERE id = (SELECT id FROM upsert_case);
+  -- 8) Set the case start_node_id to the inserted info node
+  UPDATE public.micro_cases
+  SET start_node_id = info_id
+  WHERE id = case_id;
 
-COMMIT;
+END $$;
