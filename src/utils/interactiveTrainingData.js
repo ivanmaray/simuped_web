@@ -611,6 +611,75 @@ export const interactiveCases = [
         "Mantiene presion arterial media mayor a 70 mmHg",
         "Reevalua pupilas cada 15 minutos"
       ]
+    },
+    roles: {
+      pharmacy: {
+        responsibilities: [
+          "Verificar alergias y antecedentes farmacologicos antes de dispensar",
+          "Calcular dosis peso-dependientes y preparar concentraciones seguras",
+          "Coordinar disponibilidad de agentes osmoticos y sangre irradiada si es necesario",
+          "Asesorar sobre interacciones farmacologicas y ajuste renal/hepatico"
+        ],
+        medicationList: [
+          { id: "manitol", label: "Manitol 20%", dosing: "0.5-1 g/kg bolo IV", notes: "Comprobar osmolaridad y evitar en hipovolemia severa" },
+          { id: "hipertonica", label: "Suero hipertonico 3%", dosing: "2 ml/kg IV en 10-15 min", notes: "Controlar Na plasmatico" },
+          { id: "rocuronio", label: "Rocuronio", dosing: "1 mg/kg IV (RSI)", notes: "Preparar reversores y bomba infusora" },
+          { id: "fentanilo", label: "Fentanilo", dosing: "1 mcg/kg IV bolo (analgesia)", notes: "Registrar hora y vigilar depresion respiratoria" },
+          { id: "noradrenalina", label: "Noradrenalina", dosing: "0.05-0.2 mcg/kg/min", notes: "Configurar bomba con concentracion estandar y guiar titulacion" }
+        ],
+        checks: [
+          "Confirmar peso reciente y unidad de medida (kg)",
+          "Verificar alergias documentadas en la historia y en el formulario de ingreso",
+          "Revisar interacciones (ej. anticoagulantes, antihipertensivos) antes de administrar bolos/vasopresores",
+          "Asegurar que el material de administración (bombas, cateteres) esté disponible y compatible"
+        ],
+        preparation: [
+          "Preparar bolsas y jeringas con etiquetado claro (nombre, dosis mg/ml, hora)",
+          "Establecer concentraciones estandar para infusiones vasoactivas segun protocolo pediatrico",
+          "Priorizar entrega de medicamentos criticos (RSI, osmoterapia) con comunicacion directa al equipo" 
+        ]
+      },
+      nursing: {
+        responsibilities: [
+          "Mantener alineacion cervical y vigilancia continua de via aerea",
+          "Monitorizar signos neurologicos (pupilas, GCS) cada 5-15 minutos según estabilizacion",
+          "Ejecutar protocolos de intubacion y asistente en RSI",
+          "Administrar medicacion segun prescripcion y validar dosis con farmacia"
+        ],
+        monitoring: [
+          "Registrar PA, PAM, FC, FR y SpO2 cada 5 minutos en fase critica",
+          "Registrar volumen diuresis por hora si hay sospecha de TBI y uso de osmoterapia",
+          "Monitorizar osmolaridad serica si se administra manitol/hipertonico",
+          "Vigilar sedacion y ajustar perfusion segun ordenes medicas y objetivo de sedacion" 
+        ],
+        tasks: [
+          "Preparar y asistir en traslado seguro a TAC con equipo y oxigeno",
+          "Colocar y asegurar acceso venoso central si es necesario para vasopresores",
+          "Asegurar monitorizacion continua y documentar cambios neurologicos inmediatamente",
+          "Comunicar de forma estructurada (SBAR) a neurocirugia y anestesia" 
+        ],
+        documentation: [
+          "Registrar hora de investigacion clave (ingreso a TAC, inicio de manitol, inicio de vasopresor)",
+          "Detalle de medicacion (dosis, via, lote si aplica) y respuesta clinica",
+          "Nota de transferencia detallada si se traslada al quirófano o UCI"
+        ]
+      }
+    },
+    roleScoring: {
+      pharmacy: {
+        weightCalculation: 10,
+        allergyCheck: 10,
+        dosingAccuracy: 40,
+        preparationTimeliness: 20,
+        communication: 20
+      },
+      nursing: {
+        airwayManagement: 25,
+        neuroMonitoring: 25,
+        vitalsDocumentation: 15,
+        sedationTitration: 20,
+        escalation: 15
+      }
     }
   },
   {
