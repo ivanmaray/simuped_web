@@ -4,7 +4,8 @@ import MicroCasePlayer from "../components/MicroCasePlayer.jsx";
 import { useAuth } from "../../../auth";
 import { useEffect, useState } from "react";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+// Keep the same env var and fallback used across the quicktraining pages
+const API_BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MICROCASE_API_BASE_URL) || "/api";
 
 export default function MicroCasePage() {
   const { caseId } = useParams();
@@ -131,8 +132,22 @@ export default function MicroCasePage() {
   );
 }
 
-function parseJsonResponse(response, errorMessage) {
-  return response.json().catch(() => {
-    throw new Error(errorMessage);
+// Robust JSON parser similar to the one used in QuickTraining.jsx.
+function parseJsonResponse(response, fallbackErrorMessage) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  // Some environments may return JSON with a different content-type or as text.
+  return response.text().then((text) => {
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      console.warn('[MicroCasePage] No JSON body', err);
+      throw new Error(fallbackErrorMessage);
+    }
+  }).catch(() => {
+    throw new Error(fallbackErrorMessage);
   });
 }
