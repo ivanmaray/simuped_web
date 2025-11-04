@@ -81,6 +81,52 @@ function CaseCard({ microCase, onSelect }) {
       return String(t).toLowerCase().replace(/[áÁ]/g, "a").replace(/[éÉ]/g, "e").replace(/[íÍ]/g, "i").replace(/[óÓ]/g, "o").replace(/[úÚ]/g, "u");
     }
   }
+  // Clinical categories we want to highlight when present in tags
+  const CLINICAL_CATEGORIES = {
+    neurologico: "Neurológico",
+    neurología: "Neurológico",
+    neurologico: "Neurológico",
+    infeccioso: "Infeccioso",
+    infectologico: "Infeccioso",
+    cardiaco: "Cardíaco",
+    respiratorio: "Respiratorio",
+    trauma: "Trauma",
+    hemodinamico: "Hemodinámico",
+    metabolico: "Metabólico",
+    toxico: "Tóxico",
+    pediatrico: "Pediátrico",
+    nefrologico: "Nefrológico",
+  };
+
+  function extractClinicalCategories(tags = []) {
+    const found = [];
+    for (const t of tags || []) {
+      const key = normalizeText(t);
+      if (CLINICAL_CATEGORIES[key] && !found.includes(CLINICAL_CATEGORIES[key])) {
+        found.push(CLINICAL_CATEGORIES[key]);
+      }
+    }
+    return found;
+  }
+
+  function teaser(text, wordLimit = 12) {
+    if (!text) return "";
+    // Remove directive clauses starting with verbs that give away actions
+    const forbiddenStarters = ["prioriza", "priorizar", "requiere", "se requiere", "evacuación", "evacuacion", "traslado", "traslada", "intubar", "intubación", "intubacion"];
+    const lower = text.toLowerCase();
+    for (const starter of forbiddenStarters) {
+      const idx = lower.indexOf(starter);
+      if (idx >= 0) {
+        // cut text before the directive phrase to avoid giving hints
+        text = text.substring(0, idx).trim();
+        break;
+      }
+    }
+    // Fallback to first N words
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length <= wordLimit) return words.join(" ");
+    return words.slice(0, wordLimit).join(" ") + "...";
+  }
   const DIFFICULTY_TONE = {
     basico: "bg-emerald-50 text-emerald-700 border-emerald-200",
     intermedio: "bg-amber-50 text-amber-700 border-amber-200",
@@ -99,7 +145,8 @@ function CaseCard({ microCase, onSelect }) {
       <div className="space-y-3">
         <div className="flex flex-col gap-2">
           <h3 className="text-xl font-semibold text-slate-900">{microCase.title}</h3>
-          {microCase.summary ? <p className="text-sm text-slate-500">{microCase.summary}</p> : null}
+          {/* show a neutral teaser only (no action hints, truncated) */}
+          {microCase.summary ? <p className="text-sm text-slate-500">{teaser(microCase.summary)}</p> : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -116,17 +163,23 @@ function CaseCard({ microCase, onSelect }) {
           </span>
         </div>
 
-        {microCase.summary ? (
-          <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">{microCase.summary}</p>
-        ) : null}
-
-        {(microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).length ? (
+        {/* Clinical categories (derived from tags) */}
+        {extractClinicalCategories(microCase.tags).length ? (
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-            {(microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).map((tag) => (
-              <span key={`tag-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium uppercase tracking-wider">{tag}</span>
+            {extractClinicalCategories(microCase.tags).map((c) => (
+              <span key={`clin-${c}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium uppercase tracking-wider">{c}</span>
             ))}
           </div>
-        ) : null}
+        ) : (
+          /* fallback: show other tags (filtered) */
+          (microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).length ? (
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              {(microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).map((tag) => (
+                <span key={`tag-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium uppercase tracking-wider">{tag}</span>
+              ))}
+            </div>
+          ) : null
+        )}
       </div>
 
       <div className="mt-5 space-y-3">
