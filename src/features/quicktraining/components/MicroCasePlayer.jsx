@@ -13,7 +13,25 @@ function useNodeGraph(microCase) {
     (microCase?.nodes || []).forEach((node) => {
       nodeMap.set(node.id, node);
     });
-    const startId = microCase?.start_node_id || (microCase?.nodes?.[0]?.id ?? null);
+    const firstNodeId = microCase?.nodes?.[0]?.id ?? null;
+    const startId = microCase?.start_node_id || firstNodeId;
+
+    // Debug logging to help diagnose cases where the UI starts on the wrong node.
+    // This is intentionally lightweight and safe for removal after troubleshooting.
+    try {
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug('[MicroCasePlayer] useNodeGraph', {
+          caseId: microCase?.id ?? null,
+          reported_start_node_id: microCase?.start_node_id ?? null,
+          computed_startId: startId,
+          firstNodeId,
+          nodeCount: (microCase?.nodes || []).length
+        });
+      }
+    } catch (e) {
+      // ignore logging errors
+    }
+
     return { nodeMap, startId };
   }, [microCase]);
 }
