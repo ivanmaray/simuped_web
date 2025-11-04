@@ -13,7 +13,7 @@ WITH upsert_case AS (
      'Paciente somnoliento con anisocoria progresiva. Prioriza la proteccion neurologica, el control hemodinamico y la seleccion de imagenes clave.',
      20,
      'intermedio',
-     ARRAY['medico','enfermeria','farmacia']::text[],
+     ARRAY[]::text[],
      true,
      now(), now())
   ON CONFLICT (slug) DO UPDATE
@@ -21,7 +21,7 @@ WITH upsert_case AS (
         summary = EXCLUDED.summary,
         estimated_minutes = EXCLUDED.estimated_minutes,
         difficulty = EXCLUDED.difficulty,
-        recommended_roles = EXCLUDED.recommended_roles,
+        recommended_roles = ARRAY[]::text[],
         is_published = EXCLUDED.is_published,
         updated_at = now()
   RETURNING id
