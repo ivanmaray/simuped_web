@@ -35,9 +35,9 @@ deleted AS (
 ),
 
 -- 3) Insert new info node that stores the roles content and scoring in metadata
-inserted_node AS (
+inserted_info AS (
   INSERT INTO public.micro_case_nodes
-    (case_id, kind, body_md, metadata, order_index, is_terminal)
+    (case_id, kind, body_md, metadata, order_index, is_terminal, auto_advance_to)
   SELECT
     (SELECT id FROM upsert_case),
     'info',
@@ -153,13 +153,97 @@ inserted_node AS (
       }
     }'::jsonb,
     0,
+    false,
+    NULL
+  RETURNING id
+),
+
+-- 4) Insert decision node
+inserted_decision AS (
+  INSERT INTO public.micro_case_nodes
+    (case_id, kind, body_md, metadata, order_index, is_terminal)
+  SELECT
+    (SELECT id FROM upsert_case),
+    'decision',
+    'Selecciona el diagnóstico más probable basado en los hallazgos clínicos y de imagen.',
+    '{}'::jsonb,
+    1,
     false
   RETURNING id
+),
+
+-- 5) Insert outcome nodes
+outcome_epidural AS (
+  INSERT INTO public.micro_case_nodes
+    (case_id, kind, body_md, metadata, order_index, is_terminal)
+  SELECT
+    (SELECT id FROM upsert_case),
+    'outcome',
+    '¡Correcto! El hematoma epidural agudo explica la anisocoria progresiva y el desplazamiento de línea media en la TAC. Se requiere evacuación neuroquirúrgica urgente.',
+    '{"is_correct": true}'::jsonb,
+    2,
+    true
+  RETURNING id
+),
+
+outcome_subdural AS (
+  INSERT INTO public.micro_case_nodes
+    (case_id, kind, body_md, metadata, order_index, is_terminal)
+  SELECT
+    (SELECT id FROM upsert_case),
+    'outcome',
+    'Incorrecto. El hematoma subdural agudo es posible, pero la TAC muestra una colección biconvexa típica de epidural. Revisa los hallazgos de imagen.',
+    '{"is_correct": false}'::jsonb,
+    3,
+    true
+  RETURNING id
+),
+
+outcome_axonal AS (
+  INSERT INTO public.micro_case_nodes
+    (case_id, kind, body_md, metadata, order_index, is_terminal)
+  SELECT
+    (SELECT id FROM upsert_case),
+    'outcome',
+    'Incorrecto. La lesión axonal difusa no explica la colección focal con efecto de masa. Considera lesiones extraaxiales.',
+    '{"is_correct": false}'::jsonb,
+    4,
+    true
+  RETURNING id
+),
+
+outcome_conmocion AS (
+  INSERT INTO public.micro_case_nodes
+    (case_id, kind, body_md, metadata, order_index, is_terminal)
+  SELECT
+    (SELECT id FROM upsert_case),
+    'outcome',
+    'Incorrecto. La conmoción cerebral leve no produce anisocoria ni desplazamiento de línea media. Requiere evaluación más detallada.',
+    '{"is_correct": false}'::jsonb,
+    5,
+    true
+  RETURNING id
+),
+
+-- 6) Insert options for the decision node
+options_insert AS (
+  INSERT INTO public.micro_case_options
+    (node_id, label, next_node_id, feedback_md, score_delta, is_critical)
+  VALUES
+    ((SELECT id FROM inserted_decision), 'Hematoma epidural agudo', (SELECT id FROM outcome_epidural), 'Diagnóstico correcto. Evacuación urgente requerida.', 100, true),
+    ((SELECT id FROM inserted_decision), 'Hematoma subdural agudo', (SELECT id FROM outcome_subdural), 'Incorrecto. Revisa la morfología de la colección.', -20, false),
+    ((SELECT id FROM inserted_decision), 'Lesión axonal difusa', (SELECT id FROM outcome_axonal), 'Incorrecto. No explica el efecto de masa focal.', -20, false),
+    ((SELECT id FROM inserted_decision), 'Conmoción cerebral leve', (SELECT id FROM outcome_conmocion), 'Incorrecto. Los signos requieren intervención.', -20, false)
 )
+
+-- 7) Update info node to auto-advance to decision
+UPDATE public.micro_case_nodes
+SET auto_advance_to = (SELECT id FROM inserted_decision)
+WHERE id = (SELECT id FROM inserted_info);
 
 -- 4) Set the case start_node_id to the inserted info node
 UPDATE public.micro_cases
-SET start_node_id = (SELECT id FROM inserted_node)
+SET start_node_id = (SELECT id FROM inserted_info)
 WHERE id = (SELECT id FROM upsert_case);
 
 COMMIT;
