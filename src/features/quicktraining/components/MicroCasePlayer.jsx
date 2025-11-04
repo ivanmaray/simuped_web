@@ -293,9 +293,9 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <h3 className="text-lg font-semibold text-slate-900">Desenlace del Caso</h3>
+                        <h3 className="text-lg font-semibold text-slate-900">Evolucion Critica</h3>
                         <p className="text-sm text-slate-700">
-                          Has completado el microcaso. Revisa los detalles del desenlace.
+                          Este desenlace marca un punto de inflexion clinica. Analiza los detalles para identificar decisiones que pudieron cambiar la trayectoria del paciente.
                         </p>
                       </div>
                     )}
