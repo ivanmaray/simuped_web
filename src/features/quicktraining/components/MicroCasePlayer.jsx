@@ -13,25 +13,7 @@ function useNodeGraph(microCase) {
     (microCase?.nodes || []).forEach((node) => {
       nodeMap.set(node.id, node);
     });
-    const firstNodeId = microCase?.nodes?.[0]?.id ?? null;
-    const startId = microCase?.start_node_id || firstNodeId;
-
-    // Debug logging to help diagnose cases where the UI starts on the wrong node.
-    // This is intentionally lightweight and safe for removal after troubleshooting.
-    try {
-      if (typeof console !== 'undefined' && console.debug) {
-        console.debug('[MicroCasePlayer] useNodeGraph', {
-          caseId: microCase?.id ?? null,
-          reported_start_node_id: microCase?.start_node_id ?? null,
-          computed_startId: startId,
-          firstNodeId,
-          nodeCount: (microCase?.nodes || []).length
-        });
-      }
-    } catch (e) {
-      // ignore logging errors
-    }
-
+    const startId = microCase?.start_node_id || (microCase?.nodes?.[0]?.id ?? null);
     return { nodeMap, startId };
   }, [microCase]);
 }
@@ -87,16 +69,6 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const progressRatio = totalDecisionNodes > 0 ? Math.min(1, history.length / totalDecisionNodes) : 0;
   const hasNode = Boolean(currentNode);
   const isTerminalNode = hasNode ? currentNode.is_terminal : false;
-
-  // Auto-advance for info nodes
-  useEffect(() => {
-    if (currentNode && currentNode.kind === 'info' && currentNode.auto_advance_to) {
-      const timer = setTimeout(() => {
-        setCurrentNodeId(currentNode.auto_advance_to);
-      }, 3000); // 3 seconds delay for reading
-      return () => clearTimeout(timer);
-    }
-  }, [currentNode]);
 
   function handleOptionSelect(option) {
     const nextScore = score + (option.score_delta || 0);
@@ -253,20 +225,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                 </div>
               ) : null}
 
-              {!isTerminalNode ? (
-                <div className="mt-6 grid gap-3">
-                  {currentNode.options.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => handleOptionSelect(option)}
-                      className="text-left rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/5"
-                    >
-                      <ReactMarkdown>{option.label}</ReactMarkdown>
-                    </button>
-                  ))}
-                </div>
-              ) : (
+              {isTerminalNode ? (
                 <div className="mt-6 space-y-4">
                   {/* Visual outcome display */}
                   <div className="rounded-2xl border-2 p-6 text-center">
@@ -333,6 +292,29 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                       Reintentar microcaso
                     </button>
                   </div>
+                </div>
+              ) : currentNode.kind === 'info' && currentNode.auto_advance_to ? (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Continuar
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-6 grid gap-3">
+                  {currentNode.options.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleOptionSelect(option)}
+                      className="text-left rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/5"
+                    >
+                      <ReactMarkdown>{option.label}</ReactMarkdown>
+                    </button>
+                  ))}
                 </div>
               )}
             </>
