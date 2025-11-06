@@ -55,7 +55,6 @@ export default function Navbar({ variant = "auto" }) {
                 <>
                   <AnchorItem href="/#proyecto" label="Proyecto" />
                   <AnchorItem href="/#equipo" label="Equipo" />
-                  <AnchorItem href="/#apoyos" label="Apoyos" />
                   <AnchorItem href="/#como-participar" label="Cómo participar" />
                 </>
               )}
@@ -119,7 +118,6 @@ export default function Navbar({ variant = "auto" }) {
                 <>
                   <MobileAnchor href="/#proyecto" label="Proyecto" onClick={() => setOpen(false)} />
                   <MobileAnchor href="/#equipo" label="Equipo" onClick={() => setOpen(false)} />
-                  <MobileAnchor href="/#apoyos" label="Apoyos" onClick={() => setOpen(false)} />
                   <MobileAnchor href="/#como-participar" label="Cómo participar" onClick={() => setOpen(false)} />
                 </>
               )}

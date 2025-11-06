@@ -254,7 +254,7 @@ useEffect(() => {
 
           <Reveal>
             <p className="text-base text-slate-700 leading-relaxed max-w-3xl mx-auto text-center mt-4">
-              Galardonado con el <strong>Primer Premio PharmaChallenge 5.0</strong> (Bayer) por su innovación e impacto en seguridad del paciente pediátrico.
+              Galardonado y financiado con el <strong>Primer Premio PharmaChallenge 5.0</strong> (Bayer) por su innovación e impacto en seguridad del paciente pediátrico.
             </p>
           </Reveal>
 
@@ -387,24 +387,6 @@ useEffect(() => {
                   </article>
                 </Reveal>
               ))}
-            </div>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* APOYOS */}
-      <section id="apoyos" className="bg-white scroll-mt-28">
-        <div className="max-w-6xl mx-auto px-5 py-10">
-          <h3 className="text-3xl font-bold mb-6 text-center text-slate-900">Apoyos y colaboración</h3>
-          <Reveal>
-            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de la UGC de Farmacia y la UCI Pediátrica, con el apoyo institucional del Principado de Asturias.</p>
-          </Reveal>
-          <Reveal delay={100}>
-            <div className="flex flex-col items-center gap-4">
-              {/* Badges de texto como apoyo/backup visual */}
-              <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 opacity-90">
-                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Principado de Asturias</span>
-              </div>
             </div>
           </Reveal>
         </div>
