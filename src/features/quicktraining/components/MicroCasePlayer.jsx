@@ -73,7 +73,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
   // Auto-advance non-decision nodes when a next step is specified so the user avoids extra clicks.
   useEffect(() => {
-    if (!currentNode || !currentNode.auto_advance_to || currentNode.kind === "decision") {
+    if (!currentNode || !currentNode.auto_advance_to || currentNode.kind === "decision" || currentNodeId === startId) {
       return undefined;
     }
 
@@ -82,9 +82,9 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     }, INFO_AUTO_ADVANCE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [currentNode]);
+  }, [currentNode, currentNodeId, startId]);
   const autoAdvanceActive = Boolean(
-    currentNode && currentNode.auto_advance_to && currentNode.kind !== "decision"
+    currentNode && currentNode.auto_advance_to && currentNode.kind !== "decision" && currentNodeId !== startId
   );
 
   function handleOptionSelect(option) {
@@ -245,6 +245,16 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               {autoAdvanceActive ? (
                 <div className="mt-6 text-sm text-slate-500">
                   Avanzando automáticamente al siguiente paso…
+                </div>
+              ) : currentNodeId === startId && currentNode.auto_advance_to ? (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-6 py-3 text-sm font-semibold text-white hover:bg-[#0A3D91]/90"
+                  >
+                    Iniciar microcaso
+                  </button>
                 </div>
               ) : !isTerminalNode ? (
                 <div className="mt-6 grid gap-3">

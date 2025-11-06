@@ -150,13 +150,15 @@ BEGIN
     kind,
     body_md,
     order_index,
-    is_terminal
+    is_terminal,
+    metadata
   ) VALUES (
     v_case_id,
     'outcome',
     'El retraso terapeutico prolongado lleva a choque refractario y falla multiorganica. El paciente requiere perfusion extracorporea emergente con pronostico reservado.',
     6,
-    true
+    true,
+    '{"is_correct": false}'::jsonb
   ) RETURNING id INTO v_multiorgan_failure_node;
 
   -- Nodo 8: traslado sin estabilizacion
@@ -165,13 +167,15 @@ BEGIN
     kind,
     body_md,
     order_index,
-    is_terminal
+    is_terminal,
+    metadata
   ) VALUES (
     v_case_id,
     'outcome',
     'El traslado sin estabilizacion provoca paro cardiorespiratorio en la ambulancia. Se documenta brecha critica por no iniciar soporte en el sitio.',
     7,
-    true
+    true,
+    '{"is_correct": false}'::jsonb
   ) RETURNING id INTO v_transfer_failure_node;
 
   -- Nodo 9: progresion a falla renal aguda
@@ -180,13 +184,15 @@ BEGIN
     kind,
     body_md,
     order_index,
-    is_terminal
+    is_terminal,
+    metadata
   ) VALUES (
     v_case_id,
     'outcome',
     'La persistencia de perfusion renal deficiente desencadena falla renal aguda e indica necesidad de terapia de reemplazo. Pronostico funcional comprometido.',
     8,
-    true
+    true,
+    '{"is_correct": false}'::jsonb
   ) RETURNING id INTO v_renal_failure_node;
 
   -- Nodo 10: edema pulmonar por sobrecarga
@@ -195,13 +201,15 @@ BEGIN
     kind,
     body_md,
     order_index,
-    is_terminal
+    is_terminal,
+    metadata
   ) VALUES (
     v_case_id,
     'outcome',
     'La sobrecarga brusca de fluidos produce edema pulmonar severo, empeora la oxigenacion y obliga a estrategias ventilatorias agresivas.',
     9,
-    true
+    true,
+    '{"is_correct": false}'::jsonb
   ) RETURNING id INTO v_pulmonary_edema_node;
 
   -- Nodo 11: reevaluacion hemodinamica tras vasopresor
@@ -255,13 +263,15 @@ BEGIN
     kind,
     body_md,
     order_index,
-    is_terminal
+    is_terminal,
+    metadata
   ) VALUES (
     v_case_id,
     'outcome',
     'Tras drenaje quirurgico oportuno, soporte vasoactivo escalonado y esteroides de stress, el lactante estabiliza signos vitales, normaliza lactato y progresa a cuidados intensivos con buen pronostico.',
     13,
-    true
+    true,
+    '{"is_correct": true}'::jsonb
   ) RETURNING id INTO v_recovery_node;
 
   -- Nodo 15: shock refractario por adrenal crisis
@@ -270,13 +280,15 @@ BEGIN
     kind,
     body_md,
     order_index,
-    is_terminal
+    is_terminal,
+    metadata
   ) VALUES (
     v_case_id,
     'outcome',
     'Se omite el soporte esteroideo y el choque se vuelve catecolamina refractario, con hipoglucemia recurrente y riesgo de paro cardiaco inminente.',
     14,
-    true
+    true,
+    '{"is_correct": false}'::jsonb
   ) RETURNING id INTO v_adrenal_crisis_node;
 
   -- Nodo 16: foco no controlado
@@ -285,13 +297,15 @@ BEGIN
     kind,
     body_md,
     order_index,
-    is_terminal
+    is_terminal,
+    metadata
   ) VALUES (
     v_case_id,
     'outcome',
     'Retrasar el control quirurgico permite progresion a peritonitis difusa, empeora la perfusion y obliga a soporte multiorganico prolongado.',
     15,
-    true
+    true,
+    '{"is_correct": false}'::jsonb
   ) RETURNING id INTO v_uncontrolled_focus_node;
 
   -- Opciones del nodo inicial
