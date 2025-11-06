@@ -367,21 +367,6 @@ useEffect(() => {
       <section id="equipo" className="bg-white scroll-mt-28">
         <div className="max-w-6xl mx-auto px-5 py-12">
           <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo SimuPed</h3>
-          {/* Logos institucionales (HUCA / SESPA) */}
-          <div className="mb-8 flex flex-wrap items-center justify-center gap-6 opacity-90">
-            <img
-              src="/logos/huca.png"
-              alt="HUCA"
-              className="h-16 w-auto object-contain grayscale hover:grayscale-0 transition"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-            <img
-              src="/logos/sespa.png"
-              alt="SESPA"
-              className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-          </div>
           <Reveal>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {miembros.map((m, idx) => (
@@ -412,38 +397,13 @@ useEffect(() => {
         <div className="max-w-6xl mx-auto px-5 py-10">
           <h3 className="text-3xl font-bold mb-6 text-center text-slate-900">Apoyos y colaboración</h3>
           <Reveal>
-            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de la UGC de Farmacia y la UCI Pediátrica, con el apoyo institucional del SESPA y del Principado de Asturias, y financiado con los fondos del premio Pharmachallenge 5.0 otorgado por Bayer.</p>
+            <p className="text-center text-slate-600 mb-6">Proyecto desarrollado en el HUCA con la participación de la UGC de Farmacia y la UCI Pediátrica, con el apoyo institucional del Principado de Asturias.</p>
           </Reveal>
           <Reveal delay={100}>
             <div className="flex flex-col items-center gap-4">
-              {/* Fila de logos */}
-              <div className="flex flex-wrap items-center justify-center gap-6 opacity-95">
-                <img
-                  src="/logos/huca.png"
-                  alt="HUCA"
-                  className="h-16 w-auto object-contain grayscale hover:grayscale-0 transition"
-                  onError={(e) => (e.currentTarget.style.display = 'none')}
-                />
-                <img
-                  src="/logos/sespa.png"
-                  alt="SESPA"
-                  className="h-14 w-auto object-contain grayscale hover:grayscale-0 transition"
-                  onError={(e) => (e.currentTarget.style.display = 'none')}
-                />
-                <img
-                  src="/logos/bayer.png"
-                  alt="Bayer"
-                  className="h-12 w-auto object-contain grayscale hover:grayscale-0 transition"
-                  onError={(e) => (e.currentTarget.style.display = 'none')}
-                />
-              </div>
               {/* Badges de texto como apoyo/backup visual */}
               <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 opacity-90">
-                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">HUCA — UGC Farmacia</span>
-                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">HUCA — UCI Pediátrica</span>
-                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">SESPA</span>
                 <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Principado de Asturias</span>
-                <span className="text-sm px-3 py-1.5 rounded border bg-slate-50 border-slate-200">Bayer (Premio Pharmachallenge v5.0)</span>
               </div>
             </div>
           </Reveal>
