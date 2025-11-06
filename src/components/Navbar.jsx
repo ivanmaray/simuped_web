@@ -14,15 +14,19 @@ export default function Navbar({ variant = "auto" }) {
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
 
   // Privado si hay sesión o si se fuerza por prop
   const isPrivate = variant === "private" || (variant === "auto" && !!session);
 
   async function handleSignOut() {
+    if (loggingOut) return; // Evitar múltiples llamadas
+    setLoggingOut(true);
     try {
       await supabase.auth.signOut({ scope: "global" });
     } finally {
+      setLoggingOut(false);
       navigate("/", { replace: true });
     }
   }
@@ -78,7 +82,7 @@ export default function Navbar({ variant = "auto" }) {
               {isPrivate ? (
                 <div className="flex flex-wrap items-center gap-3 pl-1">
                   <NavItem to="/perfil" label="Perfil" />
-                  <LogoutButton onClick={handleSignOut} />
+                  <LogoutButton onClick={handleSignOut} disabled={loggingOut} />
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3 pl-1">
@@ -155,7 +159,8 @@ export default function Navbar({ variant = "auto" }) {
                   <button
                     type="button"
                     onClick={async () => { setOpen(false); await handleSignOut(); }}
-                    className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-slate-800"
+                    disabled={loggingOut}
+                    className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-slate-800 disabled:opacity-50"
                   >
                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -215,12 +220,13 @@ function AnchorItem({ href, label }) {
   );
 }
 
-function LogoutButton({ onClick }) {
+function LogoutButton({ onClick, disabled }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+      disabled={disabled}
+      className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
       aria-label="Cerrar sesión"
       title="Cerrar sesión"
     >
