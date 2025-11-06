@@ -480,6 +480,8 @@ export default function Online_Detalle() {
   const [revealedHints, setRevealedHints] = useState({}); // { [questionId]: string[] }
   const [qTimers, setQTimers] = useState({}); // { [qid]: { start: number, remaining: number, expired: boolean } }
   const [, setQTick] = useState(0);
+  const [selectedDiagnosis, setSelectedDiagnosis] = useState('');
+  const [patientManagement, setPatientManagement] = useState('');
   function requestHint(q) {
     const t = Date.now();
     if (!Number.isFinite(t)) return;
@@ -509,7 +511,7 @@ export default function Online_Detalle() {
   const [showSummary, setShowSummary] = useState(false);
 
   // Briefing interactivo (accordion + quizzes)
-  const [accordionOpen, setAccordionOpen] = useState([true, false, false, false, false]);
+  const [accordionOpen, setAccordionOpen] = useState([true, false, false, false, false, false]);
   const [tepAnswer, setTepAnswer] = useState({ appearance: null, breathing: null, circulation: null });
   const [tepChecked, setTepChecked] = useState(false);
   const tepOptions = [
@@ -1481,6 +1483,69 @@ export default function Online_Detalle() {
             )}
           </AccordionSection>
 
+          {/* ACCORDION: 6. Decisión final */}
+          <AccordionSection
+            title="6) Decisión final"
+            subtitle="Selecciona el diagnóstico y decide qué hacer con el paciente."
+            open={accordionOpen[5]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 5 ? !v : v)))}
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Diagnóstico principal</label>
+                <select
+                  value={selectedDiagnosis}
+                  onChange={(e) => setSelectedDiagnosis(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                >
+                  <option value="">Selecciona diagnóstico</option>
+                  <option value="sepsis">Sepsis</option>
+                  <option value="neumonia">Neumonía</option>
+                  <option value="bronquiolitis">Bronquiolitis</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">¿Qué deseas hacer con el paciente?</label>
+                <div className="space-y-2">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="management"
+                      value="ingresar"
+                      checked={patientManagement === 'ingresar'}
+                      onChange={(e) => setPatientManagement(e.target.value)}
+                      className="mr-2"
+                    />
+                    Ingresar al hospital
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="management"
+                      value="observacion"
+                      checked={patientManagement === 'observacion'}
+                      onChange={(e) => setPatientManagement(e.target.value)}
+                      className="mr-2"
+                    />
+                    Dejar en observación unas horas
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="management"
+                      value="casa"
+                      checked={patientManagement === 'casa'}
+                      onChange={(e) => setPatientManagement(e.target.value)}
+                      className="mr-2"
+                    />
+                    Mandar a casa
+                  </label>
+                </div>
+              </div>
+            </div>
+          </AccordionSection>
+
           {/* BARRA inferior de acción */}
           <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">
             <div className="text-sm text-slate-600">
@@ -1492,14 +1557,18 @@ export default function Online_Detalle() {
             </div>
             <button
               onClick={() => {
-                setShowBriefing(false);
-                try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+                if (selectedDiagnosis && patientManagement) {
+                  finishAttempt();
+                } else {
+                  setShowBriefing(false);
+                  try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+                }
               }}
               disabled={showSummary || !tepComplete}
               className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 disabled:opacity-50"
-              title={!tepComplete ? "Completa el TEP para continuar" : (showSummary ? "El intento ya está finalizado o expirado" : "Continuar a preguntas")}
+              title={!tepComplete ? "Completa el TEP para continuar" : (showSummary ? "El intento ya está finalizado o expirado" : (selectedDiagnosis && patientManagement ? "Finalizar caso" : "Continuar a preguntas"))}
             >
-              Continuar
+              {selectedDiagnosis && patientManagement ? "Finalizar caso" : "Continuar"}
             </button>
             <p className="ml-3 text-xs text-slate-500">
               ⏱️ El tiempo corre durante el briefing interactivo.
