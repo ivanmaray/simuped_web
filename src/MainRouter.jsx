@@ -47,7 +47,8 @@ const PresencialAlumno = React.lazy(() => import("./features/presencial/pages/du
 const PresencialInfo = React.lazy(() => import("./features/presencial/pages/shared/Presencial_Info.jsx"));
 const PresencialInforme = React.lazy(() => import("./features/presencial/pages/shared/Presencial_Informe.jsx"));
 
-const Admin = React.lazy(() => import("./features/admin/pages/Admin_Usuarios.jsx"));
+const AdminUsuarios = React.lazy(() => import("./features/admin/pages/Admin_Usuarios.jsx"));
+const AdminScenarios = React.lazy(() => import("./features/admin/pages/Admin_Scenarios.jsx"));
 
 import { useAuth } from "./auth";
 
@@ -206,7 +207,10 @@ export default function MainRouter() {
           </Route>
 
           {/* Admin panel */}
-          <Route path="/admin" element={<Suspense fallback={<Spinner />}><Admin /></Suspense>} />
+          <Route element={<RequireAdmin />}>
+            <Route path="/admin" element={<Suspense fallback={<Spinner centered />}><AdminUsuarios /></Suspense>} />
+            <Route path="/admin/escenarios" element={<Suspense fallback={<Spinner centered />}><AdminScenarios /></Suspense>} />
+          </Route>
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

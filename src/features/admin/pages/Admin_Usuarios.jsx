@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 
 import Navbar from "../../../components/Navbar.jsx";
+import AdminNav from "../components/AdminNav.jsx";
 import {
   UserGroupIcon,
   ClipboardDocumentCheckIcon,
@@ -552,6 +553,9 @@ export default function Admin_Usuarios() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar isPrivate />
+      <div className="max-w-[110rem] mx-auto px-5 pt-6">
+        <AdminNav />
+      </div>
 
       <section className="relative overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
