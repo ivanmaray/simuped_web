@@ -57,19 +57,7 @@ export default function Admin_ScenarioEditor() {
       try {
         const { data, error: fetchErr } = await supabase
           .from("scenarios")
-          .select(`
-            id,
-            title,
-            summary,
-            status,
-            mode,
-            level,
-            difficulty,
-            estimated_minutes,
-            max_attempts,
-            created_at,
-            updated_at
-          `)
+          .select("id,title,summary,status,mode,level,difficulty,estimated_minutes,max_attempts,created_at")
           .eq("id", scenarioId)
           .maybeSingle();
         if (fetchErr) throw fetchErr;
@@ -264,21 +252,7 @@ export default function Admin_ScenarioEditor() {
                   setSaving(true);
                   supabase
                     .from("scenarios")
-                    .select(
-                      `
-                        id,
-                        title,
-                        summary,
-                        status,
-                        mode,
-                        level,
-                        difficulty,
-                        estimated_minutes,
-                        max_attempts,
-                        created_at,
-                        updated_at
-                      `
-                    )
+                    .select("id,title,summary,status,mode,level,difficulty,estimated_minutes,max_attempts,created_at")
                     .eq("id", scenarioId)
                     .maybeSingle()
                     .then(({ data, error: fetchErr }) => {
