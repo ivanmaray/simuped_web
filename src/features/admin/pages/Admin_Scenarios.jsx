@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
@@ -63,7 +64,7 @@ function statusBadge(status) {
   );
 }
 
-function ScenarioRow({ scenario }) {
+function ScenarioRow({ scenario, onOpen }) {
   const modes = Array.isArray(scenario?.mode) ? scenario.mode.join(", ") : scenario?.mode || "—";
   const created = scenario?.created_at ? new Date(scenario.created_at) : null;
   const createdLabel = created && !Number.isNaN(created.valueOf())
@@ -93,9 +94,7 @@ function ScenarioRow({ scenario }) {
           <button
             type="button"
             className="text-sm text-slate-500 hover:text-slate-900"
-            onClick={() => {
-              console.info("TODO: abrir editor de escenario", scenario.id);
-            }}
+            onClick={onOpen}
           >
             Abrir editor
           </button>
@@ -106,6 +105,7 @@ function ScenarioRow({ scenario }) {
 }
 
 export default function Admin_Scenarios() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [scenarios, setScenarios] = useState([]);
@@ -293,7 +293,11 @@ export default function Admin_Scenarios() {
             ) : (
               <div className="grid gap-4">
                 {filtered.map((scenario) => (
-                  <ScenarioRow key={scenario.id} scenario={scenario} />
+                  <ScenarioRow
+                    key={scenario.id}
+                    scenario={scenario}
+                    onOpen={() => navigate(`/admin/escenarios/${scenario.id}`)}
+                  />
                 ))}
               </div>
             )}
