@@ -480,8 +480,6 @@ export default function Online_Detalle() {
   const [revealedHints, setRevealedHints] = useState({}); // { [questionId]: string[] }
   const [qTimers, setQTimers] = useState({}); // { [qid]: { start: number, remaining: number, expired: boolean } }
   const [, setQTick] = useState(0);
-  const [selectedDiagnosis, setSelectedDiagnosis] = useState('');
-  const [patientManagement, setPatientManagement] = useState('');
   function requestHint(q) {
     const t = Date.now();
     if (!Number.isFinite(t)) return;
@@ -1662,65 +1660,6 @@ export default function Online_Detalle() {
               </button>
             </div>
 
-            {/* Decisión final */}
-            <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6">
-              <h3 className="text-lg font-semibold mb-4">Decisión final</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Diagnóstico principal</label>
-                  <select
-                    value={selectedDiagnosis}
-                    onChange={(e) => setSelectedDiagnosis(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                  >
-                    <option value="">Selecciona diagnóstico</option>
-                    <option value="sepsis">Sepsis</option>
-                    <option value="neumonia">Neumonía</option>
-                    <option value="bronquiolitis">Bronquiolitis</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">¿Qué deseas hacer con el paciente?</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="management"
-                        value="ingresar"
-                        checked={patientManagement === 'ingresar'}
-                        onChange={(e) => setPatientManagement(e.target.value)}
-                        className="mr-2"
-                      />
-                      Ingresar al hospital
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="management"
-                        value="observacion"
-                        checked={patientManagement === 'observacion'}
-                        onChange={(e) => setPatientManagement(e.target.value)}
-                        className="mr-2"
-                      />
-                      Dejar en observación unas horas
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="management"
-                        value="casa"
-                        checked={patientManagement === 'casa'}
-                        onChange={(e) => setPatientManagement(e.target.value)}
-                        className="mr-2"
-                      />
-                      Mandar a casa
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Lecturas recomendadas (debrief, al final) */}
             {resources.length > 0 && (
               <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
@@ -2041,8 +1980,8 @@ export default function Online_Detalle() {
                     <button
                       onClick={() => finishAttempt()}
                       className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
-                      disabled={!(allAnswered && selectedDiagnosis && patientManagement) && !timeUp}
-                      title={(allAnswered && selectedDiagnosis && patientManagement) ? "Finalizar y guardar nota" : (timeUp ? "Tiempo agotado: se finalizará" : "Responde todas las preguntas y toma decisión final para finalizar")}
+                      disabled={!allAnswered && !timeUp}
+                      title={allAnswered ? "Finalizar y guardar nota" : (timeUp ? "Tiempo agotado: se finalizará" : "Responde todas las preguntas para finalizar")}
                     >
                       Finalizar intento
                     </button>
