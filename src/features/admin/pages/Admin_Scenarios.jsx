@@ -4,6 +4,7 @@ import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
 import AdminNav from "../components/AdminNav.jsx";
+import { formatLevel } from "../../../utils/formatUtils.js";
 import {
   PlusCircleIcon,
   ArrowPathIcon,
@@ -49,13 +50,14 @@ async function fetchScenarioList() {
 
 function statusBadge(status) {
   const palette = {
-    Draft: "bg-slate-100 text-slate-700 border-slate-200",
-    Disponible: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    Archivado: "bg-slate-100 text-slate-400 border-slate-200",
-    Borrador: "bg-slate-100 text-slate-700 border-slate-200",
-    Publicado: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    "disponible": "bg-emerald-100 text-emerald-700 border-emerald-200",
+    "en construcción: en proceso": "bg-amber-100 text-amber-800 border-amber-200",
+    "en construcción: sin iniciar": "bg-rose-100 text-rose-700 border-rose-200",
+    "borrador": "bg-slate-100 text-slate-700 border-slate-200",
+    "archivado": "bg-slate-100 text-slate-400 border-slate-200",
+    "publicado": "bg-emerald-100 text-emerald-700 border-emerald-200",
   };
-  const key = status ? status.charAt(0).toUpperCase() + status.slice(1) : "";
+  const key = (status || "").trim().toLowerCase();
   const cls = palette[key] || "bg-slate-100 text-slate-600 border-slate-200";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium border rounded-full ${cls}`}>
@@ -70,6 +72,7 @@ function ScenarioRow({ scenario, onOpen }) {
   const createdLabel = created && !Number.isNaN(created.valueOf())
     ? created.toLocaleDateString()
     : "Fecha no disponible";
+  const levelLabel = formatLevel(scenario?.level) || "Sin definir";
   return (
     <article className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -77,7 +80,7 @@ function ScenarioRow({ scenario, onOpen }) {
           <h3 className="text-lg font-semibold text-slate-900">{scenario.title || "Escenario sin título"}</h3>
           <p className="text-sm text-slate-600">{scenario.summary || "Sin descripción"}</p>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1"><FunnelIcon className="h-4 w-4" />{scenario.difficulty || "Dificultad no definida"}</span>
+            <span className="inline-flex items-center gap-1"><FunnelIcon className="h-4 w-4" />Nivel {levelLabel}</span>
             <span className="inline-flex items-center gap-1"><CalendarIcon className="h-4 w-4" />{createdLabel}</span>
             <span className="inline-flex items-center gap-1"><ClockIcon className="h-4 w-4" />{scenario.estimated_minutes || "—"} min</span>
             <span className="inline-flex items-center gap-1">Modo: {modes}</span>
@@ -185,14 +188,16 @@ export default function Admin_Scenarios() {
     const query = search.trim().toLowerCase();
     return scenarios.filter((scenario) => {
       if (statusFilter !== "all") {
-        if ((scenario.status || "").toLowerCase() !== statusFilter) return false;
+        const statusValue = (scenario.status || "").trim().toLowerCase();
+        if (statusValue !== statusFilter) return false;
       }
       if (!query) return true;
+      const levelLabel = formatLevel(scenario.level);
       const haystack = [
         scenario.title,
         scenario.summary,
-        scenario.level,
-        scenario.difficulty,
+  scenario.level,
+        levelLabel,
       ]
         .filter(Boolean)
         .join(" ")
@@ -274,6 +279,8 @@ export default function Admin_Scenarios() {
                 >
                   <option value="all">Todos</option>
                   <option value="disponible">Disponible</option>
+                  <option value="en construcción: en proceso">En construcción: en proceso</option>
+                  <option value="en construcción: sin iniciar">En construcción: sin iniciar</option>
                   <option value="borrador">Borrador</option>
                   <option value="archivado">Archivado</option>
                   <option value="publicado">Publicado</option>

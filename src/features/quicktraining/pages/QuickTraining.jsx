@@ -301,6 +301,10 @@ export default function QuickTraining() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-white/70 text-sm uppercase tracking-wide">Entrenamiento rápido</p>
+              <span className="mt-2 inline-flex flex-col items-center rounded-full border border-white/40 bg-white/20 px-3 py-1 text-center text-xs font-semibold uppercase leading-tight tracking-[0.2em] text-white/80">
+                <span>No disponible</span>
+                <span>para alumnos</span>
+              </span>
               <h1 className="text-3xl md:text-4xl font-semibold mt-1">Microcasos interactivos</h1>
               <p className="opacity-95 mt-3 text-lg max-w-xl">
                 Cambia de rol para entrenar la coordinación entre equipos. Cada enfoque ofrece preguntas y respuestas adaptadas a tu responsabilidad.

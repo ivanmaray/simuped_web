@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Navbar from "../../../components/Navbar.jsx";
 import SimulationStage from "../components/SimulationStage.jsx";
+import { formatLevel } from "../../../utils/formatUtils.js";
 import {
   findInteractiveCase,
   interactiveCategories,
@@ -21,6 +22,14 @@ const infoTabs = [
   { id: "communications", label: "Comunicacion" },
   { id: "handoff", label: "Traspaso" }
 ];
+
+const LEVEL_TONE = {
+  basico: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  medio: "border-amber-200 bg-amber-50 text-amber-700",
+  intermedio: "border-amber-200 bg-amber-50 text-amber-700",
+  avanzado: "border-rose-200 bg-rose-50 text-rose-700",
+  experto: "border-purple-200 bg-purple-50 text-purple-700",
+};
 
 const VITAL_LABELS = {
   temperatura: "Temperatura",
@@ -207,6 +216,9 @@ export default function InteractiveCase() {
   const [evaluationTriggered, setEvaluationTriggered] = useState(false);
 
   const scenario = useMemo(() => findInteractiveCase(caseId), [caseId]);
+  const levelKey = scenario?.level ? String(scenario.level).trim().toLowerCase() : null;
+  const levelLabel = levelKey ? formatLevel(levelKey) : "";
+  const levelTone = levelKey ? LEVEL_TONE[levelKey] || "border-slate-200 bg-slate-100 text-slate-600" : "border-slate-200 bg-slate-100 text-slate-600";
 
   const examSteps = scenario?.exam?.steps || [];
   const stabilizationPlan = scenario?.stabilization || [];
@@ -397,8 +409,8 @@ export default function InteractiveCase() {
               {scenario.duration ? (
                 <Badge tone="border-slate-200 bg-slate-100 text-slate-600">{scenario.duration}</Badge>
               ) : null}
-              {scenario.difficulty ? (
-                <Badge tone="border-amber-200 bg-amber-50 text-amber-700">{scenario.difficulty}</Badge>
+              {levelLabel ? (
+                <Badge tone={levelTone}>Nivel {levelLabel}</Badge>
               ) : null}
               {categoryLabels.map((label) => (
                 <Badge key={label} tone="border-slate-200 bg-slate-100 text-slate-600">{label}</Badge>

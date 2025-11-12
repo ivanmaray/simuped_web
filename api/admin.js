@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
+const TOKEN_EXPIRATION_DAYS = 1;
+
 function getAppBaseUrl() {
   const candidates = [
     process.env.APP_BASE_URL,
@@ -66,6 +68,8 @@ export default async function handler(req, res) {
       return await handleSeedProfile(req, res);
     case 'cleanup_email':
       return await handleCleanupEmail(req, res);
+    case 'set_scenario_categories':
+      return await handleSetScenarioCategories(req, res);
     default:
       return res.status(400).json({ ok: false, error: 'invalid_action' });
   }
@@ -393,6 +397,7 @@ async function handleInviteUser(req, res) {
   const unidadForEmail = unidadNorm || (unidad || '').toString().trim() || 'No especificada';
   const nombreForEmail = nombreClean || nombre || '';
   const apellidosForEmail = apellidosClean || apellidos || '';
+  const expiryLabel = TOKEN_EXPIRATION_DAYS === 1 ? '24 horas' : `${TOKEN_EXPIRATION_DAYS} días`;
 
     const html = `
       <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
@@ -421,6 +426,8 @@ async function handleInviteUser(req, res) {
               <div style="text-align:center;margin:28px 0;">
                 <a href="${recoveryLink}" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Establecer contraseña y entrar</a>
               </div>
+
+              <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#64748b;">Recuerda: el enlace de activación caduca en ${expiryLabel}. Si expira, pide a tu coordinador que te reenvíe la invitación.</p>
 
               <p style="margin:12px 0 0;font-size:13px;line-height:1.6;color:#64748b;">¿Prefieres entrar sin contraseña? Usa el <a href="${magicLink}" style="color:#0A3D91;text-decoration:none;">acceso directo</a>.</p>
 
@@ -530,6 +537,94 @@ async function handleCleanupEmail(req, res) {
     return res.status(200).json({ ok: true, actions });
   } catch (err) {
     console.error('[cleanup_email] error', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+}
+
+async function handleSetScenarioCategories(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  try {
+    const scenarioIdRaw = req.body?.scenario_id ?? req.query?.scenario_id;
+    const categoryIdsRaw = req.body?.category_ids ?? req.query?.category_ids;
+    const scenarioId = Number.parseInt(scenarioIdRaw, 10);
+    if (!Number.isFinite(scenarioId) || scenarioId <= 0) {
+      return res.status(400).json({ ok: false, error: 'invalid_scenario_id' });
+    }
+
+    const candidates = Array.isArray(categoryIdsRaw)
+      ? categoryIdsRaw
+      : typeof categoryIdsRaw === 'string'
+        ? categoryIdsRaw.split(',')
+        : [];
+    const normalizedCategoryIds = Array.from(
+      new Set(
+        candidates
+          .map((value) => Number.parseInt(value, 10))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      )
+    );
+
+    const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      console.error('[admin_set_scenario_categories] Missing service credentials');
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data: existingRows, error: existingError } = await admin
+      .from('scenario_categories')
+      .select('category_id')
+      .eq('scenario_id', scenarioId);
+    if (existingError) {
+      console.error('[admin_set_scenario_categories] select error', existingError);
+      return res.status(500).json({ ok: false, error: 'select_failed', details: existingError.message });
+    }
+
+    const existingIds = new Set((existingRows || []).map((row) => row.category_id));
+    const desiredIds = new Set(normalizedCategoryIds);
+    const toRemove = Array.from(existingIds).filter((id) => !desiredIds.has(id));
+    const toAdd = normalizedCategoryIds.filter((id) => !existingIds.has(id));
+
+    if (toRemove.length > 0) {
+      const { error: deleteError } = await admin
+        .from('scenario_categories')
+        .delete()
+        .eq('scenario_id', scenarioId)
+        .in('category_id', toRemove);
+      if (deleteError) {
+        console.error('[admin_set_scenario_categories] delete error', deleteError);
+        return res.status(500).json({ ok: false, error: 'delete_failed', details: deleteError.message });
+      }
+    }
+
+    if (toAdd.length > 0) {
+      const insertPayload = toAdd.map((categoryId) => ({
+        scenario_id: scenarioId,
+        category_id: categoryId
+      }));
+      const { error: insertError } = await admin
+        .from('scenario_categories')
+        .insert(insertPayload);
+      if (insertError) {
+        console.error('[admin_set_scenario_categories] insert error', insertError);
+        return res.status(500).json({ ok: false, error: 'insert_failed', details: insertError.message });
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      scenario_id: scenarioId,
+      category_ids: normalizedCategoryIds
+    });
+  } catch (err) {
+    console.error('[admin_set_scenario_categories] unexpected error', err);
     return res.status(500).json({ ok: false, error: 'internal_error' });
   }
 }

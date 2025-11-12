@@ -472,6 +472,8 @@ export default function Principal_Dashboard() {
                 to="/entrenamiento-rapido"
                 badge="En desarrollo"
                 badgeColor="bg-amber-100 text-amber-700"
+                secondaryBadge="No disponible para alumnos"
+                secondaryBadgeColor="bg-slate-200 text-slate-600"
                 icon={ArrowsRightLeftIcon}
               />
             ) : null}
@@ -482,6 +484,8 @@ export default function Principal_Dashboard() {
                 to="/entrenamiento-interactivo"
                 badge="En desarrollo"
                 badgeColor="bg-amber-100 text-amber-700"
+                secondaryBadge="No disponible para alumnos"
+                secondaryBadgeColor="bg-slate-200 text-slate-600"
                 icon={PlayCircleIcon}
               />
             ) : null}
@@ -711,7 +715,7 @@ export default function Principal_Dashboard() {
   );
 }
 
-function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon, titleAttr }) {
+function Card({ title, description, to, stateObj, badge, badgeColor, secondaryBadge, secondaryBadgeColor, icon: Icon, titleAttr }) {
   const content = (
     <div className="flex items-start gap-4">
       <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/15 via-[#1E6ACB]/10 to-[#4FA3E3]/15 shadow-inner">
@@ -723,6 +727,18 @@ function Card({ title, description, to, stateObj, badge, badgeColor, icon: Icon,
         {badge ? (
           <span className={`mt-2 inline-flex w-fit rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-[0.2em] whitespace-nowrap ring-1 ring-black/10 ${badgeColor}`}>
             {badge}
+          </span>
+        ) : null}
+        {secondaryBadge ? (
+          <span className={`mt-2 ml-2 inline-flex w-fit flex-col items-center rounded-full px-2 py-0.5 text-center text-[8px] font-semibold uppercase leading-tight tracking-[0.2em] ring-1 ring-black/10 ${secondaryBadgeColor || "bg-slate-200 text-slate-700"}`}>
+            {typeof secondaryBadge === "string" && secondaryBadge.trim().toLowerCase() === "no disponible para alumnos"
+              ? (
+                <>
+                  <span>No disponible</span>
+                  <span>para alumnos</span>
+                </>
+              )
+              : secondaryBadge}
           </span>
         ) : null}
       </div>

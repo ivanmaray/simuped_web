@@ -13,15 +13,17 @@ import {
 
 const statusOptions = [
   { value: "Disponible", label: "Disponible" },
+  { value: "En construcción: en proceso", label: "En construcción: en proceso" },
+  { value: "En construcción: sin iniciar", label: "En construcción: sin iniciar" },
   { value: "Borrador", label: "Borrador" },
   { value: "Archivado", label: "Archivado" },
   { value: "Publicado", label: "Publicado" },
 ];
 
-const difficultyOptions = [
-  { value: "baja", label: "Baja" },
-  { value: "media", label: "Media" },
-  { value: "alta", label: "Alta" },
+const levelOptions = [
+  { value: "basico", label: "Nivel básico" },
+  { value: "medio", label: "Nivel intermedio" },
+  { value: "avanzado", label: "Nivel avanzado" },
 ];
 
 const baseModeOptions = [
@@ -47,6 +49,220 @@ export default function Admin_ScenarioEditor() {
   const [scenario, setScenario] = useState(null);
   const [form, setForm] = useState(null);
   const [customMode, setCustomMode] = useState("");
+  const [allCategories, setAllCategories] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [initialCategories, setInitialCategories] = useState([]);
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryError, setCategoryError] = useState("");
+  const [categorySuccess, setCategorySuccess] = useState("");
+  const [briefForm, setBriefForm] = useState({ id: null, learningObjective: "", objectivesByRole: {} });
+  const [briefRoles, setBriefRoles] = useState(["MED", "NUR", "PHARM"]);
+  const [newRole, setNewRole] = useState("");
+  const [briefSaving, setBriefSaving] = useState(false);
+  const [briefError, setBriefError] = useState("");
+  const [briefSuccess, setBriefSuccess] = useState("");
+  const [resources, setResources] = useState([]);
+  const [initialResources, setInitialResources] = useState([]);
+  const [resourcesSaving, setResourcesSaving] = useState(false);
+  const [resourcesError, setResourcesError] = useState("");
+  const [resourcesSuccess, setResourcesSuccess] = useState("");
+  const [steps, setSteps] = useState([]);
+  const [initialSteps, setInitialSteps] = useState([]);
+  const [stepsSaving, setStepsSaving] = useState(false);
+  const [stepsError, setStepsError] = useState("");
+  const [stepsSuccess, setStepsSuccess] = useState("");
+  const [questionsByStep, setQuestionsByStep] = useState({});
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionsError, setQuestionsError] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [changeLogs, setChangeLogs] = useState([]);
+  const [changeLogsLoading, setChangeLogsLoading] = useState(false);
+  const [changeLogsError, setChangeLogsError] = useState("");
+  const scenarioNumericId = Number.parseInt(scenarioId, 10);
+  const roleDisplay = {
+    MED: "Medicina",
+    NUR: "Enfermería",
+    PHARM: "Farmacia",
+  };
+  const stepRoleOptions = [
+    { value: "medico", label: "Medicina" },
+    { value: "enfermeria", label: "Enfermería" },
+    { value: "farmacia", label: "Farmacia" },
+  ];
+  const questionRoleLabels = {
+    medico: "Medicina",
+    enfermeria: "Enfermería",
+    farmacia: "Farmacia",
+    med: "Medicina",
+    nur: "Enfermería",
+    pharm: "Farmacia",
+    MED: "Medicina",
+    NUR: "Enfermería",
+    PHARM: "Farmacia",
+  };
+  const changeTypeLabels = {
+    metadata: "Metadatos",
+    categorias: "Categorías",
+    brief: "Brief del paciente",
+    recursos: "Recursos",
+    pasos: "Pasos",
+  };
+
+  const getResolvedScenarioId = (explicitId) => {
+    if (typeof explicitId === "number" && Number.isFinite(explicitId)) {
+      return explicitId;
+    }
+    if (explicitId != null) {
+      const parsed = Number.parseInt(explicitId, 10);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    if (Number.isFinite(scenarioNumericId)) {
+      return scenarioNumericId;
+    }
+    if (scenario?.id != null) {
+      if (typeof scenario.id === "number" && Number.isFinite(scenario.id)) {
+        return scenario.id;
+      }
+      if (typeof scenario.id === "string") {
+        const parsedScenario = Number.parseInt(scenario.id, 10);
+        if (Number.isFinite(parsedScenario)) return parsedScenario;
+      }
+    }
+    return null;
+  };
+
+  async function loadQuestionsForStepIds(stepIds) {
+    if (!Array.isArray(stepIds) || stepIds.length === 0) {
+      setQuestionsByStep({});
+      setQuestionsError("");
+      setQuestionsLoading(false);
+      return;
+    }
+    setQuestionsLoading(true);
+    setQuestionsError("");
+    try {
+      const { data, error } = await supabase
+        .from("questions")
+        .select("id,step_id,question_text,options,correct_option,explanation,roles,is_critical,hints,time_limit,critical_rationale")
+        .in("step_id", stepIds)
+        .order("step_id", { ascending: true })
+        .order("id", { ascending: true });
+      if (error) throw error;
+      const byStep = {};
+      (data || []).forEach((row) => {
+        if (!row?.step_id) return;
+        const stepId = row.step_id;
+        const parseJsonArray = (value) => {
+          if (!value) return [];
+          if (Array.isArray(value)) return value.filter(Boolean);
+          if (typeof value === "string") {
+            try {
+              const parsed = JSON.parse(value);
+              if (Array.isArray(parsed)) return parsed.filter((item) => item !== null && item !== undefined && item !== "");
+              return parsed ? [parsed].filter(Boolean) : [];
+            } catch (err) {
+              return [value].filter(Boolean);
+            }
+          }
+          return [];
+        };
+        const rolesArray = Array.isArray(row.roles)
+          ? row.roles.filter(Boolean)
+          : typeof row.roles === "string" && row.roles.trim()
+            ? [row.roles.trim()]
+            : [];
+        const optionsArray = parseJsonArray(row.options);
+        const hintsArray = parseJsonArray(row.hints);
+        const correctIndex = (() => {
+          if (typeof row.correct_option === "number") return row.correct_option;
+          if (typeof row.correct_option === "string") {
+            const parsed = Number.parseInt(row.correct_option, 10);
+            if (Number.isFinite(parsed)) return parsed;
+          }
+          return null;
+        })();
+        const question = {
+          id: row.id,
+          stepId,
+          text: row.question_text || "",
+          options: optionsArray,
+          correctIndex,
+          explanation: row.explanation || "",
+          roles: rolesArray,
+          isCritical: Boolean(row.is_critical),
+          hints: hintsArray,
+          timeLimit: row.time_limit != null ? Number(row.time_limit) : null,
+          criticalRationale: row.critical_rationale || "",
+        };
+        if (!byStep[stepId]) {
+          byStep[stepId] = [];
+        }
+        byStep[stepId].push(question);
+      });
+      Object.keys(byStep).forEach((stepKey) => {
+        byStep[stepKey].sort((a, b) => {
+          const idA = typeof a.id === "number" ? a.id : Number.parseInt(a.id, 10) || 0;
+          const idB = typeof b.id === "number" ? b.id : Number.parseInt(b.id, 10) || 0;
+          return idA - idB;
+        });
+      });
+      setQuestionsByStep(byStep);
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] loadQuestions", err);
+      setQuestionsError(err?.message || "No se pudieron cargar las preguntas");
+      setQuestionsByStep({});
+    } finally {
+      setQuestionsLoading(false);
+    }
+  }
+
+  async function fetchChangeLogs(explicitId) {
+    const resolvedId = getResolvedScenarioId(explicitId);
+    if (!resolvedId) return;
+    setChangeLogsLoading(true);
+    setChangeLogsError("");
+    try {
+      const { data, error } = await supabase
+        .from("scenario_change_logs")
+        .select("id,scenario_id,change_type,description,meta,created_at,user_id,user_name")
+        .eq("scenario_id", resolvedId)
+        .order("created_at", { ascending: false })
+        .limit(25);
+      if (error) throw error;
+      setChangeLogs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] fetchChangeLogs", err);
+      setChangeLogsError(err?.message || "No se pudo cargar el historial");
+    } finally {
+      setChangeLogsLoading(false);
+    }
+  }
+
+  async function registerChange(changeType, description, meta = {}) {
+    const resolvedId = getResolvedScenarioId();
+    if (!resolvedId || !changeType) return;
+    const payload = {
+      scenario_id: resolvedId,
+      change_type: changeType,
+      description: description || null,
+    };
+    if (currentUser?.id) {
+      payload.user_id = currentUser.id;
+    }
+    if (currentUser?.name) {
+      payload.user_name = currentUser.name;
+    }
+    if (meta && typeof meta === "object" && Object.keys(meta).length > 0) {
+      payload.meta = meta;
+    }
+    try {
+      const { error } = await supabase.from("scenario_change_logs").insert(payload);
+      if (error) throw error;
+      await fetchChangeLogs(resolvedId);
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] registerChange", err);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -54,6 +270,12 @@ export default function Admin_ScenarioEditor() {
       setLoading(true);
       setError("");
       setSuccess("");
+      setCategoryError("");
+      setCategorySuccess("");
+      setBriefError("");
+      setBriefSuccess("");
+      setResourcesError("");
+      setResourcesSuccess("");
       try {
         const { data, error: fetchErr } = await supabase
           .from("scenarios")
@@ -66,19 +288,120 @@ export default function Admin_ScenarioEditor() {
           setError("Escenario no encontrado");
           setScenario(null);
           setForm(null);
+          setSelectedCategories([]);
+          setInitialCategories([]);
+          setAllCategories([]);
+          setBriefForm({ id: null, learningObjective: "", objectivesByRole: {} });
+          setBriefRoles(["MED", "NUR", "PHARM"]);
+          setResources([]);
+          setInitialResources([]);
+          setSteps([]);
+          setInitialSteps([]);
+          setQuestionsByStep({});
+          setQuestionsError("");
+          setQuestionsLoading(false);
+          setChangeLogs([]);
+          setChangeLogsError("");
+          setChangeLogsLoading(false);
           return;
         }
+        const [stepsRes, categoryLinkRes, categoriesRes, briefRes, resourcesRes, logsRes] = await Promise.all([
+          supabase
+            .from("steps")
+            .select("id,step_order,description,role_specific,roles,narrative")
+            .eq("scenario_id", data.id)
+            .order("step_order", { ascending: true }),
+          supabase
+            .from("scenario_categories")
+            .select("category_id")
+            .eq("scenario_id", data.id),
+          supabase
+            .from("categories")
+            .select("id,name")
+            .order("name", { ascending: true }),
+          supabase
+            .from("case_briefs")
+            .select("id,learning_objective,objectives")
+            .eq("scenario_id", data.id)
+            .maybeSingle(),
+          supabase
+            .from("case_resources")
+            .select("id,title,url,source,type,year,free_access,weight")
+            .eq("scenario_id", data.id)
+            .order("weight", { ascending: false })
+            .order("title", { ascending: true }),
+          supabase
+            .from("scenario_change_logs")
+            .select("id,change_type,description,meta,created_at,user_id,user_name")
+            .eq("scenario_id", data.id)
+            .order("created_at", { ascending: false })
+            .limit(25),
+        ]);
+  if (stepsRes.error) throw stepsRes.error;
+  if (categoryLinkRes.error) throw categoryLinkRes.error;
+        if (categoriesRes.error) throw categoriesRes.error;
+    if (briefRes.error) throw briefRes.error;
+  if (resourcesRes.error) throw resourcesRes.error;
+  if (logsRes.error) throw logsRes.error;
+        if (!active) return;
         setScenario(data);
         setForm({
           title: data.title || "",
           summary: data.summary || "",
           status: data.status || "Disponible",
           mode: normalizeMode(data.mode),
-          level: data.level || "",
-          difficulty: data.difficulty || "",
+          level: data.level ? String(data.level).trim().toLowerCase() : "basico",
           estimated_minutes: data.estimated_minutes ?? 10,
           max_attempts: data.max_attempts ?? 3,
         });
+        const currentCategories = (categoryLinkRes.data || []).map((row) => row.category_id);
+        setSelectedCategories(currentCategories);
+        setInitialCategories(currentCategories);
+        setAllCategories(categoriesRes.data || []);
+
+        const objectivesSource = briefRes?.data?.objectives && typeof briefRes.data.objectives === "object"
+          ? briefRes.data.objectives
+          : {};
+        const roles = new Set(["MED", "NUR", "PHARM"]);
+        Object.keys(objectivesSource || {}).forEach((role) => {
+          if (role) roles.add(role);
+        });
+        const objectivesByRole = {};
+        Array.from(roles).forEach((role) => {
+          const raw = objectivesSource?.[role];
+          objectivesByRole[role] = Array.isArray(raw) ? raw.join("\n") : "";
+        });
+        setBriefForm({
+          id: briefRes?.data?.id || null,
+          learningObjective: briefRes?.data?.learning_objective || "",
+          objectivesByRole,
+        });
+        setBriefRoles(Array.from(roles));
+
+        const resourceRows = (resourcesRes.data || []).map((row) => ({ ...row }));
+        setResources(resourceRows);
+        setInitialResources(resourceRows);
+
+  const logRows = Array.isArray(logsRes.data) ? logsRes.data : [];
+  setChangeLogs(logRows);
+  setChangeLogsError("");
+  setChangeLogsLoading(false);
+
+        const stepRows = (stepsRes.data || []).map((row, idx) => ({
+          id: row.id,
+          step_order: row.step_order ?? idx + 1,
+          description: row.description || "",
+          role_specific: Boolean(row.role_specific),
+          roles: Array.isArray(row.roles)
+            ? row.roles.filter(Boolean).map((role) => String(role).toLowerCase())
+            : [],
+          narrative: row.narrative || "",
+        }));
+        setSteps(stepRows);
+        setInitialSteps(stepRows);
+        if (!active) return;
+        await loadQuestionsForStepIds(stepRows.map((row) => row.id).filter(Boolean));
+        if (!active) return;
       } catch (err) {
         console.error("[Admin_ScenarioEditor] load", err);
         if (!active) return;
@@ -97,6 +420,53 @@ export default function Admin_ScenarioEditor() {
     setSuccess("");
   }, [form]);
 
+  useEffect(() => {
+    let active = true;
+    async function loadCurrentUser() {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!active) return;
+        const user = sessionData?.session?.user;
+        if (!user) {
+          setCurrentUser(null);
+          return;
+        }
+        let displayName = (user.user_metadata?.full_name || "").trim();
+        if (!displayName) {
+          const alternative = [user.user_metadata?.nombre, user.user_metadata?.apellidos]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          if (alternative) displayName = alternative;
+        }
+        if (!displayName) {
+          const { data: profileRow } = await supabase
+            .from("profiles")
+            .select("nombre, apellidos")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (!active) return;
+          if (profileRow) {
+            displayName = [profileRow.nombre, profileRow.apellidos].filter(Boolean).join(" ").trim();
+          }
+        }
+        if (!displayName) {
+          displayName = user.email || "Usuario";
+        }
+        if (!active) return;
+        setCurrentUser({ id: user.id, name: displayName });
+      } catch (err) {
+        console.error("[Admin_ScenarioEditor] currentUser", err);
+        if (active) setCurrentUser(null);
+      }
+    }
+    loadCurrentUser();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const modeOptions = useMemo(() => {
     const current = form?.mode || [];
     const extras = current
@@ -112,9 +482,13 @@ export default function Admin_ScenarioEditor() {
   }, [form?.mode]);
 
   function handleFieldChange(field, value) {
+    let nextValue = value;
+    if (field === "level" && typeof value === "string") {
+      nextValue = value.trim().toLowerCase();
+    }
     setForm((prev) => ({
       ...prev,
-      [field]: value,
+      [field]: nextValue,
     }));
   }
 
@@ -148,6 +522,499 @@ export default function Admin_ScenarioEditor() {
     setCustomMode("");
   }
 
+  function toggleCategorySelection(categoryId) {
+    setCategorySuccess("");
+    setCategoryError("");
+    setSelectedCategories((prev) => {
+      const next = new Set(prev || []);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return Array.from(next);
+    });
+  }
+
+  async function handleSaveCategories() {
+    if (!scenarioNumericId) return;
+    setCategoryError("");
+    setCategorySuccess("");
+    setCategorySaving(true);
+    try {
+      const response = await fetch("/api/admin?action=set_scenario_categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenario_id: scenarioNumericId,
+          category_ids: selectedCategories,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.ok === false) {
+        const code = payload?.error || "unknown";
+        const detail = payload?.details;
+        let message = payload?.message || payload?.error || "No se pudieron actualizar las categorías";
+        if (code === "server_not_configured") {
+          message = "Servidor sin credenciales de servicio. Informa al administrador.";
+        } else if (code === "invalid_scenario_id") {
+          message = "Identificador de escenario no válido";
+        } else if (detail) {
+          message = `${message}. Detalle: ${detail}`;
+        }
+        throw new Error(message);
+      }
+
+      setInitialCategories(selectedCategories);
+      const selectedLabels = allCategories
+        .filter((category) => selectedCategories.includes(category.id))
+        .map((category) => category.name);
+      await registerChange("categorias", "Actualizó las categorías del escenario", {
+        category_ids: selectedCategories,
+        category_labels: selectedLabels,
+      });
+      setCategorySuccess("Categorías actualizadas");
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] categories", err);
+      setCategoryError(err?.message || "No se pudieron actualizar las categorías");
+    } finally {
+      setCategorySaving(false);
+    }
+  }
+
+  function handleBriefObjectiveChange(role, value) {
+    setBriefSuccess("");
+    setBriefError("");
+    setBriefForm((prev) => ({
+      ...prev,
+      objectivesByRole: {
+        ...(prev?.objectivesByRole || {}),
+        [role]: value,
+      },
+    }));
+  }
+
+  function handleBriefLearningObjectiveChange(value) {
+    setBriefSuccess("");
+    setBriefError("");
+    setBriefForm((prev) => ({
+      ...prev,
+      learningObjective: value,
+    }));
+  }
+
+  function handleAddRole() {
+    const raw = newRole.trim();
+    if (!raw) return;
+    const key = raw.toUpperCase();
+    if (briefRoles.includes(key)) {
+      setNewRole("");
+      return;
+    }
+    setBriefRoles((prev) => [...prev, key]);
+    setBriefForm((prev) => ({
+      ...prev,
+      objectivesByRole: {
+        ...(prev?.objectivesByRole || {}),
+        [key]: "",
+      },
+    }));
+    setNewRole("");
+  }
+
+  function handleRemoveRole(role) {
+    if (role === "MED" || role === "NUR" || role === "PHARM") return;
+    setBriefSuccess("");
+    setBriefError("");
+    setBriefRoles((prev) => prev.filter((item) => item !== role));
+    setBriefForm((prev) => {
+      const nextObjectives = { ...(prev?.objectivesByRole || {}) };
+      delete nextObjectives[role];
+      return {
+        ...prev,
+        objectivesByRole: nextObjectives,
+      };
+    });
+  }
+
+  async function handleSaveBrief() {
+    if (!scenarioNumericId) return;
+    setBriefError("");
+    setBriefSuccess("");
+    setBriefSaving(true);
+    try {
+      const objectivesPayload = {};
+      briefRoles.forEach((role) => {
+        const text = briefForm?.objectivesByRole?.[role] || "";
+        const items = text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+        if (items.length > 0) {
+          objectivesPayload[role] = items;
+        }
+      });
+      const learningObjective = briefForm?.learningObjective?.trim() || null;
+      if (briefForm?.id) {
+        const { data, error: updateErr } = await supabase
+          .from("case_briefs")
+          .update({
+            learning_objective: learningObjective,
+            objectives: objectivesPayload,
+          })
+          .eq("id", briefForm.id)
+          .select()
+          .maybeSingle();
+        if (updateErr) throw updateErr;
+        const updatedObjectives = {};
+        briefRoles.forEach((role) => {
+          const rawList = Array.isArray(data?.objectives?.[role]) ? data.objectives[role] : [];
+          updatedObjectives[role] = rawList.join("\n");
+        });
+        setBriefForm({
+          id: data?.id || briefForm.id,
+          learningObjective: data?.learning_objective || "",
+          objectivesByRole: updatedObjectives,
+        });
+      } else {
+        const insertPayload = {
+          scenario_id: scenarioNumericId,
+          title: scenario?.title || "Escenario sin título",
+          context: scenario?.summary || null,
+          learning_objective: learningObjective,
+          objectives: objectivesPayload,
+          estimated_minutes: scenario?.estimated_minutes ?? 10,
+          level: scenario?.level ?? "basico",
+        };
+        const { data, error: insertErr } = await supabase
+          .from("case_briefs")
+          .insert(insertPayload)
+          .select()
+          .maybeSingle();
+        if (insertErr) throw insertErr;
+        const updatedObjectives = {};
+        briefRoles.forEach((role) => {
+          const rawList = Array.isArray(data?.objectives?.[role]) ? data.objectives[role] : [];
+          updatedObjectives[role] = rawList.join("\n");
+        });
+        setBriefForm({
+          id: data?.id || null,
+          learningObjective: data?.learning_objective || "",
+          objectivesByRole: updatedObjectives,
+        });
+      }
+      await registerChange("brief", "Actualizó el brief y los objetivos del caso", {
+        learning_objective: Boolean(learningObjective),
+        roles: Object.keys(objectivesPayload),
+      });
+      setBriefSuccess("Objetivos actualizados");
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] brief", err);
+      setBriefError(err?.message || "No se pudieron actualizar los objetivos");
+    } finally {
+      setBriefSaving(false);
+    }
+  }
+
+  function handleResourceChange(index, field, value) {
+    setResourcesSuccess("");
+    setResourcesError("");
+    setResources((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        [field]: value,
+      };
+      return next;
+    });
+  }
+
+  function toggleResourceFreeAccess(index) {
+    setResourcesSuccess("");
+    setResourcesError("");
+    setResources((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        free_access: !next[index]?.free_access,
+      };
+      return next;
+    });
+  }
+
+  function addResource() {
+    setResourcesSuccess("");
+    setResourcesError("");
+    setResources((prev) => {
+      const lastWeight = prev.length > 0 ? Number(prev[prev.length - 1].weight) : 100;
+      const nextWeight = Number.isFinite(lastWeight) ? lastWeight - 10 : 90;
+      return [
+        ...prev,
+        {
+          id: null,
+          title: "",
+          url: "",
+          source: "",
+          type: "",
+          year: "",
+          free_access: true,
+          weight: nextWeight,
+        },
+      ];
+    });
+  }
+
+  function removeResource(index) {
+    setResourcesSuccess("");
+    setResourcesError("");
+    setResources((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  async function handleSaveResources() {
+    if (!scenarioNumericId) return;
+    setResourcesError("");
+    setResourcesSuccess("");
+    const sanitized = resources.map((item) => ({
+      ...item,
+      title: item?.title?.trim() || "",
+      url: item?.url?.trim() || "",
+      source: item?.source?.trim() || "",
+      type: item?.type?.trim() || "",
+      year: item?.year ? Number.parseInt(item.year, 10) : null,
+      free_access: Boolean(item?.free_access),
+      weight: Number.isFinite(Number(item?.weight)) ? Number(item.weight) : 0,
+    }));
+    if (sanitized.some((item) => !item.title || !item.url)) {
+      setResourcesError("Cada recurso necesita título y URL");
+      return;
+    }
+    setResourcesSaving(true);
+    try {
+      const toDelete = initialResources.filter((item) => item.id && !sanitized.some((current) => current.id === item.id));
+      if (toDelete.length > 0) {
+        const { error: deleteErr } = await supabase
+          .from("case_resources")
+          .delete()
+          .in("id", toDelete.map((item) => item.id));
+        if (deleteErr) throw deleteErr;
+      }
+      const toUpdate = sanitized.filter((item) => item.id);
+      if (toUpdate.length > 0) {
+        await Promise.all(
+          toUpdate.map((item) =>
+            supabase
+              .from("case_resources")
+              .update({
+                title: item.title,
+                url: item.url,
+                source: item.source || null,
+                type: item.type || null,
+                year: item.year,
+                free_access: item.free_access,
+                weight: item.weight,
+              })
+              .eq("id", item.id)
+          )
+        );
+      }
+      const toInsert = sanitized.filter((item) => !item.id);
+      if (toInsert.length > 0) {
+        const insertPayload = toInsert.map((item) => ({
+          scenario_id: scenarioNumericId,
+          title: item.title,
+          url: item.url,
+          source: item.source || null,
+          type: item.type || null,
+          year: item.year,
+          free_access: item.free_access,
+          weight: item.weight,
+        }));
+        const { error: insertErr } = await supabase.from("case_resources").insert(insertPayload);
+        if (insertErr) throw insertErr;
+      }
+      const { data: refreshed, error: refreshErr } = await supabase
+        .from("case_resources")
+        .select("id,title,url,source,type,year,free_access,weight")
+        .eq("scenario_id", scenarioNumericId)
+        .order("weight", { ascending: false })
+        .order("title", { ascending: true });
+      if (refreshErr) throw refreshErr;
+      const next = (refreshed || []).map((row) => ({ ...row }));
+      setResources(next);
+      setInitialResources(next);
+      await registerChange("recursos", "Actualizó las lecturas y materiales del caso", {
+        total_resources: next.length,
+      });
+      setResourcesSuccess("Lecturas actualizadas");
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] resources", err);
+      setResourcesError(err?.message || "No se pudieron actualizar las lecturas");
+    } finally {
+      setResourcesSaving(false);
+    }
+  }
+
+  function addStep() {
+    setStepsSuccess("");
+    setStepsError("");
+    setSteps((prev) => [
+      ...prev,
+      {
+        id: null,
+        description: "",
+        step_order: prev.length + 1,
+        role_specific: false,
+        roles: [],
+        narrative: "",
+      },
+    ]);
+  }
+
+  function updateStep(index, field, value) {
+    setStepsSuccess("");
+    setStepsError("");
+    setSteps((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        [field]: value,
+      };
+      return next;
+    });
+  }
+
+  function toggleStepRoleSpecific(index) {
+    setStepsSuccess("");
+    setStepsError("");
+    setSteps((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        role_specific: !next[index]?.role_specific,
+        roles: !next[index]?.role_specific ? [] : next[index].roles,
+      };
+      return next;
+    });
+  }
+
+  function removeStep(index) {
+    setStepsSuccess("");
+    setStepsError("");
+    setSteps((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  function moveStep(index, direction) {
+    setStepsSuccess("");
+    setStepsError("");
+    setSteps((prev) => {
+      const next = [...prev];
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= next.length) return prev;
+      const temp = next[targetIndex];
+      next[targetIndex] = next[index];
+      next[index] = temp;
+      return next.map((step, idx) => ({
+        ...step,
+        step_order: idx + 1,
+      }));
+    });
+  }
+
+  async function handleSaveSteps() {
+    if (!scenarioNumericId) return;
+    setStepsError("");
+    setStepsSuccess("");
+    const sanitized = steps.map((step, idx) => ({
+      ...step,
+      description: step?.description ? step.description.trim() : "",
+      step_order: idx + 1,
+      role_specific: Boolean(step?.role_specific),
+      roles: Array.isArray(step?.roles)
+        ? step.roles.filter(Boolean).map((role) => String(role).toLowerCase())
+        : [],
+      narrative: step?.narrative ? step.narrative.trim() : "",
+    }));
+    if (sanitized.length === 0) {
+      setStepsError("Añade al menos un paso para el escenario");
+      return;
+    }
+    if (sanitized.some((step) => !step.description)) {
+      setStepsError("Cada paso necesita un título");
+      return;
+    }
+    setStepsSaving(true);
+    try {
+      const toDelete = initialSteps.filter((step) => step.id && !sanitized.some((candidate) => candidate.id === step.id));
+      if (toDelete.length > 0) {
+        const { error: deleteErr } = await supabase
+          .from("steps")
+          .delete()
+          .in("id", toDelete.map((step) => step.id));
+        if (deleteErr) throw deleteErr;
+      }
+      const toUpdate = sanitized.filter((step) => step.id);
+      if (toUpdate.length > 0) {
+        await Promise.all(
+          toUpdate.map((step) =>
+            supabase
+              .from("steps")
+              .update({
+                description: step.description,
+                step_order: step.step_order,
+                role_specific: step.role_specific,
+                roles: step.role_specific ? step.roles : null,
+                narrative: step.narrative || null,
+              })
+              .eq("id", step.id)
+          )
+        );
+      }
+      const toInsert = sanitized.filter((step) => !step.id);
+      if (toInsert.length > 0) {
+        const insertPayload = toInsert.map((step) => ({
+          scenario_id: scenarioNumericId,
+          description: step.description,
+          step_order: step.step_order,
+          role_specific: step.role_specific,
+          roles: step.role_specific ? step.roles : null,
+          narrative: step.narrative || null,
+        }));
+        const { error: insertErr } = await supabase
+          .from("steps")
+          .insert(insertPayload);
+        if (insertErr) throw insertErr;
+      }
+      const { data: refreshed, error: refreshErr } = await supabase
+        .from("steps")
+        .select("id,step_order,description,role_specific,roles,narrative")
+        .eq("scenario_id", scenarioNumericId)
+        .order("step_order", { ascending: true });
+      if (refreshErr) throw refreshErr;
+      const normalized = (refreshed || []).map((row, index) => ({
+        id: row.id,
+        step_order: row.step_order ?? index + 1,
+        description: row.description || "",
+        role_specific: Boolean(row.role_specific),
+        roles: Array.isArray(row.roles)
+          ? row.roles.filter(Boolean).map((role) => String(role).toLowerCase())
+          : [],
+        narrative: row.narrative || "",
+      }));
+      setSteps(normalized);
+      setInitialSteps(normalized);
+      await loadQuestionsForStepIds(normalized.map((row) => row.id).filter(Boolean));
+      await registerChange("pasos", "Actualizó la secuencia de pasos del escenario", {
+        total_steps: normalized.length,
+      });
+      setStepsSuccess("Pasos actualizados");
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] steps", err);
+      setStepsError(err?.message || "No se pudieron actualizar los pasos");
+    } finally {
+      setStepsSaving(false);
+    }
+  }
+
   async function handleSave() {
     if (!form) return;
     setError("");
@@ -164,13 +1031,13 @@ export default function Admin_ScenarioEditor() {
     try {
       const estimated = Number.parseInt(form.estimated_minutes, 10);
       const attempts = Number.parseInt(form.max_attempts, 10);
+      const levelValue = (form.level || "basico").toString().trim().toLowerCase();
       const payload = {
         title: form.title.trim(),
         summary: form.summary.trim() || null,
         status: form.status || null,
         mode: form.mode,
-        level: form.level.trim() || null,
-        difficulty: form.difficulty || null,
+        level: levelValue || null,
         estimated_minutes: Number.isFinite(estimated) ? estimated : 10,
         max_attempts: Number.isFinite(attempts) ? attempts : 3,
       };
@@ -182,6 +1049,13 @@ export default function Admin_ScenarioEditor() {
         .maybeSingle();
       if (updateErr) throw updateErr;
       setScenario(data);
+      await registerChange("metadata", "Actualizó la información general del escenario", {
+        status: payload.status,
+        level: payload.level,
+        mode: payload.mode,
+        estimated_minutes: payload.estimated_minutes,
+        max_attempts: payload.max_attempts,
+      });
       setSuccess("Escenario actualizado correctamente");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] save", err);
@@ -264,8 +1138,7 @@ export default function Admin_ScenarioEditor() {
                           summary: data.summary || "",
                           status: data.status || "Disponible",
                           mode: normalizeMode(data.mode),
-                          level: data.level || "",
-                          difficulty: data.difficulty || "",
+                          level: data.level ? String(data.level).trim().toLowerCase() : "basico",
                           estimated_minutes: data.estimated_minutes ?? 10,
                           max_attempts: data.max_attempts ?? 3,
                         });
@@ -342,65 +1215,302 @@ export default function Admin_ScenarioEditor() {
                   </select>
                 </label>
                 <label className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Dificultad</span>
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Nivel</span>
                   <select
-                    value={form.difficulty || ""}
-                    onChange={(event) => handleFieldChange("difficulty", event.target.value)}
+                    value={form.level || ""}
+                    onChange={(event) => handleFieldChange("level", event.target.value)}
                     className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
                   >
-                    <option value="">Sin definir</option>
-                    {difficultyOptions.map((option) => (
+                    {levelOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Nivel</span>
+              <div className="space-y-3 text-sm text-slate-600">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Modo</p>
+                <div className="flex flex-wrap gap-3">
+                  {modeOptions.map((option) => {
+                    const checked = form.mode?.includes(option.value);
+                    return (
+                      <label key={option.value} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleMode(option.value)}
+                          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                        />
+                        {option.label}
+                      </label>
+                    );
+                  })}
+                </div>
+                <form onSubmit={addCustomMode} className="flex gap-2">
                   <input
                     type="text"
-                    value={form.level || ""}
-                    onChange={(event) => handleFieldChange("level", event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                    placeholder="Ej. R1 pediatría, Residente avanzada…"
+                    value={customMode}
+                    onChange={(event) => setCustomMode(event.target.value)}
+                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    placeholder="Añadir modo personalizado"
                   />
-                </label>
-                <div className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Modo</span>
-                  <div className="mt-2 flex flex-wrap gap-3">
-                    {modeOptions.map((option) => {
-                      const checked = form.mode?.includes(option.value);
-                      return (
-                        <label key={option.value} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleMode(option.value)}
-                            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-                          />
-                          {option.label}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <form onSubmit={addCustomMode} className="mt-3 flex gap-2">
+                  <button
+                    type="submit"
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                  >
+                    Añadir
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Taxonomía del escenario</h2>
+                <p className="text-sm text-slate-600">Activa o desactiva las categorías disponibles.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveCategories}
+                disabled={categorySaving}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+              >
+                {categorySaving ? "Guardando…" : "Guardar categorías"}
+              </button>
+            </div>
+            {categoryError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{categoryError}</div>
+            ) : null}
+            {categorySuccess ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{categorySuccess}</div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {allCategories.length === 0 ? (
+                <p className="text-sm text-slate-500">No hay categorías configuradas todavía.</p>
+              ) : (
+                allCategories.map((category) => {
+                  const active = selectedCategories.includes(category.id);
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => toggleCategorySelection(category.id)}
+                      className={`rounded-full border px-3 py-1 text-sm transition ${
+                        active
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+                      }`}
+                    >
+                      {category.name}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Objetivos y briefing</h2>
+                <p className="text-sm text-slate-600">Define el objetivo general y las metas por rol.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveBrief}
+                disabled={briefSaving}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+              >
+                {briefSaving ? "Guardando…" : "Guardar objetivos"}
+              </button>
+            </div>
+            {briefError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{briefError}</div>
+            ) : null}
+            {briefSuccess ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{briefSuccess}</div>
+            ) : null}
+            <div className="mt-4 space-y-4">
+              <label className="block text-sm text-slate-600">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
+                <textarea
+                  rows={3}
+                  value={briefForm.learningObjective}
+                  onChange={(event) => handleBriefLearningObjectiveChange(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="Describe el objetivo principal del escenario"
+                />
+              </label>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-medium text-slate-700">Objetivos por rol</p>
+                  <div className="flex gap-2">
                     <input
                       type="text"
-                      value={customMode}
-                      onChange={(event) => setCustomMode(event.target.value)}
-                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      placeholder="Añadir modo personalizado"
+                      value={newRole}
+                      onChange={(event) => setNewRole(event.target.value)}
+                      placeholder="Añadir rol (p. ej. RES)"
+                      className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
                     />
                     <button
-                      type="submit"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                      type="button"
+                      onClick={handleAddRole}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
                     >
                       Añadir
                     </button>
-                  </form>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {briefRoles.map((role) => (
+                    <div key={role} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-slate-700">{roleDisplay[role] || role}</span>
+                        {role !== "MED" && role !== "NUR" && role !== "PHARM" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRole(role)}
+                            className="text-xs text-rose-500 hover:text-rose-600"
+                          >
+                            Quitar
+                          </button>
+                        ) : null}
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={briefForm.objectivesByRole?.[role] || ""}
+                        onChange={(event) => handleBriefObjectiveChange(role, event.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder="Una línea por objetivo"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Lecturas y recursos</h2>
+                <p className="text-sm text-slate-600">Documentación de apoyo visible para el escenario.</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={addResource}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Añadir recurso
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveResources}
+                  disabled={resourcesSaving}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {resourcesSaving ? "Guardando…" : "Guardar lecturas"}
+                </button>
+              </div>
+            </div>
+            {resourcesError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{resourcesError}</div>
+            ) : null}
+            {resourcesSuccess ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{resourcesSuccess}</div>
+            ) : null}
+            <div className="mt-4 space-y-4">
+              {resources.length === 0 ? (
+                <p className="text-sm text-slate-500">Todavía no hay lecturas añadidas.</p>
+              ) : (
+                resources.map((resource, index) => (
+                  <div key={resource.id ?? `temp-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block text-sm text-slate-600">
+                        <span className="text-xs uppercase tracking-wide text-slate-400">Título</span>
+                        <input
+                          type="text"
+                          value={resource.title || ""}
+                          onChange={(event) => handleResourceChange(index, "title", event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                        />
+                      </label>
+                      <label className="block text-sm text-slate-600">
+                        <span className="text-xs uppercase tracking-wide text-slate-400">URL</span>
+                        <input
+                          type="url"
+                          value={resource.url || ""}
+                          onChange={(event) => handleResourceChange(index, "url", event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="https://"
+                        />
+                      </label>
+                      <label className="block text-sm text-slate-600">
+                        <span className="text-xs uppercase tracking-wide text-slate-400">Fuente</span>
+                        <input
+                          type="text"
+                          value={resource.source || ""}
+                          onChange={(event) => handleResourceChange(index, "source", event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="Organización o autor"
+                        />
+                      </label>
+                      <label className="block text-sm text-slate-600">
+                        <span className="text-xs uppercase tracking-wide text-slate-400">Tipo</span>
+                        <input
+                          type="text"
+                          value={resource.type || ""}
+                          onChange={(event) => handleResourceChange(index, "type", event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="Guía, vídeo, etc."
+                        />
+                      </label>
+                      <label className="block text-sm text-slate-600">
+                        <span className="text-xs uppercase tracking-wide text-slate-400">Año</span>
+                        <input
+                          type="number"
+                          value={resource.year ?? ""}
+                          onChange={(event) => handleResourceChange(index, "year", event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          min="1900"
+                          max="2100"
+                        />
+                      </label>
+                      <label className="block text-sm text-slate-600">
+                        <span className="text-xs uppercase tracking-wide text-slate-400">Peso</span>
+                        <input
+                          type="number"
+                          value={resource.weight ?? ""}
+                          onChange={(event) => handleResourceChange(index, "weight", event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          step="10"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(resource.free_access)}
+                          onChange={() => toggleResourceFreeAccess(index)}
+                          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                        />
+                        Acceso libre
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeResource(index)}
+                        className="text-sm text-rose-500 hover:text-rose-600"
+                      >
+                        Eliminar recurso
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -427,6 +1537,309 @@ export default function Admin_ScenarioEditor() {
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
                 />
               </label>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Pasos del escenario</h2>
+                <p className="text-sm text-slate-600">Organiza la narrativa cronológica que vivirán los alumnos.</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={addStep}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Añadir paso
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSteps}
+                  disabled={stepsSaving}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {stepsSaving ? "Guardando…" : "Guardar pasos"}
+                </button>
+              </div>
+            </div>
+            {stepsError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{stepsError}</div>
+            ) : null}
+            {stepsSuccess ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{stepsSuccess}</div>
+            ) : null}
+            {questionsError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{questionsError}</div>
+            ) : null}
+            {questionsLoading ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
+                <Spinner size={18} label="" />
+                <span>Cargando preguntas…</span>
+              </div>
+            ) : null}
+            <div className="mt-4 space-y-4">
+              {steps.length === 0 ? (
+                <p className="text-sm text-slate-500">Todavía no hay pasos configurados.</p>
+              ) : (
+                steps.map((step, index) => {
+                  const stepId = step.id;
+                  const stepQuestions = stepId ? questionsByStep[stepId] || [] : [];
+                  return (
+                    <div key={stepId ?? `temp-step-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="sm:w-3/4">
+                            <p className="text-xs uppercase tracking-wide text-slate-400">Paso {index + 1}</p>
+                            <input
+                              type="text"
+                              value={step.description || ""}
+                              onChange={(event) => updateStep(index, "description", event.target.value)}
+                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                              placeholder="Ej. Triaje inicial"
+                            />
+                          </div>
+                          <div className="flex gap-2 sm:w-1/4 sm:justify-end">
+                            <button
+                              type="button"
+                              onClick={() => moveStep(index, -1)}
+                              disabled={index === 0}
+                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
+                            >
+                              Subir
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveStep(index, 1)}
+                              disabled={index === steps.length - 1}
+                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
+                            >
+                              Bajar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeStep(index)}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-600 hover:bg-rose-100"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                        <label className="block text-sm text-slate-600">
+                          <span className="text-xs uppercase tracking-wide text-slate-400">Narrativa / guion</span>
+                          <textarea
+                            rows={4}
+                            value={step.narrative || ""}
+                            onChange={(event) => updateStep(index, "narrative", event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                            placeholder="Describe qué ocurre en este punto del caso"
+                          />
+                        </label>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(step.role_specific)}
+                              onChange={() => toggleStepRoleSpecific(index)}
+                              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                            />
+                            Objetivos o acciones específicas por rol
+                          </label>
+                          {step.role_specific ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {stepRoleOptions.map((option) => {
+                                const active = step.roles?.includes(option.value);
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => {
+                                      const current = new Set(step.roles || []);
+                                      if (current.has(option.value)) {
+                                        current.delete(option.value);
+                                      } else {
+                                        current.add(option.value);
+                                      }
+                                      updateStep(index, "roles", Array.from(current));
+                                    }}
+                                    className={`rounded-full border px-3 py-1 text-xs transition ${
+                                      active
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                                    }`}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-xs uppercase tracking-wide text-slate-400">Preguntas vinculadas a este paso</p>
+                              <p className="text-xs text-slate-500">Visualización en solo lectura para verificar el flujo pedagógico.</p>
+                            </div>
+                          </div>
+                          {stepId ? (
+                            stepQuestions.length === 0 && !questionsLoading ? (
+                              <p className="mt-3 text-sm text-slate-500">No hay preguntas asociadas a este paso.</p>
+                            ) : (
+                              <div className="mt-3 space-y-3">
+                                {stepQuestions.map((question, questionIndex) => {
+                                  const displayIndex = questionIndex + 1;
+                                  const rolesLabel = (question.roles || [])
+                                    .map((role) => {
+                                      if (!role) return null;
+                                      const raw = typeof role === "string" ? role.trim() : String(role);
+                                      const lower = raw.toLowerCase();
+                                      return questionRoleLabels[raw] || questionRoleLabels[lower] || raw;
+                                    })
+                                    .filter(Boolean)
+                                    .join(", ");
+                                  return (
+                                    <div key={question.id ?? `question-${questionIndex}`} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                                      <div className="flex flex-wrap items-start justify-between gap-2">
+                                        <div>
+                                          <p className="text-sm font-medium text-slate-900">Pregunta {displayIndex}</p>
+                                          <p className="mt-1 text-sm text-slate-700">{question.text || "Enunciado sin definir"}</p>
+                                          {rolesLabel ? (
+                                            <p className="mt-1 text-xs text-slate-500">Roles: {rolesLabel}</p>
+                                          ) : null}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          {question.isCritical ? (
+                                            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">Crítica</span>
+                                          ) : null}
+                                          {Number.isFinite(question.timeLimit) ? (
+                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{question.timeLimit} s</span>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                      <div className="mt-3 space-y-2">
+                                        {question.options && question.options.length > 0 ? (
+                                          question.options.map((option, optionIdx) => {
+                                            const optionText =
+                                              option == null
+                                                ? "Opción vacía"
+                                                : typeof option === "string"
+                                                  ? option
+                                                  : JSON.stringify(option);
+                                            const isCorrect = question.correctIndex === optionIdx;
+                                            return (
+                                              <div
+                                                key={optionIdx}
+                                                className={`rounded-lg border px-3 py-2 text-sm ${
+                                                  isCorrect
+                                                    ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                                                    : "border-slate-200 bg-white text-slate-700"
+                                                }`}
+                                              >
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <span>{String.fromCharCode(65 + optionIdx)}. {optionText}</span>
+                                                  {isCorrect ? (
+                                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Correcta</span>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                            );
+                                          })
+                                        ) : (
+                                          <p className="text-xs italic text-slate-500">Esta pregunta no tiene opciones configuradas.</p>
+                                        )}
+                                      </div>
+                                      {question.hints && question.hints.length > 0 ? (
+                                        <div className="mt-3 text-xs text-slate-600">
+                                          <p className="font-semibold text-slate-700">Pistas:</p>
+                                          <ul className="mt-1 list-disc space-y-1 pl-4">
+                                            {question.hints.map((hint, hintIndex) => (
+                                              <li key={hintIndex}>{hint}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      ) : null}
+                                      {question.explanation ? (
+                                        <div className="mt-3 text-xs text-slate-600">
+                                          <p className="font-semibold text-slate-700">Explicación:</p>
+                                          <p className="mt-1 whitespace-pre-line">{question.explanation}</p>
+                                        </div>
+                                      ) : null}
+                                      {question.criticalRationale ? (
+                                        <div className="mt-3 text-xs text-slate-600">
+                                          <p className="font-semibold text-slate-700">Razonamiento crítico:</p>
+                                          <p className="mt-1 whitespace-pre-line">{question.criticalRationale}</p>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )
+                          ) : (
+                            <p className="mt-3 text-xs italic text-slate-500">Guarda el paso para vincular preguntas existentes.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Historial de cambios</h2>
+                <p className="text-sm text-slate-600">Los últimos movimientos quedan registrados con usuario, fecha y detalle.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchChangeLogs()}
+                disabled={changeLogsLoading}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+              >
+                {changeLogsLoading ? "Actualizando…" : "Actualizar"}
+              </button>
+            </div>
+            {changeLogsError ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{changeLogsError}</div>
+            ) : null}
+            {changeLogsLoading ? (
+              <div className="mt-4 flex justify-center"><Spinner size={24} label="Cargando historial" /></div>
+            ) : null}
+            <div className="mt-4 space-y-3">
+              {changeLogs.length === 0 ? (
+                <p className="text-sm text-slate-500">Aún no hay registros en el historial.</p>
+              ) : (
+                changeLogs.map((log) => {
+                  const createdAt = log?.created_at ? new Date(log.created_at) : null;
+                  const createdLabel = createdAt && !Number.isNaN(createdAt.valueOf())
+                    ? createdAt.toLocaleString()
+                    : "Fecha desconocida";
+                  const changeLabel = changeTypeLabels[log?.change_type] || log?.change_type || "Actualización";
+                  return (
+                    <div key={log.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className="font-semibold text-slate-700">{log?.user_name || "Sistema"}</span>
+                          <span>•</span>
+                          <time dateTime={log?.created_at || undefined}>{createdLabel}</time>
+                          {changeLabel ? (
+                            <>
+                              <span>•</span>
+                              <span>{changeLabel}</span>
+                            </>
+                          ) : null}
+                        </div>
+                        {log?.description ? <p className="text-sm text-slate-700">{log.description}</p> : null}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 

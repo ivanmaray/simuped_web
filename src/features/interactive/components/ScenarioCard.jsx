@@ -1,10 +1,13 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { formatLevel } from "../../../utils/formatUtils.js";
 
-const DIFFICULTY_TONE = {
-  Avanzado: "bg-red-50 text-red-700 border-red-200",
-  Intermedio: "bg-amber-50 text-amber-700 border-amber-200",
-  Basico: "bg-emerald-50 text-emerald-700 border-emerald-200"
+const LEVEL_TONE = {
+  basico: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  medio: "bg-amber-50 text-amber-700 border-amber-200",
+  intermedio: "bg-amber-50 text-amber-700 border-amber-200",
+  avanzado: "bg-red-50 text-red-700 border-red-200",
+  experto: "bg-purple-50 text-purple-700 border-purple-200",
 };
 
 const STATUS_CONFIG = {
@@ -29,6 +32,8 @@ const STATUS_CONFIG = {
 export default function ScenarioCard({ scenario }) {
   const navigate = useNavigate();
   const status = STATUS_CONFIG[scenario.status] || STATUS_CONFIG.locked;
+  const levelKey = scenario.level ? String(scenario.level).trim().toLowerCase() : null;
+  const levelLabel = levelKey ? formatLevel(levelKey) : "";
 
   function handleAction() {
     if (scenario.status === "locked") {
@@ -56,9 +61,9 @@ export default function ScenarioCard({ scenario }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {scenario.difficulty ? (
-            <span className={`rounded-full border px-3 py-1 font-semibold ${DIFFICULTY_TONE[scenario.difficulty] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
-              {scenario.difficulty}
+          {levelLabel ? (
+            <span className={`rounded-full border px-3 py-1 font-semibold ${LEVEL_TONE[levelKey] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
+              Nivel {levelLabel}
             </span>
           ) : null}
           {scenario.duration ? (
