@@ -2,7 +2,8 @@ import { NavLink } from "react-router-dom";
 
 const tabs = [
   { to: "/admin", label: "Usuarios", end: true },
-  { to: "/admin/escenarios", label: "Escenarios" },
+  { to: "/admin/escenarios", label: "Escenarios online" },
+  { to: "/admin/escenarios-presenciales", label: "Escenarios presenciales" },
 ];
 
 function tabClasses(isActive) {

@@ -87,27 +87,6 @@ export default function Online_Main() {
     }));
   }, []);
 
-  const recomendados = useMemo(() => {
-    const items = [];
-    for (const esc of escenarios) {
-      const stat = attemptStats[esc.id];
-      if (!stat) continue;
-      const count = stat.count ?? 0;
-      const avg = typeof stat.avg === 'number' ? stat.avg : null;
-      const hasOpen = Boolean(stat.openAttemptId);
-      const needsScore = avg != null && avg < 70;
-      const needsCompletion = count > 0 && count < MAX_ATTEMPTS;
-      if (!hasOpen && !needsScore && !needsCompletion) continue;
-
-      const priority = (hasOpen ? 0 : 200) + (needsScore ? avg ?? 100 : 300) + (needsCompletion ? 0 : 100) + count;
-      items.push({ esc, stat, avg, hasOpen, needsScore, needsCompletion, priority });
-    }
-
-    return items
-      .sort((a, b) => a.priority - b.priority)
-      .slice(0, 4);
-  }, [escenarios, attemptStats]);
-
   const resetFilters = () => {
     setQ("");
     setNivel("");
@@ -139,139 +118,239 @@ export default function Online_Main() {
   useEffect(() => {
     let mounted = true;
 
-    async function cargarIntentos(userId) {
-      try {
-        const { data, error } = await supabase
-          .from("attempts")
-          .select("id, scenario_id, score, status, started_at, expires_at")
-          .eq("user_id", userId)
-          .order("started_at", { ascending: false });
-        if (error) {
-          console.error("[Simulacion] cargarIntentos error:", error);
-          setAttemptStats({});
-          return;
-        }
-        const now = new Date();
-        const by = {};
-        for (const row of data || []) {
-          const sid = row.scenario_id;
-          if (!by[sid]) by[sid] = { count: 0, scored: 0, sum: 0, openAttemptId: null };
-          by[sid].count += 1;
-          const s = Number(row.score);
-          if (!Number.isNaN(s)) {
-            by[sid].scored += 1;
-            by[sid].sum += s;
-          }
-          const status = String(row.status || "").toLowerCase();
-          const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
-          const notExpired = !expiresAt || now < expiresAt;
-          const isOpen = status === "en curso" && notExpired;
-          if (isOpen && !by[sid].openAttemptId) {
-            by[sid].openAttemptId = row.id; // first in order is the most recent
-          }
-        }
-        const stats = {};
-        for (const [sid, v] of Object.entries(by)) {
-          stats[sid] = {
-            count: v.count,
-            scored: v.scored,
-            avg: v.scored > 0 ? v.sum / v.scored : null,
-            openAttemptId: v.openAttemptId,
-          };
-        }
-        setAttemptStats(stats);
-      } catch (e) {
-        console.error("[Simulacion] excepción cargarIntentos:", e);
-        setAttemptStats({});
-      }
-    }
+    const statusPriority = {
+      "Disponible": 1,
+      "En construcción: en proceso": 2,
+      "En construcción: sin iniciar": 3,
+    };
 
-    async function init() {
-      const { data, error } = await supabase.auth.getSession();
+    const isOpenStatus = (status) => {
+      const value = String(status || "").toLowerCase();
+      return value === "en curso" || value === "en_curso" || value === "en-curso";
+    };
+
+    const cargarEscenarios = async () => {
       if (!mounted) return;
-      if (error) {
-        console.error("[Simulacion] getSession error:", error);
-        setErrorMsg(error.message || "Error obteniendo sesión");
-      }
-      const sess = data?.session ?? null;
-      setSession(sess);
-      if (sess) {
-        // Cargar el rol del perfil
-        try {
-          const { data: prof, error: perr } = await supabase
-            .from("profiles")
-            .select("rol")
-            .eq("id", sess.user.id)
-            .maybeSingle();
-
-          if (perr) {
-            console.error("[Simulacion] cargar rol error:", perr);
-          }
-          const r = (prof?.rol || "").toString().toLowerCase();
-          setRol(r);
-        } catch (e) {
-          console.error("[Simulacion] excepción cargando rol:", e);
-        } finally {
-          setRoleChecked(true);
-        }
-      } else {
-        setRoleChecked(true);
-      }
-      if (!sess) {
-        setLoading(false);
-        return;
-      }
-
-      await cargarEscenarios();
-      await cargarIntentos(sess.user.id);
-      setLoading(false);
-    }
-
-    async function cargarEscenarios() {
       setLoadingEsc(true);
-      const { data, error } = await supabase
-        .from("scenarios")
-        .select(`
-          id, title, summary, level, mode, created_at, status,
-          scenario_categories (
-            categories ( name )
-          )
-        `)
-        .order("title", { ascending: true });
+      let data = null;
+      let error = null;
 
-      if (error) {
-        console.error("[Simulacion] cargarEscenarios error:", error);
-        setErrorMsg(error.message || "Error cargando escenarios");
-        setEscenarios([]);
-      } else {
-        // Custom sort: status priority then title
-        const statusPriority = {
-          "Disponible": 1,
-          "En construcción: en proceso": 2,
-          "En construcción: sin iniciar": 3,
+      const fetchWithIdx = () =>
+        supabase
+          .from("scenarios")
+          .select(`
+            id, idx, title, summary, level, mode, created_at, status,
+            scenario_categories (
+              categories ( name )
+            )
+          `)
+          .order("idx", { ascending: true, nullsFirst: true })
+          .order("title", { ascending: true });
+
+      const fetchWithoutIdx = () =>
+        supabase
+          .from("scenarios")
+          .select(`
+            id, title, summary, level, mode, created_at, status,
+            scenario_categories (
+              categories ( name )
+            )
+          `)
+          .order("title", { ascending: true });
+
+      try {
+        ({ data, error } = await fetchWithIdx());
+
+        if (error && /scenarios\.idx/.test(error.message || "")) {
+          const fallback = await fetchWithoutIdx();
+          data = fallback.data;
+          error = fallback.error;
+        }
+
+        if (error) {
+          throw error;
+        }
+
+        if (!mounted) return;
+
+        const getOrderIndex = (row) => {
+          const value = Number(row?.idx);
+          return Number.isFinite(value) ? value : null;
         };
+
         const sorted = (data || []).slice().sort((a, b) => {
+          const ai = getOrderIndex(a);
+          const bi = getOrderIndex(b);
+          if (ai != null || bi != null) {
+            if (ai != null && bi != null && ai !== bi) return ai - bi;
+            if (ai != null && bi == null) return -1;
+            if (ai == null && bi != null) return 1;
+          }
           const pa = statusPriority[a.status] ?? 99;
           const pb = statusPriority[b.status] ?? 99;
           if (pa !== pb) return pa - pb;
-          // fallback: alphabetic by title
           const ta = (a.title || "").toLocaleLowerCase("es");
           const tb = (b.title || "").toLocaleLowerCase("es");
           return ta.localeCompare(tb, "es");
         });
-        setEscenarios(sorted);
-      }
-      setLoadingEsc(false);
-    }
 
-    init();
-    const { data: listener } = supabase.auth.onAuthStateChange((_evt, sess) => {
+        setErrorMsg("");
+        setEscenarios(sorted);
+      } catch (err) {
+        if (!mounted) return;
+        console.error("[Simulacion] cargarEscenarios error:", err);
+        setErrorMsg(err.message || "Error cargando escenarios");
+        setEscenarios([]);
+      } finally {
+        if (mounted) {
+          setLoadingEsc(false);
+        }
+      }
+    };
+
+    const cargarIntentos = async (userId) => {
       if (!mounted) return;
-      setSession(sess ?? null);
+      if (!userId) {
+        setAttemptStats({});
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("attempts")
+          .select("id, scenario_id, status, score, finished_at, started_at")
+          .eq("user_id", userId)
+          .order("started_at", { ascending: false });
+
+        if (error) {
+          throw error;
+        }
+
+        if (!mounted) return;
+
+        const aggregates = new Map();
+
+        for (const row of data || []) {
+          const scenarioId = row?.scenario_id;
+          if (!scenarioId) continue;
+
+          if (!aggregates.has(scenarioId)) {
+            aggregates.set(scenarioId, {
+              count: 0,
+              scoredCount: 0,
+              scoreTotal: 0,
+              openAttemptId: null,
+            });
+          }
+
+          const entry = aggregates.get(scenarioId);
+          entry.count += 1;
+
+          if (!entry.openAttemptId && isOpenStatus(row?.status) && !row?.finished_at) {
+            entry.openAttemptId = row?.id || null;
+          }
+
+          const score = Number(row?.score);
+          if (Number.isFinite(score)) {
+            entry.scoredCount += 1;
+            entry.scoreTotal += score;
+          }
+        }
+
+        const stats = {};
+        aggregates.forEach((entry, scenarioId) => {
+          const avg = entry.scoredCount > 0 ? entry.scoreTotal / entry.scoredCount : null;
+          stats[scenarioId] = {
+            count: entry.count,
+            scored: entry.scoredCount > 0,
+            avg,
+            openAttemptId: entry.openAttemptId,
+          };
+        });
+
+        setAttemptStats(stats);
+      } catch (err) {
+        if (!mounted) return;
+        console.error("[Simulacion] cargarIntentos error:", err);
+        setAttemptStats({});
+      }
+    };
+
+    const init = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (error) {
+          console.error("[Simulacion] getSession error:", error);
+          setErrorMsg(error.message || "No se pudo obtener la sesión.");
+          setSession(null);
+          setRoleChecked(true);
+          setLoading(false);
+          return;
+        }
+
+        const sess = data?.session ?? null;
+        setSession(sess);
+
+        if (sess) {
+          try {
+            const { data: prof, error: perr } = await supabase
+              .from("profiles")
+              .select("rol")
+              .eq("id", sess.user.id)
+              .maybeSingle();
+
+            if (perr) {
+              console.error("[Simulacion] cargar rol error:", perr);
+            }
+
+            const r = (prof?.rol || "").toString().toLowerCase();
+            setRol(r);
+          } catch (e) {
+            console.error("[Simulacion] excepción cargando rol:", e);
+          } finally {
+            setRoleChecked(true);
+          }
+        } else {
+          setRoleChecked(true);
+        }
+
+        if (!sess) {
+          setAttemptStats({});
+          setEscenarios([]);
+          setLoading(false);
+          return;
+        }
+
+        await cargarEscenarios();
+        await cargarIntentos(sess.user.id);
+      } catch (err) {
+        if (!mounted) return;
+        console.error("[Simulacion] init error:", err);
+        setErrorMsg(err.message || "Error inicializando la simulación");
+        setEscenarios([]);
+        setAttemptStats({});
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    setLoading(true);
+    init();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_evt, newSession) => {
+      if (!mounted) return;
+      setSession(newSession ?? null);
     });
+
     return () => {
       mounted = false;
-      try { listener?.subscription?.unsubscribe?.(); } catch {}
+      try {
+        listener?.subscription?.unsubscribe?.();
+      } catch {}
     };
   }, []);
 
@@ -370,168 +449,112 @@ export default function Online_Main() {
         </div>
       </section>
 
-      <main className="max-w-6xl mx-auto px-5 py-8">
+      <main className="max-w-6xl mx-auto px-5 py-8 space-y-8">
         {errorMsg && (
-          <div className="mb-4 bg-amber-50 text-amber-800 border border-amber-200 px-4 py-2 text-sm rounded-lg">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             {errorMsg}
           </div>
         )}
-        <section className="mb-6">
-          <div className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_40px_-30px_rgba(15,23,42,0.35)]">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-2xl bg-slate-900/5 text-slate-900 grid place-items-center">
-                  <AdjustmentsHorizontalIcon className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold">Filtrar escenarios</h2>
-                  <p className="text-sm text-slate-500">Combina criterios para encontrar la simulación que necesitas.</p>
-                </div>
+
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_40px_-30px_rgba(15,23,42,0.35)]">
+          <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-900/5 text-slate-900">
+                <AdjustmentsHorizontalIcon className="h-5 w-5" />
               </div>
-              <button
-                type="button"
-                className="md:hidden inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                onClick={() => setFiltersOpen((prev) => !prev)}
-              >
-                {filtersOpen ? "Ocultar" : "Mostrar"}
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
-              </button>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Personaliza tu catálogo</h2>
+                <p className="text-sm text-slate-500">Combina búsqueda, nivel y estado para encontrar la siguiente simulación.</p>
+              </div>
             </div>
-            <div className={`${filtersOpen ? "grid" : "hidden"} md:grid grid-cols-1 gap-4 border-b border-slate-100 px-5 py-5 md:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]`}
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 md:hidden"
+              onClick={() => setFiltersOpen((prev) => !prev)}
             >
-              <label className="block">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Búsqueda</span>
-                <div className="mt-1 relative flex items-center">
-                  <MagnifyingGlassIcon className="absolute left-3 h-5 w-5 text-slate-400" />
-                  <input
-                    type="search"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Pulso, shock, farmacoterapia…"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
-                  />
-                </div>
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Nivel</span>
-                <select
-                  value={nivel}
-                  onChange={(e) => setNivel(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
-                >
-                  <option value="">Todos los niveles</option>
-                  <option value="basico">Básico</option>
-                  <option value="medio">Medio</option>
-                  <option value="avanzado">Avanzado</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Modo</span>
-                <select
-                  value={modo}
-                  onChange={(e) => setModo(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
-                >
-                  <option value="">Todos los modos</option>
-                  <option value="online">Online</option>
-                  <option value="presencial">Presencial</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Categoría</span>
-                <select
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
-                >
-                  <option value="">Todas las categorías</option>
-                  {categoriasDisponibles.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Estado</span>
-                <select
-                  value={estado}
-                  onChange={(e) => setEstado(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
-                >
-                  <option value="">Todos los estados</option>
-                  {estadosDisponibles.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className={`${filtersOpen ? "flex" : "hidden"} md:flex items-center justify-end gap-3 px-5 py-4`}>
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              {filtersOpen ? "Ocultar filtros" : "Mostrar filtros"}
+              <ChevronDownIcon className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+          <div className={`${filtersOpen ? "grid" : "hidden"} md:grid grid-cols-1 gap-4 border-b border-slate-100 px-5 py-5 md:grid-cols-[1.3fr_1fr_1fr_1fr]`}>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Búsqueda</span>
+              <div className="relative mt-1 flex items-center">
+                <MagnifyingGlassIcon className="absolute left-3 h-5 w-5 text-slate-400" />
+                <input
+                  type="search"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Shock séptico, crisis convulsiva…"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+                />
+              </div>
+            </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Nivel</span>
+              <select
+                value={nivel}
+                onChange={(e) => setNivel(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
               >
-                Limpiar filtros
-              </button>
-            </div>
+                <option value="">Todos los niveles</option>
+                <option value="basico">Básico</option>
+                <option value="medio">Medio</option>
+                <option value="avanzado">Avanzado</option>
+              </select>
+            </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Modo</span>
+              <select
+                value={modo}
+                onChange={(e) => setModo(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+              >
+                <option value="">Todos los modos</option>
+                <option value="online">Online</option>
+                <option value="presencial">Presencial</option>
+              </select>
+            </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Categoría</span>
+              <select
+                value={categoria}
+                onChange={(e) => setCategoria(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+              >
+                <option value="">Todas las categorías</option>
+                {categoriasDisponibles.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Estado</span>
+              <select
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+              >
+                <option value="">Todos los estados</option>
+                {estadosDisponibles.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className={`${filtersOpen ? "flex" : "hidden"} md:flex items-center justify-end gap-3 px-5 py-4`}>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Limpiar filtros
+            </button>
           </div>
         </section>
 
-        {recomendados.length > 0 && (
-          <section className="mb-8">
-            <div className="flex items-center justify-between gap-4 mb-3">
-              <h3 className="text-lg font-semibold text-slate-800">Recomendados para retomar</h3>
-              <span className="text-xs uppercase tracking-wide text-slate-400 hidden sm:inline">Basado en tus intentos recientes</span>
-            </div>
-            <div className="relative -mx-5 md:mx-0">
-              <div className="flex gap-4 overflow-x-auto px-5 md:px-0 pb-1">
-                {recomendados.map(({ esc, stat, avg, hasOpen, needsScore, needsCompletion }) => {
-                  const reasonChips = [
-                    hasOpen ? "Intento activo" : null,
-                    needsScore ? "Reforzar nota" : null,
-                    needsCompletion ? "Quedan intentos" : null,
-                  ].filter(Boolean);
-                  return (
-                    <article
-                      key={`reco-${esc.id}`}
-                      className="min-w-[240px] flex-1 rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-32px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.45)]"
-                    >
-                      <h4 className="text-base font-semibold text-slate-900 line-clamp-2">{esc.title || "Escenario"}</h4>
-                      <p className="mt-2 text-sm text-slate-600 line-clamp-3">{esc.summary || "Refuerza este escenario para consolidar decisiones clave."}</p>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-slate-500">
-                        {reasonChips.map((reason) => (
-                          <span key={reason} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
-                            {reason}
-                          </span>
-                        ))}
-                        {avg != null && !needsScore && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-1">
-                            Nota {avg.toFixed(0)}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#0A3D91]/90"
-                        onClick={() => {
-                          if (hasOpen && stat.openAttemptId) {
-                            navigate(`/simulacion/${esc.id}?attempt=${stat.openAttemptId}`);
-                          } else {
-                            navigate(`/simulacion/${esc.id}/confirm`);
-                          }
-                        }}
-                      >
-                        Continuar
-                        <ArrowRightIcon className="h-4 w-4" />
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <section>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {!loadingEsc && filtrados.length === 0 && (
             <div className="col-span-full text-slate-600">No hay escenarios que coincidan.</div>
           )}
@@ -659,6 +682,7 @@ export default function Online_Main() {
             );
           })}
         </div>
+        </section>
       </main>
     </div>
   );

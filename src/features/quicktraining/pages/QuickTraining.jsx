@@ -84,8 +84,8 @@ function CaseCard({ microCase, onSelect }) {
   // Clinical categories we want to highlight when present in tags
   const CLINICAL_CATEGORIES = {
     neurologico: "Neurológico",
-    neurología: "Neurológico",
-    neurologico: "Neurológico",
+    neurologia: "Neurológico",
+    neurologica: "Neurológico",
     infeccioso: "Infeccioso",
     infectologico: "Infeccioso",
     cardiaco: "Cardíaco",

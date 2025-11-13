@@ -4,11 +4,13 @@ import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
 import AdminNav from "../components/AdminNav.jsx";
+import { formatRole } from "../../../utils/formatUtils.js";
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 
 const statusOptions = [
@@ -74,6 +76,17 @@ export default function Admin_ScenarioEditor() {
   const [questionsByStep, setQuestionsByStep] = useState({});
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState("");
+  const [questionsSuccess, setQuestionsSuccess] = useState("");
+  const [questionOperationState, setQuestionOperationState] = useState({});
+  const [collapsedSections, setCollapsedSections] = useState({
+    metadata: false,
+    taxonomy: false,
+    brief: false,
+    resources: false,
+    attempts: false,
+    steps: false,
+    history: false,
+  });
   const [currentUser, setCurrentUser] = useState(null);
   const [changeLogs, setChangeLogs] = useState([]);
   const [changeLogsLoading, setChangeLogsLoading] = useState(false);
@@ -84,29 +97,58 @@ export default function Admin_ScenarioEditor() {
     NUR: "Enfermería",
     PHARM: "Farmacia",
   };
+
+  function resolveRoleLabel(role) {
+    if (!role) return "";
+    const key = String(role).trim();
+    if (!key) return "";
+    const upper = key.toUpperCase();
+    if (roleDisplay[upper]) return roleDisplay[upper];
+    return formatRole(key);
+  }
+
+  function normalizeRoleCode(raw) {
+    if (raw == null) return "";
+    if (typeof raw === "object") {
+      const candidate = raw.value ?? raw.code ?? raw.key ?? raw.id ?? raw.rol ?? raw.role ?? raw.name;
+      if (candidate != null) {
+        return normalizeRoleCode(candidate);
+      }
+      return "";
+    }
+    const key = String(raw).trim().toUpperCase();
+    if (!key) return "";
+    if (["MED", "MEDICO", "MEDICINA", "MEDIC"].includes(key)) return "MED";
+    if (["NUR", "NURSE", "ENFERMERIA", "ENFERMERÍA", "ENFER", "ENF"].includes(key)) return "NUR";
+    if (["PHARM", "FARMACIA", "FARM", "PHARMACY", "FAR"].includes(key)) return "PHARM";
+    return key;
+  }
   const stepRoleOptions = [
     { value: "medico", label: "Medicina" },
     { value: "enfermeria", label: "Enfermería" },
     { value: "farmacia", label: "Farmacia" },
   ];
-  const questionRoleLabels = {
-    medico: "Medicina",
-    enfermeria: "Enfermería",
-    farmacia: "Farmacia",
-    med: "Medicina",
-    nur: "Enfermería",
-    pharm: "Farmacia",
-    MED: "Medicina",
-    NUR: "Enfermería",
-    PHARM: "Farmacia",
-  };
+  const questionRoleOptions = [
+    { value: "MED", label: "Medicina" },
+    { value: "NUR", label: "Enfermería" },
+    { value: "PHARM", label: "Farmacia" },
+  ];
   const changeTypeLabels = {
     metadata: "Metadatos",
     categorias: "Categorías",
     brief: "Brief del paciente",
     recursos: "Recursos",
     pasos: "Pasos",
+    preguntas: "Preguntas",
   };
+
+  function toggleSection(sectionKey) {
+    if (!sectionKey) return;
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev?.[sectionKey],
+    }));
+  }
 
   const getResolvedScenarioId = (explicitId) => {
     if (typeof explicitId === "number" && Number.isFinite(explicitId)) {
@@ -166,13 +208,33 @@ export default function Admin_ScenarioEditor() {
           }
           return [];
         };
-        const rolesArray = Array.isArray(row.roles)
-          ? row.roles.filter(Boolean)
-          : typeof row.roles === "string" && row.roles.trim()
-            ? [row.roles.trim()]
-            : [];
-        const optionsArray = parseJsonArray(row.options);
-        const hintsArray = parseJsonArray(row.hints);
+        const rolesArray = (() => {
+          const collected = new Set();
+          if (Array.isArray(row.roles)) {
+            row.roles.forEach((role) => {
+              const normalized = normalizeRoleCode(role);
+              if (normalized) collected.add(normalized);
+            });
+          } else if (typeof row.roles === "string" && row.roles.trim()) {
+            const normalized = normalizeRoleCode(row.roles);
+            if (normalized) collected.add(normalized);
+          }
+          return Array.from(collected);
+        })();
+        const optionsArray = parseJsonArray(row.options).map((item) => {
+          if (item == null) return "";
+          if (typeof item === "string") return item;
+          try {
+            return JSON.stringify(item);
+          } catch (err) {
+            return String(item);
+          }
+        });
+        const hintsArray = parseJsonArray(row.hints).map((item) => {
+          if (item == null) return "";
+          if (typeof item === "string") return item;
+          return String(item);
+        });
         const correctIndex = (() => {
           if (typeof row.correct_option === "number") return row.correct_option;
           if (typeof row.correct_option === "string") {
@@ -192,7 +254,11 @@ export default function Admin_ScenarioEditor() {
           isCritical: Boolean(row.is_critical),
           hints: hintsArray,
           timeLimit: row.time_limit != null ? Number(row.time_limit) : null,
+          timeLimitInput: row.time_limit != null ? String(row.time_limit) : "",
           criticalRationale: row.critical_rationale || "",
+          localId: `step-${stepId}-question-${row.id}`,
+          dirty: false,
+          isNew: false,
         };
         if (!byStep[stepId]) {
           byStep[stepId] = [];
@@ -206,7 +272,21 @@ export default function Admin_ScenarioEditor() {
           return idA - idB;
         });
       });
-      setQuestionsByStep(byStep);
+      setQuestionsByStep((prev) => {
+        const next = { ...(prev || {}) };
+        stepIds.forEach((id) => {
+          const key = Number(id);
+          if (Number.isFinite(key)) {
+            next[key] = byStep[key] ? [...byStep[key]] : [];
+          } else if (byStep[id]) {
+            next[id] = [...byStep[id]];
+          } else {
+            next[id] = [];
+          }
+        });
+        return next;
+      });
+      setQuestionOperationState({});
     } catch (err) {
       console.error("[Admin_ScenarioEditor] loadQuestions", err);
       setQuestionsError(err?.message || "No se pudieron cargar las preguntas");
@@ -300,6 +380,8 @@ export default function Admin_ScenarioEditor() {
           setQuestionsByStep({});
           setQuestionsError("");
           setQuestionsLoading(false);
+          setQuestionsSuccess("");
+          setQuestionOperationState({});
           setChangeLogs([]);
           setChangeLogsError("");
           setChangeLogsLoading(false);
@@ -399,6 +481,8 @@ export default function Admin_ScenarioEditor() {
         }));
         setSteps(stepRows);
         setInitialSteps(stepRows);
+  setQuestionsSuccess("");
+  setQuestionOperationState({});
         if (!active) return;
         await loadQuestionsForStepIds(stepRows.map((row) => row.id).filter(Boolean));
         if (!active) return;
@@ -920,6 +1004,322 @@ export default function Admin_ScenarioEditor() {
     });
   }
 
+  function generateTempQuestionId(stepId) {
+    const base = Number.isFinite(Number(stepId)) ? Number(stepId) : String(stepId || "step");
+    return `step-${base}-temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function setQuestionOperation(localId, state) {
+    if (!localId) return;
+    setQuestionOperationState((prev) => {
+      const next = { ...(prev || {}) };
+      if (!state) {
+        delete next[localId];
+      } else {
+        next[localId] = state;
+      }
+      return next;
+    });
+  }
+
+  function updateQuestion(stepId, questionIndex, updater) {
+    setQuestionsSuccess("");
+    setQuestionsError("");
+    const stepKey = Number.isFinite(Number(stepId)) ? Number(stepId) : stepId;
+    setQuestionsByStep((prev) => {
+      const source = prev?.[stepKey] ? [...prev[stepKey]] : [];
+      if (!source[questionIndex]) return prev;
+      const current = source[questionIndex];
+      const updates = typeof updater === "function" ? updater(current) : updater;
+      if (updates == null) return prev;
+      const nextQuestion = {
+        ...current,
+        ...updates,
+        dirty: true,
+      };
+      if (!nextQuestion.localId) {
+        nextQuestion.localId = current.localId || generateTempQuestionId(stepKey);
+      }
+      source[questionIndex] = nextQuestion;
+      return {
+        ...(prev || {}),
+        [stepKey]: source,
+      };
+    });
+  }
+
+  function handleAddQuestion(stepId) {
+    if (!stepId) return;
+    setQuestionsError("");
+    setQuestionsSuccess("");
+    const stepKey = Number.isFinite(Number(stepId)) ? Number(stepId) : stepId;
+    const newQuestion = {
+      id: null,
+      stepId: stepKey,
+      localId: generateTempQuestionId(stepKey),
+      text: "",
+      options: ["", ""],
+      correctIndex: null,
+      explanation: "",
+      roles: [],
+      rolesText: "",
+      isCritical: false,
+      hints: [],
+      timeLimit: null,
+      timeLimitInput: "",
+      criticalRationale: "",
+      dirty: true,
+      isNew: true,
+    };
+    setQuestionsByStep((prev) => {
+      const source = prev?.[stepKey] ? [...prev[stepKey]] : [];
+      return {
+        ...(prev || {}),
+        [stepKey]: [...source, newQuestion],
+      };
+    });
+  }
+
+  function handleQuestionTextChange(stepId, questionIndex, value) {
+    updateQuestion(stepId, questionIndex, { text: value });
+  }
+
+  function handleQuestionOptionChange(stepId, questionIndex, optionIndex, value) {
+    updateQuestion(stepId, questionIndex, (current) => {
+      const nextOptions = [...(current.options || [])];
+      nextOptions[optionIndex] = value;
+      return { options: nextOptions };
+    });
+  }
+
+  function handleAddQuestionOption(stepId, questionIndex) {
+    updateQuestion(stepId, questionIndex, (current) => ({
+      options: [...(current.options || []), ""],
+    }));
+  }
+
+  function handleRemoveQuestionOption(stepId, questionIndex, optionIndex) {
+    updateQuestion(stepId, questionIndex, (current) => {
+      const nextOptions = (current.options || []).filter((_, idx) => idx !== optionIndex);
+      let nextCorrect = current.correctIndex;
+      if (nextCorrect === optionIndex) {
+        nextCorrect = null;
+      } else if (nextCorrect != null && optionIndex < nextCorrect) {
+        nextCorrect = nextCorrect - 1;
+      }
+      return {
+        options: nextOptions,
+        correctIndex: nextCorrect,
+      };
+    });
+  }
+
+  function handleSetQuestionCorrectOption(stepId, questionIndex, optionIndex) {
+    updateQuestion(stepId, questionIndex, { correctIndex: optionIndex });
+  }
+
+  function handleAddQuestionHint(stepId, questionIndex) {
+    updateQuestion(stepId, questionIndex, (current) => ({
+      hints: [...(current.hints || []), ""],
+    }));
+  }
+
+  function handleQuestionHintChange(stepId, questionIndex, hintIndex, value) {
+    updateQuestion(stepId, questionIndex, (current) => {
+      const nextHints = [...(current.hints || [])];
+      nextHints[hintIndex] = value;
+      return { hints: nextHints };
+    });
+  }
+
+  function handleRemoveQuestionHint(stepId, questionIndex, hintIndex) {
+    updateQuestion(stepId, questionIndex, (current) => ({
+      hints: (current.hints || []).filter((_, idx) => idx !== hintIndex),
+    }));
+  }
+
+  function handleToggleQuestionRole(stepId, questionIndex, role) {
+    if (!role) return;
+    const normalized = normalizeRoleCode(role);
+    if (!normalized) return;
+    updateQuestion(stepId, questionIndex, (current) => {
+      const currentRoles = new Set((current.roles || []).map((item) => normalizeRoleCode(item)).filter(Boolean));
+      if (currentRoles.size === 0) {
+        questionRoleOptions.forEach((option) => currentRoles.add(option.value));
+      }
+      if (currentRoles.has(normalized)) {
+        currentRoles.delete(normalized);
+      } else {
+        currentRoles.add(normalized);
+      }
+      const allSelected = questionRoleOptions.every((option) => currentRoles.has(option.value));
+      const nextRoles = allSelected || currentRoles.size === 0 ? [] : Array.from(currentRoles);
+      return {
+        roles: nextRoles,
+      };
+    });
+  }
+
+  function handleQuestionCriticalToggle(stepId, questionIndex) {
+    updateQuestion(stepId, questionIndex, (current) => ({
+      isCritical: !current.isCritical,
+    }));
+  }
+
+  function handleQuestionExplanationChange(stepId, questionIndex, value) {
+    updateQuestion(stepId, questionIndex, { explanation: value });
+  }
+
+  function handleQuestionCriticalRationaleChange(stepId, questionIndex, value) {
+    updateQuestion(stepId, questionIndex, { criticalRationale: value });
+  }
+
+  function handleQuestionTimeLimitChange(stepId, questionIndex, value) {
+    const sanitized = value.replace(/[^0-9]/g, "");
+    const parsed = sanitized ? Number.parseInt(sanitized, 10) : null;
+    updateQuestion(stepId, questionIndex, {
+      timeLimitInput: sanitized,
+      timeLimit: Number.isFinite(parsed) ? parsed : null,
+    });
+  }
+
+  async function handleSaveQuestion(stepId, questionIndex) {
+    if (!stepId && stepId !== 0) return;
+    const stepKey = Number.isFinite(Number(stepId)) ? Number(stepId) : stepId;
+    const stepQuestions = questionsByStep?.[stepKey] || [];
+    const question = stepQuestions[questionIndex];
+    if (!question) return;
+    setQuestionsError("");
+    setQuestionsSuccess("");
+
+    const localId = question.localId || generateTempQuestionId(stepKey);
+    const text = question.text?.trim() || "";
+    if (!text) {
+      setQuestionsError("La pregunta necesita un enunciado");
+      return;
+    }
+    const rawOptions = Array.isArray(question.options) ? question.options : [];
+    if (rawOptions.length < 2) {
+      setQuestionsError("Añade al menos dos opciones de respuesta");
+      return;
+    }
+    const sanitizedOptions = rawOptions.map((option) => (option == null ? "" : String(option).trim()));
+    if (sanitizedOptions.some((option) => !option)) {
+      setQuestionsError("Ninguna opción puede quedar vacía");
+      return;
+    }
+    const correctIndex = question.correctIndex;
+    if (correctIndex == null || correctIndex < 0 || correctIndex >= sanitizedOptions.length) {
+      setQuestionsError("Selecciona la opción correcta");
+      return;
+    }
+    const rolesList = Array.isArray(question.roles)
+      ? question.roles
+        .map((role) => normalizeRoleCode(role))
+        .filter(Boolean)
+      : [];
+    const hintsList = Array.isArray(question.hints)
+      ? question.hints.map((hint) => (hint == null ? "" : String(hint).trim())).filter(Boolean)
+      : [];
+    const explanation = question.explanation?.trim() || null;
+    const criticalRationale = question.criticalRationale?.trim() || null;
+    const timeLimitValue = question.timeLimitInput ? Number.parseInt(question.timeLimitInput, 10) : null;
+    if (question.timeLimitInput && (!Number.isFinite(timeLimitValue) || timeLimitValue < 0)) {
+      setQuestionsError("El tiempo límite debe ser un número entero positivo");
+      return;
+    }
+
+    setQuestionOperation(localId, "saving");
+    try {
+      const payload = {
+        question_text: text,
+        options: sanitizedOptions,
+        correct_option: correctIndex,
+        explanation,
+        roles: rolesList.length > 0 ? rolesList : null,
+        is_critical: Boolean(question.isCritical),
+        hints: hintsList,
+        time_limit: Number.isFinite(timeLimitValue) ? timeLimitValue : null,
+        critical_rationale: criticalRationale,
+      };
+
+      let savedId = question.id;
+      if (question.id) {
+        const { error } = await supabase.from("questions").update(payload).eq("id", question.id);
+        if (error) throw error;
+      } else {
+        const insertPayload = {
+          ...payload,
+          step_id: stepKey,
+        };
+        const { data: inserted, error: insertErr } = await supabase
+          .from("questions")
+          .insert(insertPayload)
+          .select("id")
+          .maybeSingle();
+        if (insertErr) throw insertErr;
+        savedId = inserted?.id || null;
+      }
+
+      await registerChange(
+        "preguntas",
+        question.id ? "Actualizó una pregunta" : "Añadió una nueva pregunta",
+        {
+          step_id: stepKey,
+          question_id: savedId || question.id || null,
+        }
+      );
+
+      await loadQuestionsForStepIds([stepKey]);
+      setQuestionsSuccess(question.id ? "Pregunta actualizada" : "Pregunta creada");
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] save question", err);
+      setQuestionsError(err?.message || "No se pudo guardar la pregunta");
+    } finally {
+      setQuestionOperation(localId, null);
+    }
+  }
+
+  async function handleDeleteQuestion(stepId, questionIndex) {
+    if (!stepId && stepId !== 0) return;
+    const stepKey = Number.isFinite(Number(stepId)) ? Number(stepId) : stepId;
+    const stepQuestions = questionsByStep?.[stepKey] || [];
+    const question = stepQuestions[questionIndex];
+    if (!question) return;
+    setQuestionsError("");
+    setQuestionsSuccess("");
+    const localId = question.localId || generateTempQuestionId(stepKey);
+
+    if (!question.id) {
+      setQuestionsByStep((prev) => {
+        const source = prev?.[stepKey] ? [...prev[stepKey]] : [];
+        source.splice(questionIndex, 1);
+        return {
+          ...(prev || {}),
+          [stepKey]: source,
+        };
+      });
+      return;
+    }
+
+    setQuestionOperation(localId, "deleting");
+    try {
+      const { error } = await supabase.from("questions").delete().eq("id", question.id);
+      if (error) throw error;
+      await registerChange("preguntas", "Eliminó una pregunta", {
+        step_id: stepKey,
+        question_id: question.id,
+      });
+      await loadQuestionsForStepIds([stepKey]);
+      setQuestionsSuccess("Pregunta eliminada");
+    } catch (err) {
+      console.error("[Admin_ScenarioEditor] delete question", err);
+      setQuestionsError(err?.message || "No se pudo eliminar la pregunta");
+    } finally {
+      setQuestionOperation(localId, null);
+    }
+  }
+
   async function handleSaveSteps() {
     if (!scenarioNumericId) return;
     setStepsError("");
@@ -1179,89 +1579,104 @@ export default function Admin_ScenarioEditor() {
 
         <section className="space-y-6">
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Información general</h2>
-            <div className="mt-4 grid gap-4">
-              <label className="block text-sm text-slate-600">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Título</span>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={(event) => handleFieldChange("title", event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  placeholder="Título del escenario"
-                />
-              </label>
-              <label className="block text-sm text-slate-600">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Resumen / briefing</span>
-                <textarea
-                  rows={4}
-                  value={form.summary}
-                  onChange={(event) => handleFieldChange("summary", event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  placeholder="Descripción corta que verán los alumnos"
-                />
-              </label>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Estado</span>
-                  <select
-                    value={form.status}
-                    onChange={(event) => handleFieldChange("status", event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  >
-                    {statusOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Nivel</span>
-                  <select
-                    value={form.level || ""}
-                    onChange={(event) => handleFieldChange("level", event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  >
-                    {levelOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Información general</h2>
+                <p className="text-sm text-slate-600">Datos básicos y estado del escenario.</p>
               </div>
-              <div className="space-y-3 text-sm text-slate-600">
-                <p className="text-xs uppercase tracking-wide text-slate-400">Modo</p>
-                <div className="flex flex-wrap gap-3">
-                  {modeOptions.map((option) => {
-                    const checked = form.mode?.includes(option.value);
-                    return (
-                      <label key={option.value} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleMode(option.value)}
-                          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-                        />
-                        {option.label}
-                      </label>
-                    );
-                  })}
-                </div>
-                <form onSubmit={addCustomMode} className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => toggleSection("metadata")}
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              >
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.metadata ? "-rotate-90" : "rotate-0"}`} />
+                <span className="sr-only">{collapsedSections.metadata ? "Expandir sección" : "Contraer sección"}</span>
+              </button>
+            </div>
+            {!collapsedSections.metadata ? (
+              <div className="mt-4 grid gap-4">
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Título</span>
                   <input
                     type="text"
-                    value={customMode}
-                    onChange={(event) => setCustomMode(event.target.value)}
-                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                    placeholder="Añadir modo personalizado"
+                    value={form.title}
+                    onChange={(event) => handleFieldChange("title", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    placeholder="Título del escenario"
                   />
-                  <button
-                    type="submit"
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
-                  >
-                    Añadir
-                  </button>
-                </form>
+                </label>
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Resumen / briefing</span>
+                  <textarea
+                    rows={4}
+                    value={form.summary}
+                    onChange={(event) => handleFieldChange("summary", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    placeholder="Descripción corta que verán los alumnos"
+                  />
+                </label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Estado</span>
+                    <select
+                      value={form.status}
+                      onChange={(event) => handleFieldChange("status", event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Nivel</span>
+                    <select
+                      value={form.level || ""}
+                      onChange={(event) => handleFieldChange("level", event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    >
+                      {levelOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="space-y-3 text-sm text-slate-600">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Modo</p>
+                  <div className="flex flex-wrap gap-3">
+                    {modeOptions.map((option) => {
+                      const checked = form.mode?.includes(option.value);
+                      return (
+                        <label key={option.value} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleMode(option.value)}
+                            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                          />
+                          {option.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <form onSubmit={addCustomMode} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={customMode}
+                      onChange={(event) => setCustomMode(event.target.value)}
+                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="Añadir modo personalizado"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                    >
+                      Añadir
+                    </button>
+                  </form>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
 
 
@@ -1271,44 +1686,58 @@ export default function Admin_ScenarioEditor() {
                 <h2 className="text-lg font-semibold text-slate-900">Taxonomía del escenario</h2>
                 <p className="text-sm text-slate-600">Activa o desactiva las categorías disponibles.</p>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveCategories}
-                disabled={categorySaving}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
-              >
-                {categorySaving ? "Guardando…" : "Guardar categorías"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveCategories}
+                  disabled={categorySaving}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {categorySaving ? "Guardando…" : "Guardar categorías"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("taxonomy")}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.taxonomy ? "-rotate-90" : "rotate-0"}`} />
+                  <span className="sr-only">{collapsedSections.taxonomy ? "Expandir sección" : "Contraer sección"}</span>
+                </button>
+              </div>
             </div>
-            {categoryError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{categoryError}</div>
+            {!collapsedSections.taxonomy ? (
+              <>
+                {categoryError ? (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{categoryError}</div>
+                ) : null}
+                {categorySuccess ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{categorySuccess}</div>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {allCategories.length === 0 ? (
+                    <p className="text-sm text-slate-500">No hay categorías configuradas todavía.</p>
+                  ) : (
+                    allCategories.map((category) => {
+                      const active = selectedCategories.includes(category.id);
+                      return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => toggleCategorySelection(category.id)}
+                          className={`rounded-full border px-3 py-1 text-sm transition ${
+                            active
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+                          }`}
+                        >
+                          {category.name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </>
             ) : null}
-            {categorySuccess ? (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{categorySuccess}</div>
-            ) : null}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {allCategories.length === 0 ? (
-                <p className="text-sm text-slate-500">No hay categorías configuradas todavía.</p>
-              ) : (
-                allCategories.map((category) => {
-                  const active = selectedCategories.includes(category.id);
-                  return (
-                    <button
-                      key={category.id}
-                      type="button"
-                      onClick={() => toggleCategorySelection(category.id)}
-                      className={`rounded-full border px-3 py-1 text-sm transition ${
-                        active
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
-                      }`}
-                    >
-                      {category.name}
-                    </button>
-                  );
-                })
-              )}
-            </div>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
@@ -1317,79 +1746,93 @@ export default function Admin_ScenarioEditor() {
                 <h2 className="text-lg font-semibold text-slate-900">Objetivos y briefing</h2>
                 <p className="text-sm text-slate-600">Define el objetivo general y las metas por rol.</p>
               </div>
-              <button
-                type="button"
-                onClick={handleSaveBrief}
-                disabled={briefSaving}
-                className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
-              >
-                {briefSaving ? "Guardando…" : "Guardar objetivos"}
-              </button>
-            </div>
-            {briefError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{briefError}</div>
-            ) : null}
-            {briefSuccess ? (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{briefSuccess}</div>
-            ) : null}
-            <div className="mt-4 space-y-4">
-              <label className="block text-sm text-slate-600">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
-                <textarea
-                  rows={3}
-                  value={briefForm.learningObjective}
-                  onChange={(event) => handleBriefLearningObjectiveChange(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  placeholder="Describe el objetivo principal del escenario"
-                />
-              </label>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-medium text-slate-700">Objetivos por rol</p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newRole}
-                      onChange={(event) => setNewRole(event.target.value)}
-                      placeholder="Añadir rol (p. ej. RES)"
-                      className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddRole}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-                    >
-                      Añadir
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-4">
-                  {briefRoles.map((role) => (
-                    <div key={role} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-slate-700">{roleDisplay[role] || role}</span>
-                        {role !== "MED" && role !== "NUR" && role !== "PHARM" ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRole(role)}
-                            className="text-xs text-rose-500 hover:text-rose-600"
-                          >
-                            Quitar
-                          </button>
-                        ) : null}
-                      </div>
-                      <textarea
-                        rows={3}
-                        value={briefForm.objectivesByRole?.[role] || ""}
-                        onChange={(event) => handleBriefObjectiveChange(role, event.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        placeholder="Una línea por objetivo"
-                      />
-                    </div>
-                  ))}
-                </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveBrief}
+                  disabled={briefSaving}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {briefSaving ? "Guardando…" : "Guardar objetivos"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("brief")}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.brief ? "-rotate-90" : "rotate-0"}`} />
+                  <span className="sr-only">{collapsedSections.brief ? "Expandir sección" : "Contraer sección"}</span>
+                </button>
               </div>
             </div>
+            {!collapsedSections.brief ? (
+              <>
+                {briefError ? (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{briefError}</div>
+                ) : null}
+                {briefSuccess ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{briefSuccess}</div>
+                ) : null}
+                <div className="mt-4 space-y-4">
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
+                    <textarea
+                      rows={3}
+                      value={briefForm.learningObjective}
+                      onChange={(event) => handleBriefLearningObjectiveChange(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="Describe el objetivo principal del escenario"
+                    />
+                  </label>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm font-medium text-slate-700">Objetivos por rol</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newRole}
+                          onChange={(event) => setNewRole(event.target.value)}
+                          placeholder="Añadir rol (p. ej. RES)"
+                          className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddRole}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                        >
+                          Añadir
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      {briefRoles.map((role) => (
+                        <div key={role} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-700">{roleDisplay[role] || role}</span>
+                            {role !== "MED" && role !== "NUR" && role !== "PHARM" ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRole(role)}
+                                className="text-xs text-rose-500 hover:text-rose-600"
+                              >
+                                Quitar
+                              </button>
+                            ) : null}
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={briefForm.objectivesByRole?.[role] || ""}
+                            onChange={(event) => handleBriefObjectiveChange(role, event.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                            placeholder="Una línea por objetivo"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
@@ -1398,7 +1841,7 @@ export default function Admin_ScenarioEditor() {
                 <h2 className="text-lg font-semibold text-slate-900">Lecturas y recursos</h2>
                 <p className="text-sm text-slate-600">Documentación de apoyo visible para el escenario.</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={addResource}
@@ -1414,130 +1857,157 @@ export default function Admin_ScenarioEditor() {
                 >
                   {resourcesSaving ? "Guardando…" : "Guardar lecturas"}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("resources")}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.resources ? "-rotate-90" : "rotate-0"}`} />
+                  <span className="sr-only">{collapsedSections.resources ? "Expandir sección" : "Contraer sección"}</span>
+                </button>
               </div>
             </div>
-            {resourcesError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{resourcesError}</div>
+            {!collapsedSections.resources ? (
+              <>
+                {resourcesError ? (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{resourcesError}</div>
+                ) : null}
+                {resourcesSuccess ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{resourcesSuccess}</div>
+                ) : null}
+                <div className="mt-4 space-y-4">
+                  {resources.length === 0 ? (
+                    <p className="text-sm text-slate-500">Todavía no hay lecturas añadidas.</p>
+                  ) : (
+                    resources.map((resource, index) => (
+                      <div key={resource.id ?? `temp-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="block text-sm text-slate-600">
+                            <span className="text-xs uppercase tracking-wide text-slate-400">Título</span>
+                            <input
+                              type="text"
+                              value={resource.title || ""}
+                              onChange={(event) => handleResourceChange(index, "title", event.target.value)}
+                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                            />
+                          </label>
+                          <label className="block text-sm text-slate-600">
+                            <span className="text-xs uppercase tracking-wide text-slate-400">URL</span>
+                            <input
+                              type="url"
+                              value={resource.url || ""}
+                              onChange={(event) => handleResourceChange(index, "url", event.target.value)}
+                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                              placeholder="https://"
+                            />
+                          </label>
+                          <label className="block text-sm text-slate-600">
+                            <span className="text-xs uppercase tracking-wide text-slate-400">Fuente</span>
+                            <input
+                              type="text"
+                              value={resource.source || ""}
+                              onChange={(event) => handleResourceChange(index, "source", event.target.value)}
+                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                              placeholder="Organización o autor"
+                            />
+                          </label>
+                          <label className="block text-sm text-slate-600">
+                            <span className="text-xs uppercase tracking-wide text-slate-400">Tipo</span>
+                            <input
+                              type="text"
+                              value={resource.type || ""}
+                              onChange={(event) => handleResourceChange(index, "type", event.target.value)}
+                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                              placeholder="Guía, vídeo, etc."
+                            />
+                          </label>
+                          <label className="block text-sm text-slate-600">
+                            <span className="text-xs uppercase tracking-wide text-slate-400">Año</span>
+                            <input
+                              type="number"
+                              value={resource.year ?? ""}
+                              onChange={(event) => handleResourceChange(index, "year", event.target.value)}
+                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                              min="1900"
+                              max="2100"
+                            />
+                          </label>
+                          <label className="block text-sm text-slate-600">
+                            <span className="text-xs uppercase tracking-wide text-slate-400">Peso</span>
+                            <input
+                              type="number"
+                              value={resource.weight ?? ""}
+                              onChange={(event) => handleResourceChange(index, "weight", event.target.value)}
+                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                              step="10"
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(resource.free_access)}
+                              onChange={() => toggleResourceFreeAccess(index)}
+                              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                            />
+                            Acceso libre
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeResource(index)}
+                            className="text-sm text-rose-500 hover:text-rose-600"
+                          >
+                            Eliminar recurso
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
             ) : null}
-            {resourcesSuccess ? (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{resourcesSuccess}</div>
-            ) : null}
-            <div className="mt-4 space-y-4">
-              {resources.length === 0 ? (
-                <p className="text-sm text-slate-500">Todavía no hay lecturas añadidas.</p>
-              ) : (
-                resources.map((resource, index) => (
-                  <div key={resource.id ?? `temp-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="block text-sm text-slate-600">
-                        <span className="text-xs uppercase tracking-wide text-slate-400">Título</span>
-                        <input
-                          type="text"
-                          value={resource.title || ""}
-                          onChange={(event) => handleResourceChange(index, "title", event.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                        />
-                      </label>
-                      <label className="block text-sm text-slate-600">
-                        <span className="text-xs uppercase tracking-wide text-slate-400">URL</span>
-                        <input
-                          type="url"
-                          value={resource.url || ""}
-                          onChange={(event) => handleResourceChange(index, "url", event.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                          placeholder="https://"
-                        />
-                      </label>
-                      <label className="block text-sm text-slate-600">
-                        <span className="text-xs uppercase tracking-wide text-slate-400">Fuente</span>
-                        <input
-                          type="text"
-                          value={resource.source || ""}
-                          onChange={(event) => handleResourceChange(index, "source", event.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                          placeholder="Organización o autor"
-                        />
-                      </label>
-                      <label className="block text-sm text-slate-600">
-                        <span className="text-xs uppercase tracking-wide text-slate-400">Tipo</span>
-                        <input
-                          type="text"
-                          value={resource.type || ""}
-                          onChange={(event) => handleResourceChange(index, "type", event.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                          placeholder="Guía, vídeo, etc."
-                        />
-                      </label>
-                      <label className="block text-sm text-slate-600">
-                        <span className="text-xs uppercase tracking-wide text-slate-400">Año</span>
-                        <input
-                          type="number"
-                          value={resource.year ?? ""}
-                          onChange={(event) => handleResourceChange(index, "year", event.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                          min="1900"
-                          max="2100"
-                        />
-                      </label>
-                      <label className="block text-sm text-slate-600">
-                        <span className="text-xs uppercase tracking-wide text-slate-400">Peso</span>
-                        <input
-                          type="number"
-                          value={resource.weight ?? ""}
-                          onChange={(event) => handleResourceChange(index, "weight", event.target.value)}
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                          step="10"
-                        />
-                      </label>
-                    </div>
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(resource.free_access)}
-                          onChange={() => toggleResourceFreeAccess(index)}
-                          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-                        />
-                        Acceso libre
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => removeResource(index)}
-                        className="text-sm text-rose-500 hover:text-rose-600"
-                      >
-                        Eliminar recurso
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Parámetros de intento</h2>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="block text-sm text-slate-600">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (minutos)</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={form.estimated_minutes}
-                  onChange={(event) => handleFieldChange("estimated_minutes", event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                />
-              </label>
-              <label className="block text-sm text-slate-600">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Intentos máximos</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={form.max_attempts}
-                  onChange={(event) => handleFieldChange("max_attempts", event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                />
-              </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Parámetros de intento</h2>
+                <p className="text-sm text-slate-600">Configura límites básicos para el escenario.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSection("attempts")}
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              >
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.attempts ? "-rotate-90" : "rotate-0"}`} />
+                <span className="sr-only">{collapsedSections.attempts ? "Expandir sección" : "Contraer sección"}</span>
+              </button>
             </div>
+            {!collapsedSections.attempts ? (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (minutos)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.estimated_minutes}
+                    onChange={(event) => handleFieldChange("estimated_minutes", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                </label>
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Intentos máximos</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.max_attempts}
+                    onChange={(event) => handleFieldChange("max_attempts", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
@@ -1546,7 +2016,7 @@ export default function Admin_ScenarioEditor() {
                 <h2 className="text-lg font-semibold text-slate-900">Pasos del escenario</h2>
                 <p className="text-sm text-slate-600">Organiza la narrativa cronológica que vivirán los alumnos.</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={addStep}
@@ -1562,28 +2032,41 @@ export default function Admin_ScenarioEditor() {
                 >
                   {stepsSaving ? "Guardando…" : "Guardar pasos"}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("steps")}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.steps ? "-rotate-90" : "rotate-0"}`} />
+                  <span className="sr-only">{collapsedSections.steps ? "Expandir sección" : "Contraer sección"}</span>
+                </button>
               </div>
             </div>
-            {stepsError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{stepsError}</div>
-            ) : null}
-            {stepsSuccess ? (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{stepsSuccess}</div>
-            ) : null}
-            {questionsError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{questionsError}</div>
-            ) : null}
-            {questionsLoading ? (
-              <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
-                <Spinner size={18} label="" />
-                <span>Cargando preguntas…</span>
-              </div>
-            ) : null}
-            <div className="mt-4 space-y-4">
-              {steps.length === 0 ? (
-                <p className="text-sm text-slate-500">Todavía no hay pasos configurados.</p>
-              ) : (
-                steps.map((step, index) => {
+            {!collapsedSections.steps ? (
+              <>
+                {stepsError ? (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{stepsError}</div>
+                ) : null}
+                {stepsSuccess ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{stepsSuccess}</div>
+                ) : null}
+                {questionsError ? (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{questionsError}</div>
+                ) : null}
+                {questionsSuccess ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{questionsSuccess}</div>
+                ) : null}
+                {questionsLoading ? (
+                  <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
+                    <Spinner size={18} label="" />
+                    <span>Cargando preguntas…</span>
+                  </div>
+                ) : null}
+                <div className="mt-4 space-y-4">
+                  {steps.length === 0 ? (
+                    <p className="text-sm text-slate-500">Todavía no hay pasos configurados.</p>
+                  ) : (
+                    steps.map((step, index) => {
                   const stepId = step.id;
                   const stepQuestions = stepId ? questionsByStep[stepId] || [] : [];
                   return (
@@ -1680,98 +2163,255 @@ export default function Admin_ScenarioEditor() {
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-xs uppercase tracking-wide text-slate-400">Preguntas vinculadas a este paso</p>
-                              <p className="text-xs text-slate-500">Visualización en solo lectura para verificar el flujo pedagógico.</p>
+                              <p className="text-xs text-slate-500">Gestiona las decisiones que se mostrarán en este bloque.</p>
                             </div>
+                            {stepId ? (
+                              <button
+                                type="button"
+                                onClick={() => handleAddQuestion(stepId)}
+                                className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                              >
+                                Añadir pregunta
+                              </button>
+                            ) : null}
                           </div>
                           {stepId ? (
-                            stepQuestions.length === 0 && !questionsLoading ? (
-                              <p className="mt-3 text-sm text-slate-500">No hay preguntas asociadas a este paso.</p>
+                            stepQuestions.length === 0 ? (
+                              <p className="mt-3 text-sm text-slate-500">No hay preguntas asociadas. Usa “Añadir pregunta” para crear la primera.</p>
                             ) : (
                               <div className="mt-3 space-y-3">
                                 {stepQuestions.map((question, questionIndex) => {
                                   const displayIndex = questionIndex + 1;
-                                  const rolesLabel = (question.roles || [])
-                                    .map((role) => {
-                                      if (!role) return null;
-                                      const raw = typeof role === "string" ? role.trim() : String(role);
-                                      const lower = raw.toLowerCase();
-                                      return questionRoleLabels[raw] || questionRoleLabels[lower] || raw;
-                                    })
-                                    .filter(Boolean)
-                                    .join(", ");
+                                  const questionKey = question.localId || `question-${question.id ?? questionIndex}`;
+                                  const operation = questionOperationState?.[questionKey];
+                                  const isSaving = operation === "saving";
+                                  const isDeleting = operation === "deleting";
+                                  const optionsList = Array.isArray(question.options) ? question.options : [];
+                                  const hintsList = Array.isArray(question.hints) ? question.hints : [];
+                                  const isDirty = Boolean(question.dirty);
+                                  const selectedRoleLabels = Array.isArray(question.roles) && question.roles.length > 0
+                                    ? question.roles
+                                        .map((role) => resolveRoleLabel(normalizeRoleCode(role)))
+                                        .filter(Boolean)
+                                    : [];
+                                  const normalizedRoleSet = new Set(
+                                    (question.roles || [])
+                                      .map((role) => normalizeRoleCode(role))
+                                      .filter(Boolean)
+                                  );
+                                  const allDefaultRolesSelected = normalizedRoleSet.size === 0
+                                    || questionRoleOptions.every((option) => normalizedRoleSet.has(option.value));
                                   return (
-                                    <div key={question.id ?? `question-${questionIndex}`} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                                      <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div key={questionKey} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
-                                          <p className="text-sm font-medium text-slate-900">Pregunta {displayIndex}</p>
-                                          <p className="mt-1 text-sm text-slate-700">{question.text || "Enunciado sin definir"}</p>
-                                          {rolesLabel ? (
-                                            <p className="mt-1 text-xs text-slate-500">Roles: {rolesLabel}</p>
+                                          <p className="text-sm font-semibold text-slate-900">Pregunta {displayIndex}</p>
+                                          {!question.id ? (
+                                            <p className="text-xs text-amber-600">Pendiente de guardar</p>
                                           ) : null}
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2">
-                                          {question.isCritical ? (
-                                            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">Crítica</span>
+                                          {isDirty ? (
+                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Sin guardar</span>
                                           ) : null}
-                                          {Number.isFinite(question.timeLimit) ? (
-                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{question.timeLimit} s</span>
-                                          ) : null}
+                                          {isSaving ? <span className="text-xs text-slate-500">Guardando…</span> : null}
+                                          {isDeleting ? <span className="text-xs text-slate-500">Eliminando…</span> : null}
                                         </div>
                                       </div>
+                                      {selectedRoleLabels.length === 0 || allDefaultRolesSelected ? (
+                                        <p className="mt-2 text-xs text-slate-500">Visible para todos los roles.</p>
+                                      ) : (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {selectedRoleLabels.map((label, idx) => (
+                                            <span
+                                              key={`${questionKey}-role-label-${idx}`}
+                                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                                            >
+                                              Rol · {label}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <label className="mt-3 block text-sm text-slate-600">
+                                        <span className="text-xs uppercase tracking-wide text-slate-400">Enunciado</span>
+                                        <textarea
+                                          rows={3}
+                                          value={question.text || ""}
+                                          onChange={(event) => handleQuestionTextChange(stepId, questionIndex, event.target.value)}
+                                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                                          placeholder="Redacta la pregunta que verá el alumno"
+                                        />
+                                      </label>
                                       <div className="mt-3 space-y-2">
-                                        {question.options && question.options.length > 0 ? (
-                                          question.options.map((option, optionIdx) => {
-                                            const optionText =
-                                              option == null
-                                                ? "Opción vacía"
-                                                : typeof option === "string"
-                                                  ? option
-                                                  : JSON.stringify(option);
-                                            const isCorrect = question.correctIndex === optionIdx;
+                                        <div className="flex items-center justify-between">
+                                          <p className="text-xs uppercase tracking-wide text-slate-400">Opciones de respuesta</p>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAddQuestionOption(stepId, questionIndex)}
+                                            className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                          >
+                                            Añadir opción
+                                          </button>
+                                        </div>
+                                        {optionsList.map((option, optionIdx) => {
+                                          const optionLabel = `correct-${stepId}-${questionKey}`;
+                                          const isCorrect = question.correctIndex === optionIdx;
+                                          return (
+                                            <div
+                                              key={`${questionKey}-option-${optionIdx}`}
+                                              className={`rounded-lg border px-3 py-2 text-sm ${
+                                                isCorrect ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white"
+                                              }`}
+                                            >
+                                              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                                <div className="flex w-full items-center gap-2">
+                                                  <input
+                                                    type="radio"
+                                                    name={optionLabel}
+                                                    checked={isCorrect}
+                                                    onChange={() => handleSetQuestionCorrectOption(stepId, questionIndex, optionIdx)}
+                                                    className="h-4 w-4 border-slate-300 text-emerald-600 focus:ring-emerald-400"
+                                                  />
+                                                  <input
+                                                    type="text"
+                                                    value={option}
+                                                    onChange={(event) => handleQuestionOptionChange(stepId, questionIndex, optionIdx, event.target.value)}
+                                                    className="w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+                                                    placeholder={`Opción ${String.fromCharCode(65 + optionIdx)}`}
+                                                  />
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleRemoveQuestionOption(stepId, questionIndex, optionIdx)}
+                                                  disabled={optionsList.length <= 2}
+                                                  className="self-start rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
+                                                >
+                                                  Eliminar
+                                                </button>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      <div className="mt-3">
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">Roles visibles</p>
+                                        <p className="text-xs text-slate-500">Selecciona qué roles verán esta pregunta.</p>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {questionRoleOptions.map((roleOption) => {
+                                            const active = normalizedRoleSet.size === 0 || normalizedRoleSet.has(roleOption.value);
                                             return (
-                                              <div
-                                                key={optionIdx}
-                                                className={`rounded-lg border px-3 py-2 text-sm ${
-                                                  isCorrect
-                                                    ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-                                                    : "border-slate-200 bg-white text-slate-700"
+                                              <button
+                                                key={roleOption.value}
+                                                type="button"
+                                                onClick={() => handleToggleQuestionRole(stepId, questionIndex, roleOption.value)}
+                                                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                                                  active
+                                                    ? "border-slate-900 bg-slate-900 text-white"
+                                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
                                                 }`}
                                               >
-                                                <div className="flex items-center justify-between gap-2">
-                                                  <span>{String.fromCharCode(65 + optionIdx)}. {optionText}</span>
-                                                  {isCorrect ? (
-                                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Correcta</span>
-                                                  ) : null}
-                                                </div>
-                                              </div>
+                                                {roleOption.label}
+                                              </button>
                                             );
-                                          })
+                                          })}
+                                        </div>
+                                      </div>
+                                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                        <label className="block text-sm text-slate-600">
+                                          <span className="text-xs uppercase tracking-wide text-slate-400">Tiempo límite (segundos)</span>
+                                          <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={question.timeLimitInput ?? ""}
+                                            onChange={(event) => handleQuestionTimeLimitChange(stepId, questionIndex, event.target.value)}
+                                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                                            placeholder="Opcional"
+                                          />
+                                        </label>
+                                        <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                                          <input
+                                            type="checkbox"
+                                            checked={Boolean(question.isCritical)}
+                                            onChange={() => handleQuestionCriticalToggle(stepId, questionIndex)}
+                                            className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-400"
+                                          />
+                                          Marca como crítica
+                                        </label>
+                                      </div>
+                                      <label className="mt-3 block text-sm text-slate-600">
+                                        <span className="text-xs uppercase tracking-wide text-slate-400">Explicación</span>
+                                        <textarea
+                                          rows={3}
+                                          value={question.explanation || ""}
+                                          onChange={(event) => handleQuestionExplanationChange(stepId, questionIndex, event.target.value)}
+                                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                                          placeholder="Describe la retroalimentación que verá el alumno"
+                                        />
+                                      </label>
+                                      {question.isCritical ? (
+                                        <label className="mt-3 block text-sm text-slate-600">
+                                          <span className="text-xs uppercase tracking-wide text-slate-400">Razonamiento crítico</span>
+                                          <textarea
+                                            rows={3}
+                                            value={question.criticalRationale || ""}
+                                            onChange={(event) => handleQuestionCriticalRationaleChange(stepId, questionIndex, event.target.value)}
+                                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                                            placeholder="Explica por qué esta respuesta es crítica para el caso"
+                                          />
+                                        </label>
+                                      ) : null}
+                                      <div className="mt-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <p className="text-xs uppercase tracking-wide text-slate-400">Pistas</p>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAddQuestionHint(stepId, questionIndex)}
+                                            className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                          >
+                                            Añadir pista
+                                          </button>
+                                        </div>
+                                        {hintsList.length === 0 ? (
+                                          <p className="text-xs italic text-slate-500">Sin pistas configuradas.</p>
                                         ) : (
-                                          <p className="text-xs italic text-slate-500">Esta pregunta no tiene opciones configuradas.</p>
+                                          hintsList.map((hint, hintIndex) => (
+                                            <div key={`${questionKey}-hint-${hintIndex}`} className="flex items-start gap-2">
+                                              <input
+                                                type="text"
+                                                value={hint}
+                                                onChange={(event) => handleQuestionHintChange(stepId, questionIndex, hintIndex, event.target.value)}
+                                                className="flex-1 rounded-md border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+                                                placeholder="Texto de la pista"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveQuestionHint(stepId, questionIndex, hintIndex)}
+                                                className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+                                              >
+                                                Quitar
+                                              </button>
+                                            </div>
+                                          ))
                                         )}
                                       </div>
-                                      {question.hints && question.hints.length > 0 ? (
-                                        <div className="mt-3 text-xs text-slate-600">
-                                          <p className="font-semibold text-slate-700">Pistas:</p>
-                                          <ul className="mt-1 list-disc space-y-1 pl-4">
-                                            {question.hints.map((hint, hintIndex) => (
-                                              <li key={hintIndex}>{hint}</li>
-                                            ))}
-                                          </ul>
-                                        </div>
-                                      ) : null}
-                                      {question.explanation ? (
-                                        <div className="mt-3 text-xs text-slate-600">
-                                          <p className="font-semibold text-slate-700">Explicación:</p>
-                                          <p className="mt-1 whitespace-pre-line">{question.explanation}</p>
-                                        </div>
-                                      ) : null}
-                                      {question.criticalRationale ? (
-                                        <div className="mt-3 text-xs text-slate-600">
-                                          <p className="font-semibold text-slate-700">Razonamiento crítico:</p>
-                                          <p className="mt-1 whitespace-pre-line">{question.criticalRationale}</p>
-                                        </div>
-                                      ) : null}
+                                      <div className="mt-4 flex flex-wrap gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveQuestion(stepId, questionIndex)}
+                                          disabled={isSaving || isDeleting}
+                                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
+                                        >
+                                          {isSaving ? "Guardando…" : question.id ? "Guardar cambios" : "Crear pregunta"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteQuestion(stepId, questionIndex)}
+                                          disabled={isSaving || isDeleting}
+                                          className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-100 disabled:pointer-events-none disabled:opacity-50"
+                                        >
+                                          {isDeleting ? "Eliminando…" : question.id ? "Eliminar" : "Descartar"}
+                                        </button>
+                                      </div>
                                     </div>
                                   );
                                 })}
@@ -1786,7 +2426,9 @@ export default function Admin_ScenarioEditor() {
                   );
                 })
               )}
-            </div>
+                </div>
+              </>
+            ) : null}
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
@@ -1795,59 +2437,74 @@ export default function Admin_ScenarioEditor() {
                 <h2 className="text-lg font-semibold text-slate-900">Historial de cambios</h2>
                 <p className="text-sm text-slate-600">Los últimos movimientos quedan registrados con usuario, fecha y detalle.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => fetchChangeLogs()}
-                disabled={changeLogsLoading}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
-              >
-                {changeLogsLoading ? "Actualizando…" : "Actualizar"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fetchChangeLogs()}
+                  disabled={changeLogsLoading}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {changeLogsLoading ? "Actualizando…" : "Actualizar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("history")}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.history ? "-rotate-90" : "rotate-0"}`} />
+                  <span className="sr-only">{collapsedSections.history ? "Expandir sección" : "Contraer sección"}</span>
+                </button>
+              </div>
             </div>
-            {changeLogsError ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{changeLogsError}</div>
-            ) : null}
-            {changeLogsLoading ? (
-              <div className="mt-4 flex justify-center"><Spinner size={24} label="Cargando historial" /></div>
-            ) : null}
-            <div className="mt-4 space-y-3">
-              {changeLogs.length === 0 ? (
-                <p className="text-sm text-slate-500">Aún no hay registros en el historial.</p>
-              ) : (
-                changeLogs.map((log) => {
-                  const createdAt = log?.created_at ? new Date(log.created_at) : null;
-                  const createdLabel = createdAt && !Number.isNaN(createdAt.valueOf())
-                    ? createdAt.toLocaleString()
-                    : "Fecha desconocida";
-                  const changeLabel = changeTypeLabels[log?.change_type] || log?.change_type || "Actualización";
-                  return (
-                    <div key={log.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className="font-semibold text-slate-700">{log?.user_name || "Sistema"}</span>
-                          <span>•</span>
-                          <time dateTime={log?.created_at || undefined}>{createdLabel}</time>
-                          {changeLabel ? (
-                            <>
+            {!collapsedSections.history ? (
+              <>
+                {changeLogsError ? (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{changeLogsError}</div>
+                ) : null}
+                {changeLogsLoading ? (
+                  <div className="mt-4 flex justify-center"><Spinner size={24} label="Cargando historial" /></div>
+                ) : null}
+                <div className="mt-4 space-y-3">
+                  {changeLogs.length === 0 ? (
+                    <p className="text-sm text-slate-500">Aún no hay registros en el historial.</p>
+                  ) : (
+                    changeLogs.map((log) => {
+                      const createdAt = log?.created_at ? new Date(log.created_at) : null;
+                      const createdLabel = createdAt && !Number.isNaN(createdAt.valueOf())
+                        ? createdAt.toLocaleString()
+                        : "Fecha desconocida";
+                      const changeLabel = changeTypeLabels[log?.change_type] || log?.change_type || "Actualización";
+                      return (
+                        <div key={log.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                              <span className="font-semibold text-slate-700">{log?.user_name || "Sistema"}</span>
                               <span>•</span>
-                              <span>{changeLabel}</span>
-                            </>
-                          ) : null}
+                              <time dateTime={log?.created_at || undefined}>{createdLabel}</time>
+                              {changeLabel ? (
+                                <>
+                                  <span>•</span>
+                                  <span>{changeLabel}</span>
+                                </>
+                              ) : null}
+                            </div>
+                            {log?.description ? <p className="text-sm text-slate-700">{log.description}</p> : null}
+                          </div>
                         </div>
-                        {log?.description ? <p className="text-sm text-slate-700">{log.description}</p> : null}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            ) : null}
           </div>
 
           <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-100 px-6 py-6 text-sm text-slate-600">
             <p className="font-semibold text-slate-700">Próximos pasos</p>
             <p className="mt-2">
-              Desde aquí ya puedes actualizar los metadatos principales del escenario. El siguiente paso será construir un editor visual
-              para pasos, ítems, checklist y reglas. Mientras tanto, cualquier cambio manual en la base de datos se respetará.
+              Desde este panel puedes gestionar metadatos, categorías, objetivos, recursos, pasos y preguntas del escenario online. Los
+              próximos lanzamientos se centrarán en plantillas reutilizables, analíticas de desempeño y duplicado rápido de casos. Si
+              necesitas priorizar alguna mejora, avísanos.
             </p>
           </div>
         </section>

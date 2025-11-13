@@ -26,10 +26,44 @@ function mapScenarios(rows) {
   });
 }
 
+function resolveOrderIndex(row) {
+  const value = Number(row?.idx);
+  return Number.isFinite(value) ? value : null;
+}
+
+function sortScenarios(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.slice().sort((a, b) => {
+    const ai = resolveOrderIndex(a);
+    const bi = resolveOrderIndex(b);
+    if (ai != null || bi != null) {
+      if (ai != null && bi != null && ai !== bi) return ai - bi;
+      if (ai != null && bi == null) return -1;
+      if (ai == null && bi != null) return 1;
+    }
+    const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    return bCreated - aCreated;
+  });
+}
+
 async function fetchScenarioList() {
-  const { data, error } = await supabase
-    .from("scenarios")
-    .select(`
+  const baseSelect = `
+      id,
+      idx,
+      title,
+      summary,
+      status,
+      mode,
+      level,
+      difficulty,
+      estimated_minutes,
+      created_at,
+      scenario_steps:scenario_steps(id),
+      scenario_items:scenario_items(id)
+    `;
+
+  const fallbackSelect = `
       id,
       title,
       summary,
@@ -41,11 +75,30 @@ async function fetchScenarioList() {
       created_at,
       scenario_steps:scenario_steps(id),
       scenario_items:scenario_items(id)
-    `)
+    `;
+
+  let data = null;
+  let error = null;
+
+  ({ data, error } = await supabase
+    .from("scenarios")
+    .select(baseSelect)
     .contains("mode", ["online"])
-    .order("created_at", { ascending: false });
+    .order("idx", { ascending: true, nullsFirst: true })
+    .order("created_at", { ascending: false }));
+
+  if (error && /scenarios\.idx/.test(error.message || "")) {
+    const fallback = await supabase
+      .from("scenarios")
+      .select(fallbackSelect)
+      .contains("mode", ["online"])
+      .order("created_at", { ascending: false });
+    data = fallback.data;
+    error = fallback.error;
+  }
+
   if (error) throw error;
-  return mapScenarios(data);
+  return sortScenarios(mapScenarios(data));
 }
 
 function statusBadge(status) {
@@ -96,7 +149,7 @@ function ScenarioRow({ scenario, onOpen }) {
           {statusBadge(scenario.status)}
           <button
             type="button"
-            className="text-sm text-slate-500 hover:text-slate-900"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
             onClick={onOpen}
           >
             Abrir editor

@@ -1293,13 +1293,54 @@ export default function Presencial_Instructor() {
           setSteps([]);
           setVariables([]);
           setErrorMsg('');
-          const { data: scs, error: scsErr } = await supabase
-            .from("scenarios")
-            .select("id,title,summary,estimated_minutes,level")
-            .order("created_at", { ascending: false })
-            .limit(20);
+          let scs = null;
+          let scsErr = null;
+
+          const fetchWithIdx = () =>
+            supabase
+              .from("scenarios")
+              .select("id,idx,title,summary,estimated_minutes,level,created_at")
+              .order("idx", { ascending: true, nullsFirst: true })
+              .order("created_at", { ascending: false })
+              .limit(20);
+
+          const fetchWithoutIdx = () =>
+            supabase
+              .from("scenarios")
+              .select("id,title,summary,estimated_minutes,level,created_at")
+              .order("created_at", { ascending: false })
+              .limit(20);
+
+          const initial = await fetchWithIdx();
+          scs = initial.data;
+          scsErr = initial.error;
+
+          if (scsErr && /scenarios\.idx/.test(scsErr.message || "")) {
+            const fallback = await fetchWithoutIdx();
+            scs = fallback.data;
+            scsErr = fallback.error;
+          }
+
           if (scsErr) throw scsErr;
-          if (mounted) setScenarios(scs || []);
+          if (mounted) {
+            const parseIdx = (row) => {
+              const value = Number(row?.idx);
+              return Number.isFinite(value) ? value : null;
+            };
+            const resolved = (scs || []).slice().sort((a, b) => {
+              const ai = parseIdx(a);
+              const bi = parseIdx(b);
+              if (ai != null || bi != null) {
+                if (ai != null && bi != null && ai !== bi) return ai - bi;
+                if (ai != null && bi == null) return -1;
+                if (ai == null && bi != null) return 1;
+              }
+              const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
+              const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
+              return bCreated - aCreated;
+            });
+            setScenarios(resolved);
+          }
           setLoading(false);
           return;
         }

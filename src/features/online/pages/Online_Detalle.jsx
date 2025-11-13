@@ -72,18 +72,71 @@ function isTimedStep(step) {
 
 // Normaliza el rol del usuario a 'medico' | 'enfermeria' | 'farmacia'
 function normalizeRole(rol) {
-  const k = String(rol || "").toLowerCase();
-  if (k.includes("medic")) return "medico";
-  if (k.includes("enfer")) return "enfermeria";
-  if (k.includes("farm")) return "farmacia";
-  return "";
+  const k = String(rol || "").toLowerCase().trim();
+  if (!k) return "";
+  if (k === "med" || k.includes("medic")) return "medico";
+  if (k === "nur" || k.includes("enfer") || k.includes("nurse")) return "enfermeria";
+  if (k === "pharm" || k.includes("farm")) return "farmacia";
+  return k;
+}
+
+function normalizeRoleList(rawRoles) {
+  if (!rawRoles) return [];
+  if (Array.isArray(rawRoles)) {
+    return rawRoles
+      .map((role) => (role == null ? "" : String(role).trim()))
+      .filter(Boolean);
+  }
+  if (typeof rawRoles === "string") {
+    const trimmed = rawRoles.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((role) => (role == null ? "" : String(role).trim()))
+          .filter(Boolean);
+      }
+    } catch (_) {
+      // Ignored: el string no era JSON, usamos el valor crudo
+    }
+    return [trimmed];
+  }
+  if (typeof rawRoles === "object") {
+    if (rawRoles instanceof Set) {
+      return Array.from(rawRoles)
+        .map((role) => (role == null ? "" : String(role).trim()))
+        .filter(Boolean);
+    }
+    try {
+      return Object.values(rawRoles)
+        .map((role) => (role == null ? "" : String(role).trim()))
+        .filter(Boolean);
+    } catch (_) {
+      return [];
+    }
+  }
+  return [];
+}
+
+function getRoleLabels(rawRoles) {
+  const unique = [];
+  normalizeRoleList(rawRoles).forEach((role) => {
+    const key = role.toLowerCase();
+    if (!unique.some((existing) => existing.toLowerCase() === key)) {
+      unique.push(role);
+    }
+  });
+  return unique.map((role) => formatRole(role));
 }
 
 // Visible si roles es null/[] o incluye el userRole
 function isVisibleForRole(roles, userRole) {
-  if (!roles || roles.length === 0) return true;
-  const arr = roles.map((r) => String(r).toLowerCase());
-  return arr.includes(String(userRole || "").toLowerCase());
+  const list = normalizeRoleList(roles);
+  if (list.length === 0) return true;
+  const normalizedUser = normalizeRole(userRole);
+  if (!normalizedUser) return true;
+  return list.some((role) => normalizeRole(role) === normalizedUser);
 }
 
 // Intenta normalizar "options": puede venir como array de strings o de objetos {key,label}
@@ -673,6 +726,8 @@ export default function Online_Detalle() {
     return c;
   }, [answers, currentStep]);
 
+  const currentStepRoleLabels = useMemo(() => getRoleLabels(currentStep?.roles), [currentStep]);
+
   const answeredTotal = useMemo(() => Object.keys(answers).length, [answers]);
   const allAnswered = totalQuestions > 0 && answeredTotal >= totalQuestions;
 
@@ -870,24 +925,29 @@ export default function Online_Detalle() {
       }
 
       const stepsWithQs = (stepsFull || [])
-        .filter((s) => isVisibleForRole(s.roles, userRole))
         .map((s) => {
+          const stepRoles = normalizeRoleList(s.roles);
           const qs = (s.questions || [])
-            .filter((q) => isVisibleForRole(q.roles, userRole))
-            .map((q) => ({
-              id: q.id,
-              text: q.question_text, // alias local para mantener el resto del componente
-              options: q.options,
-              correct_option: q.correct_option,
-              explanation: q.explanation,
-              roles: q.roles,
-              is_critical: q.is_critical,
-              hints: q.hints,
-              time_limit: q.time_limit,
-              _options: normalizeOptions(q.options),
-            }));
-          return { ...s, questions: qs };
-        });
+            .map((q) => {
+              const questionRoles = normalizeRoleList(q.roles);
+              if (!isVisibleForRole(questionRoles, userRole)) return null;
+              return {
+                id: q.id,
+                text: q.question_text,
+                options: q.options,
+                correct_option: q.correct_option,
+                explanation: q.explanation,
+                roles: questionRoles,
+                is_critical: q.is_critical,
+                hints: q.hints,
+                time_limit: q.time_limit,
+                _options: normalizeOptions(q.options),
+              };
+            })
+            .filter(Boolean);
+          return { ...s, roles: stepRoles, questions: qs };
+        })
+        .filter((s) => isVisibleForRole(s.roles, userRole));
 
       setSteps(stepsWithQs);
       // Si estamos en resumen, cargar respuestas guardadas para pintar la corrección
@@ -1754,6 +1814,7 @@ export default function Online_Detalle() {
                 <ol className="space-y-2">
                   {steps.map((s, idx) => {
                     const active = idx === currentIdx;
+                    const sidebarRoleLabels = getRoleLabels(s.roles);
                     return (
                       <li key={s.id}>
                         <button
@@ -1766,9 +1827,11 @@ export default function Online_Detalle() {
                             }`}
                         >
                           <div className="text-sm font-medium">{s.description || `Bloque ${idx + 1}`}</div>
-                          {s.role_specific && (
-                            <div className="text-xs text-slate-500">Específico de rol</div>
-                          )}
+                          {s.role_specific ? (
+                            <div className="text-xs text-slate-500">
+                              Específico de rol{sidebarRoleLabels.length ? ` · ${sidebarRoleLabels.join(", ")}` : ""}
+                            </div>
+                          ) : null}
                         </button>
                       </li>
                     );
@@ -1805,6 +1868,19 @@ export default function Online_Detalle() {
                   </span>
                 </div>
 
+                {currentStep?.role_specific && currentStepRoleLabels.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {currentStepRoleLabels.map((label, index) => (
+                      <span
+                        key={`current-step-role-${index}`}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                      >
+                        Rol · {label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
                 {/* Aviso por tiempo */}
                 {timeUp && (
                   <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 px-3 py-2 text-sm">
@@ -1827,10 +1903,23 @@ export default function Online_Detalle() {
                     const saved = answers[q.id];
                     const selectedKey = saved?.selectedKey ?? null;
                     const isCorrect = saved?.isCorrect;
+                    const questionRoleLabels = getRoleLabels(q.roles);
 
                     return (
                       <article key={q.id} className={`rounded-xl border p-4 ${q.is_critical ? "border-amber-300 bg-amber-50/30" : "border-slate-200"}`}>
                         <p className="font-medium">{q.text}</p>
+                        {questionRoleLabels.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {questionRoleLabels.map((label, index) => (
+                              <span
+                                key={`question-${q.id}-role-${index}`}
+                                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                              >
+                                Rol · {label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                         {q.is_critical && (
                           <div className="mt-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
                             ⚠️ Pregunta crítica

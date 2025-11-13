@@ -46,6 +46,9 @@ const MODE_MAP = new Map(
 );
 
 const ROLE_PATTERNS = [
+	{ test: /^med$/, label: "Medicina" },
+	{ test: /^nur$/, label: "Enfermería" },
+	{ test: /^pharm$/, label: "Farmacia" },
 	{ test: /medic/, label: "Médico" },
 	{ test: /enfer/, label: "Enfermería" },
 	{ test: /farm/, label: "Farmacia" },

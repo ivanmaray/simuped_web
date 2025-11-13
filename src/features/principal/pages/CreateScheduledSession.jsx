@@ -52,13 +52,48 @@ const CreateScheduledSession = () => {
   const fetchScenarios = async () => {
     try {
       setLoadingScenarios(true);
-      const { data, error } = await supabase
-        .from("scenarios")
-        .select("id, title, summary, level, mode, estimated_minutes")
-        .order("title", { ascending: true });
+      let data = null;
+      let error = null;
+
+      const fetchWithIdx = () =>
+        supabase
+          .from("scenarios")
+          .select("id, idx, title, summary, level, mode, estimated_minutes")
+          .order("idx", { ascending: true, nullsFirst: true })
+          .order("title", { ascending: true });
+
+      const fetchWithoutIdx = () =>
+        supabase
+          .from("scenarios")
+          .select("id, title, summary, level, mode, estimated_minutes")
+          .order("title", { ascending: true });
+
+      ({ data, error } = await fetchWithIdx());
+
+      if (error && /scenarios\.idx/.test(error.message || "")) {
+        const fallback = await fetchWithoutIdx();
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) throw error;
-      setScenarios(data || []);
+      const getOrderIndex = (row) => {
+        const value = Number(row?.idx);
+        return Number.isFinite(value) ? value : null;
+      };
+      const sorted = (data || []).slice().sort((a, b) => {
+        const ai = getOrderIndex(a);
+        const bi = getOrderIndex(b);
+        if (ai != null || bi != null) {
+          if (ai != null && bi != null && ai !== bi) return ai - bi;
+          if (ai != null && bi == null) return -1;
+          if (ai == null && bi != null) return 1;
+        }
+        const ta = (a.title || "").toLocaleLowerCase("es");
+        const tb = (b.title || "").toLocaleLowerCase("es");
+        return ta.localeCompare(tb, "es");
+      });
+      setScenarios(sorted);
     } catch (err) {
       console.error("Error fetching scenarios:", err);
     } finally {
