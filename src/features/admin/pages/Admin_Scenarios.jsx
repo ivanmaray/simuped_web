@@ -5,6 +5,7 @@ import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
 import AdminNav from "../components/AdminNav.jsx";
 import { formatLevel } from "../../../utils/formatUtils.js";
+import { shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
 import {
   PlusCircleIcon,
   ArrowPathIcon,
@@ -87,7 +88,8 @@ async function fetchScenarioList() {
     .order("idx", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: false }));
 
-  if (error && /scenarios\.idx/.test(error.message || "")) {
+  if (error && shouldRetryWithoutIdx(error)) {
+    console.warn("[Admin_Scenarios] idx column missing, retrying without idx", error);
     const fallback = await supabase
       .from("scenarios")
       .select(fallbackSelect)

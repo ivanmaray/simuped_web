@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useRef, forwardRef, useId } 
 import { supabase } from "../../../../supabaseClient";
 import Navbar from "../../../../components/Navbar.jsx";
 import { reportWarning } from "../../../../utils/reporting.js";
+import { shouldRetryWithoutIdx } from "../../../../utils/supabaseHelpers.js";
 // chestXrayLibrary can be large (images/metadata). Load dynamically at runtime
 // so it doesn't inflate the main bundle.
 // We will lazy-load it inside the component and keep a local state.
@@ -1315,7 +1316,8 @@ export default function Presencial_Instructor() {
           scs = initial.data;
           scsErr = initial.error;
 
-          if (scsErr && /scenarios\.idx/.test(scsErr.message || "")) {
+          if (scsErr && shouldRetryWithoutIdx(scsErr)) {
+            console.warn("[PresencialInstructor] idx column missing, retrying without idx", scsErr);
             const fallback = await fetchWithoutIdx();
             scs = fallback.data;
             scsErr = fallback.error;
