@@ -27,7 +27,7 @@ export const interactiveCategories = [
     description: "Soporte organico avanzado para ninos criticos y postoperatorios complejos.",
     type: CATEGORY_TYPES.UNIT,
     state: "locked",
-    featuredCaseId: "sepsis-quirofano"
+    featuredCaseId: null
   },
   {
     id: "nicu",
@@ -78,7 +78,7 @@ export const interactiveCategories = [
     description: "Sepsis, focos ocultos y optimizacion de antimicrobianos.",
     type: CATEGORY_TYPES.SPECIALTY,
     state: "locked",
-    featuredCaseId: "sepsis-quirofano"
+    featuredCaseId: null
   },
   {
     id: "resp",
@@ -680,187 +680,6 @@ export const interactiveCases = [
         sedationTitration: 20,
         escalation: 15
       }
-    }
-  },
-  {
-    id: "sepsis-quirofano",
-    title: "Paciente hipotenso tras cirugia abdominal",
-    subtitle: "Reingresada a sala de recuperacion con signos de hipoperfusion",
-    categoryIds: ["icu_peds", "infectious"],
-    difficulty: "Avanzado",
-    duration: "25 min",
-    status: "locked",
-    tags: ["Reanimacion", "Antibioticos", "Seguimiento"],
-    summary:
-      "Paciente en edad escolar con fiebre y presion en descenso pocas horas despues de una cirugia abdominal. Ajusta reanimacion, identifica foco y organiza cobertura antimicrobiana.",
-    patient: {
-      name: "Lucia G.",
-      age: 11,
-      sex: "femenino",
-      arrivalMode: "Traslado desde recuperacion postoperatoria",
-      narrative:
-        "Tras apendicectomia complicada mantiene drenaje seroso moderado. Presenta escalofrios y somnolencia leve en la ultima hora con tendencia a la hipotension.",
-      vitals: {
-        temperatura: "38.6 C",
-        frecuenciaCardiaca: "132 lpm",
-        presionArterial: "92/50 mmHg",
-        frecuenciaRespiratoria: "26 rpm",
-        saturacion: "94 % venturi 40 %"
-      }
-    },
-    exam: {
-      steps: [
-        {
-          id: "perfusion",
-          label: "Evaluar perfusion periferica",
-          notes: "Extremidades frias con relleno capilar 4 segundos."
-        },
-        {
-          id: "abdomen",
-          label: "Inspeccionar abdomen y drenajes",
-          notes: "Dolor difuso, defensa leve. Drenaje seroso sin bilis ni sangre."
-        },
-        {
-          id: "neurologico",
-          label: "Nivel de conciencia",
-          notes: "Somnolienta, abre ojos al llamado y obedece ordenes simples."
-        }
-      ]
-    },
-    stabilization: [
-      {
-        id: "fluid_bolus",
-        action: "Administrar 30 ml/kg de cristaloide balanceado en bolos fraccionados",
-        rationale: "Evalua respuesta hemodinamica temprana y relleno efectivo."
-      },
-      {
-        id: "vasopressor",
-        action: "Preparar noradrenalina si PAM persiste menor a 65 mmHg",
-        rationale: "Mantiene perfusion critica cuando los fluidos no son suficientes."
-      },
-      {
-        id: "monitor_invasive",
-        action: "Solicitar acceso arterial y monitoreo frecuente",
-        rationale: "Permite ajustes finos de vasopresores y control de tendencia."
-      }
-    ],
-    hypotheses: [
-      {
-        id: "infeccion_abdominal",
-        label: "Foco abdominal posoperatorio",
-        rationale: "Relacion temporal con cirugia y fiebre creciente."
-      },
-      {
-        id: "sangrado_oculto",
-        label: "Sangrado oculto",
-        rationale: "Debe descartarse ante hipotension y drenajes."
-      },
-      {
-        id: "evento_trombotico",
-        label: "Evento trombotico",
-        rationale: "Taquicardia y disnea pueden asociarse a tromboembolismo."
-      }
-    ],
-    investigations: [
-      {
-        id: "sepsis_labs",
-        label: "Panel inicial de sepsis",
-        type: "lab",
-        description: "Incluye hemocultivos, lactato y procalcitonina.",
-        time: 45,
-        cost: 3,
-        result: {
-          summary: "Lactato 3.8 mmol/L, procalcitonina elevada. Hemocultivos pendientes.",
-          highlights: [
-            "Leucocitos 18k con neutrofilia",
-            "Creatinina 0.9 mg/dL respecto a basal 0.5"
-          ],
-          interpretation: "Sugiere sepsis con hipoperfusion y disfuncion renal leve."
-        },
-        isCritical: true
-      },
-      {
-        id: "gas_arterial",
-        label: "Gasometria arterial",
-        type: "monitoring",
-        description: "Evalua estado acido base y oxigenacion",
-        time: 10,
-        cost: 1,
-        result: {
-          summary: "pH 7.31, PaCO2 32 mmHg, PaO2 85 mmHg con FiO2 0.4",
-          highlights: [
-            "Bicarbonato 18 mmol/L",
-            "Lactato coincide con panel principal"
-          ],
-          interpretation: "Acidosis metabolica con componente respiratorio compensatorio."
-        },
-        isCritical: false
-      },
-      {
-        id: "ct_abdomen",
-        label: "Tomografia abdominopelvica con contraste",
-        type: "imaging",
-        description: "Explora colecciones y complicaciones de anastomosis.",
-        time: 40,
-        cost: 4,
-        result: {
-          summary: "Coleccion perianastomotica con burbujas de gas y realce de tejidos vecinos.",
-          highlights: [
-            "Liquido libre escaso",
-            "Sin signos de sangrado activo"
-          ],
-          interpretation: "Sugiere foco abdominal que requiere valoracion quirurgica."
-        },
-        isCritical: true
-      }
-    ],
-    interventions: [
-      {
-        id: "broad_antibiotics",
-        label: "Antibioticos de amplio espectro",
-        steps: [
-          "Piperacilina tazobactam en dosis ajustada",
-          "Agregar cobertura para gram positivos segun riesgo",
-          "Revaluar segun cultivos"
-        ],
-        rationale: "Reduce carga bacteriana mientras se define control de foco."
-      },
-      {
-        id: "guided_fluids",
-        label: "Reanimacion guiada por objetivos",
-        steps: [
-          "Administrar bolos con reevaluacion de PAM y perfusion",
-          "Monitorizar presion venosa central segun necesidad",
-          "Revaluar lactato en 2 horas"
-        ],
-        rationale: "Optimiza perfusion y evita sobrecarga innecesaria."
-      }
-    ],
-    communications: [
-      "Contactar a cirugia general para evaluar reapertura",
-      "Avisar a UCI para eventual traslado",
-      "Informar a farmacia para ajustar dosis de antibioticos"
-    ],
-    handoffNotes: [
-      "Bolus de 30 ml/kg completado con mejoria parcial de PAM",
-      "Iniciada noradrenalina a 0.05 mcg/kg/min",
-      "Tomografia en curso, se esperan resultados en 30 minutos"
-    ],
-    evaluation: {
-      mandatoryInvestigations: ["sepsis_labs", "ct_abdomen"],
-      recommendedInvestigations: ["gas_arterial"],
-      criticalInterventions: ["broad_antibiotics", "guided_fluids"],
-      avoidInterventions: ["suspender_antibioticos"],
-      diagnosisOptions: [
-        { id: "foco_abdominal", label: "Foco abdominal con compromiso sistemico", correct: true },
-        { id: "atelectasia", label: "Complicacion pulmonar leve sin impacto sistemico", correct: false },
-        { id: "reaccion_farmacologica", label: "Reaccion farmacologica aislada", correct: false }
-      ],
-      summaryTips: [
-        "Revaluar lactato tras intervenciones",
-        "Documentar balance de fluidos",
-        "Registrar hora de inicio de antibioticos"
-      ]
     }
   },
   {

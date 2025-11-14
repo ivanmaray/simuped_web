@@ -24,7 +24,7 @@ const statusOptions = [
 
 const levelOptions = [
   { value: "basico", label: "Nivel básico" },
-  { value: "medio", label: "Nivel intermedio" },
+  { value: "intermedio", label: "Nivel intermedio" },
   { value: "avanzado", label: "Nivel avanzado" },
 ];
 
@@ -33,6 +33,31 @@ const baseModeOptions = [
   { value: "presencial", label: "Presencial" },
   { value: "dual", label: "Dual" },
 ];
+
+function normalizeLevelValue(raw) {
+  const defaultLevel = "basico";
+  if (raw == null) return defaultLevel;
+  const key = String(raw).trim().toLowerCase();
+  if (!key) return defaultLevel;
+  const synonyms = {
+    medio: "intermedio",
+    medium: "intermedio",
+    intermedio: "intermedio",
+    basico: "basico",
+    básico: "basico",
+    basic: "basico",
+    intro: "basico",
+    avanzado: "avanzado",
+    advanced: "avanzado",
+    experto: "experto",
+    expert: "experto",
+  };
+  if (synonyms[key]) return synonyms[key];
+  if (["basico", "intermedio", "avanzado", "experto"].includes(key)) {
+    return key;
+  }
+  return defaultLevel;
+}
 
 function normalizeMode(value) {
   if (!value) return [];
@@ -387,7 +412,7 @@ export default function Admin_ScenarioEditor() {
           setChangeLogsLoading(false);
           return;
         }
-        const [stepsRes, categoryLinkRes, categoriesRes, briefRes, resourcesRes, logsRes] = await Promise.all([
+        const [stepsRes, categoryLinkRes, briefRes, resourcesRes, logsRes] = await Promise.all([
           supabase
             .from("steps")
             .select("id,step_order,description,role_specific,roles,narrative")
@@ -397,10 +422,6 @@ export default function Admin_ScenarioEditor() {
             .from("scenario_categories")
             .select("category_id")
             .eq("scenario_id", data.id),
-          supabase
-            .from("categories")
-            .select("id,name")
-            .order("name", { ascending: true }),
           supabase
             .from("case_briefs")
             .select("id,learning_objective,objectives")
@@ -421,7 +442,6 @@ export default function Admin_ScenarioEditor() {
         ]);
   if (stepsRes.error) throw stepsRes.error;
   if (categoryLinkRes.error) throw categoryLinkRes.error;
-        if (categoriesRes.error) throw categoriesRes.error;
     if (briefRes.error) throw briefRes.error;
   if (resourcesRes.error) throw resourcesRes.error;
   if (logsRes.error) throw logsRes.error;
@@ -432,14 +452,34 @@ export default function Admin_ScenarioEditor() {
           summary: data.summary || "",
           status: data.status || "Disponible",
           mode: normalizeMode(data.mode),
-          level: data.level ? String(data.level).trim().toLowerCase() : "basico",
+          level: normalizeLevelValue(data.level),
           estimated_minutes: data.estimated_minutes ?? 10,
           max_attempts: data.max_attempts ?? 3,
         });
         const currentCategories = (categoryLinkRes.data || []).map((row) => row.category_id);
         setSelectedCategories(currentCategories);
         setInitialCategories(currentCategories);
-        setAllCategories(categoriesRes.data || []);
+
+        setCategoryError("");
+        setCategorySuccess("");
+        try {
+          const response = await fetch("/api/admin?action=list_scenario_categories");
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || payload?.ok === false) {
+            throw new Error(payload?.error || payload?.message || "No se pudieron cargar las categorías");
+          }
+          const categoriesList = Array.isArray(payload?.categories)
+            ? payload.categories.map((item) => ({
+                id: item?.id,
+                name: item?.name || "(sin nombre)",
+              }))
+            : [];
+          setAllCategories(categoriesList);
+        } catch (catErr) {
+          console.error("[Admin_ScenarioEditor] categories fetch", catErr);
+          setAllCategories([]);
+          setCategoryError(catErr?.message || "No se pudieron cargar las categorías");
+        }
 
         const objectivesSource = briefRes?.data?.objectives && typeof briefRes.data.objectives === "object"
           ? briefRes.data.objectives
@@ -768,7 +808,7 @@ export default function Admin_ScenarioEditor() {
           learning_objective: learningObjective,
           objectives: objectivesPayload,
           estimated_minutes: scenario?.estimated_minutes ?? 10,
-          level: scenario?.level ?? "basico",
+          level: normalizeLevelValue(scenario?.level),
         };
         const { data, error: insertErr } = await supabase
           .from("case_briefs")
@@ -1344,62 +1384,34 @@ export default function Admin_ScenarioEditor() {
     }
     setStepsSaving(true);
     try {
-      const toDelete = initialSteps.filter((step) => step.id && !sanitized.some((candidate) => candidate.id === step.id));
-      if (toDelete.length > 0) {
-        const { error: deleteErr } = await supabase
-          .from("steps")
-          .delete()
-          .in("id", toDelete.map((step) => step.id));
-        if (deleteErr) throw deleteErr;
-      }
-      const toUpdate = sanitized.filter((step) => step.id);
-      if (toUpdate.length > 0) {
-        await Promise.all(
-          toUpdate.map((step) =>
-            supabase
-              .from("steps")
-              .update({
-                description: step.description,
-                step_order: step.step_order,
-                role_specific: step.role_specific,
-                roles: step.role_specific ? step.roles : null,
-                narrative: step.narrative || null,
-              })
-              .eq("id", step.id)
-          )
-        );
-      }
-      const toInsert = sanitized.filter((step) => !step.id);
-      if (toInsert.length > 0) {
-        const insertPayload = toInsert.map((step) => ({
+      const response = await fetch("/api/admin?action=sync_scenario_steps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           scenario_id: scenarioNumericId,
-          description: step.description,
-          step_order: step.step_order,
-          role_specific: step.role_specific,
-          roles: step.role_specific ? step.roles : null,
-          narrative: step.narrative || null,
-        }));
-        const { error: insertErr } = await supabase
-          .from("steps")
-          .insert(insertPayload);
-        if (insertErr) throw insertErr;
+          steps: sanitized,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.ok === false) {
+        const base = payload?.error || payload?.message || "No se pudieron actualizar los pasos";
+        const message = payload?.details ? `${base}. Detalle: ${payload.details}` : base;
+        throw new Error(message);
       }
-      const { data: refreshed, error: refreshErr } = await supabase
-        .from("steps")
-        .select("id,step_order,description,role_specific,roles,narrative")
-        .eq("scenario_id", scenarioNumericId)
-        .order("step_order", { ascending: true });
-      if (refreshErr) throw refreshErr;
-      const normalized = (refreshed || []).map((row, index) => ({
-        id: row.id,
-        step_order: row.step_order ?? index + 1,
-        description: row.description || "",
-        role_specific: Boolean(row.role_specific),
-        roles: Array.isArray(row.roles)
-          ? row.roles.filter(Boolean).map((role) => String(role).toLowerCase())
-          : [],
-        narrative: row.narrative || "",
-      }));
+
+      const normalized = Array.isArray(payload?.steps)
+        ? payload.steps.map((row, index) => ({
+            id: row.id,
+            step_order: row.step_order ?? index + 1,
+            description: row.description || "",
+            role_specific: Boolean(row.role_specific),
+            roles: Array.isArray(row.roles)
+              ? row.roles.filter(Boolean).map((role) => String(role).toLowerCase())
+              : [],
+            narrative: row.narrative || "",
+          }))
+        : [];
+
       setSteps(normalized);
       setInitialSteps(normalized);
       await loadQuestionsForStepIds(normalized.map((row) => row.id).filter(Boolean));
@@ -1431,7 +1443,7 @@ export default function Admin_ScenarioEditor() {
     try {
       const estimated = Number.parseInt(form.estimated_minutes, 10);
       const attempts = Number.parseInt(form.max_attempts, 10);
-      const levelValue = (form.level || "basico").toString().trim().toLowerCase();
+      const levelValue = normalizeLevelValue(form.level || "basico");
       const payload = {
         title: form.title.trim(),
         summary: form.summary.trim() || null,
@@ -1448,7 +1460,11 @@ export default function Admin_ScenarioEditor() {
         .select()
         .maybeSingle();
       if (updateErr) throw updateErr;
-      setScenario(data);
+      if (data) {
+        const nextScenario = { ...data, level: normalizeLevelValue(data.level) };
+        setScenario(nextScenario);
+        setForm((prev) => (prev ? { ...prev, level: nextScenario.level } : prev));
+      }
       await registerChange("metadata", "Actualizó la información general del escenario", {
         status: payload.status,
         level: payload.level,

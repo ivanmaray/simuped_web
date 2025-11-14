@@ -70,6 +70,10 @@ export default async function handler(req, res) {
       return await handleCleanupEmail(req, res);
     case 'set_scenario_categories':
       return await handleSetScenarioCategories(req, res);
+    case 'list_scenario_categories':
+      return await handleListScenarioCategories(req, res);
+    case 'sync_scenario_steps':
+      return await handleSyncScenarioSteps(req, res);
     default:
       return res.status(400).json({ ok: false, error: 'invalid_action' });
   }
@@ -559,11 +563,28 @@ async function handleSetScenarioCategories(req, res) {
       : typeof categoryIdsRaw === 'string'
         ? categoryIdsRaw.split(',')
         : [];
+
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const normalizeCategoryId = (raw) => {
+      if (raw == null) return null;
+      const value = String(raw).trim();
+      if (!value) return null;
+      if (uuidPattern.test(value)) return value;
+      if (/^\d+$/.test(value)) return value;
+      return null;
+    };
+
     const normalizedCategoryIds = Array.from(
       new Set(
         candidates
-          .map((value) => Number.parseInt(value, 10))
-          .filter((value) => Number.isFinite(value) && value > 0)
+          .map((value) => {
+            if (typeof value === 'object' && value !== null) {
+              const candidate = value.id ?? value.value ?? value.uuid ?? value.key;
+              return normalizeCategoryId(candidate);
+            }
+            return normalizeCategoryId(value);
+          })
+          .filter(Boolean)
       )
     );
 
@@ -625,6 +646,185 @@ async function handleSetScenarioCategories(req, res) {
     });
   } catch (err) {
     console.error('[admin_set_scenario_categories] unexpected error', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+}
+
+async function handleSyncScenarioSteps(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  try {
+    const scenarioIdRaw = req.body?.scenario_id ?? req.query?.scenario_id;
+    const stepsRaw = req.body?.steps;
+    const scenarioId = Number.parseInt(scenarioIdRaw, 10);
+    if (!Number.isFinite(scenarioId) || scenarioId <= 0) {
+      return res.status(400).json({ ok: false, error: 'invalid_scenario_id' });
+    }
+    if (!Array.isArray(stepsRaw)) {
+      return res.status(400).json({ ok: false, error: 'invalid_steps_payload' });
+    }
+
+    const sanitizeRoles = (value) => {
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((role) => (role == null ? '' : String(role).trim().toLowerCase()))
+        .filter(Boolean);
+    };
+
+    const normalizedSteps = stepsRaw.map((step, index) => {
+      const id = step?.id || null;
+      const description = step?.description ? String(step.description).trim() : '';
+      const stepOrderRaw = step?.step_order ?? step?.order ?? index + 1;
+      const stepOrder = Number.isFinite(Number(stepOrderRaw)) ? Number(stepOrderRaw) : index + 1;
+      const roleSpecific = Boolean(step?.role_specific);
+      const narrative = step?.narrative ? String(step.narrative).trim() : null;
+      const roles = roleSpecific ? sanitizeRoles(step?.roles) : [];
+      return {
+        id,
+        description,
+        step_order: stepOrder,
+        role_specific: roleSpecific,
+        roles,
+        narrative: narrative || null,
+      };
+    });
+
+    if (normalizedSteps.length === 0) {
+      return res.status(400).json({ ok: false, error: 'missing_steps' });
+    }
+    if (normalizedSteps.some((step) => !step.description)) {
+      return res.status(400).json({ ok: false, error: 'missing_step_description' });
+    }
+
+    const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      console.error('[admin_sync_scenario_steps] Missing service credentials');
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data: existingRows, error: existingErr } = await admin
+      .from('steps')
+      .select('id')
+      .eq('scenario_id', scenarioId);
+    if (existingErr) {
+      console.error('[admin_sync_scenario_steps] select error', existingErr);
+      return res.status(500).json({ ok: false, error: 'select_failed', details: existingErr.message });
+    }
+
+    const existingIds = new Set((existingRows || []).map((row) => row.id));
+    const incomingIds = new Set(normalizedSteps.filter((step) => step.id).map((step) => step.id));
+
+    const toDelete = Array.from(existingIds).filter((id) => !incomingIds.has(id));
+    if (toDelete.length > 0) {
+      const { error: deleteErr } = await admin.from('steps').delete().in('id', toDelete);
+      if (deleteErr) {
+        console.error('[admin_sync_scenario_steps] delete error', deleteErr);
+        return res.status(500).json({ ok: false, error: 'delete_failed', details: deleteErr.message });
+      }
+    }
+
+    const toUpdate = normalizedSteps.filter((step) => step.id);
+    if (toUpdate.length > 0) {
+      for (const step of toUpdate) {
+        const { error: updateErr } = await admin
+          .from('steps')
+          .update({
+            description: step.description,
+            step_order: step.step_order,
+            role_specific: step.role_specific,
+            roles: step.role_specific ? step.roles : null,
+            narrative: step.narrative,
+          })
+          .eq('id', step.id)
+          .eq('scenario_id', scenarioId);
+        if (updateErr) {
+          console.error('[admin_sync_scenario_steps] update error', updateErr);
+          return res.status(500).json({ ok: false, error: 'update_failed', details: updateErr.message });
+        }
+      }
+    }
+
+    const toInsert = normalizedSteps.filter((step) => !step.id);
+    if (toInsert.length > 0) {
+      const insertPayload = toInsert.map((step) => ({
+        scenario_id: scenarioId,
+        description: step.description,
+        step_order: step.step_order,
+        role_specific: step.role_specific,
+        roles: step.role_specific ? step.roles : null,
+        narrative: step.narrative,
+      }));
+      const { error: insertErr } = await admin.from('steps').insert(insertPayload);
+      if (insertErr) {
+        console.error('[admin_sync_scenario_steps] insert error', insertErr);
+        return res.status(500).json({ ok: false, error: 'insert_failed', details: insertErr.message });
+      }
+    }
+
+    const { data: refreshedRows, error: refreshErr } = await admin
+      .from('steps')
+      .select('id, description, step_order, role_specific, roles, narrative')
+      .eq('scenario_id', scenarioId)
+      .order('step_order', { ascending: true });
+    if (refreshErr) {
+      console.error('[admin_sync_scenario_steps] refresh error', refreshErr);
+      return res.status(500).json({ ok: false, error: 'refresh_failed', details: refreshErr.message });
+    }
+
+    const result = (refreshedRows || []).map((row, idx) => ({
+      id: row.id,
+      description: row.description || '',
+      step_order: row.step_order ?? idx + 1,
+      role_specific: Boolean(row.role_specific),
+      roles: Array.isArray(row.roles)
+        ? row.roles.filter(Boolean).map((role) => String(role).toLowerCase())
+        : [],
+      narrative: row.narrative || '',
+    }));
+
+    return res.status(200).json({ ok: true, scenario_id: scenarioId, steps: result });
+  } catch (err) {
+    console.error('[admin_sync_scenario_steps] unexpected error', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+}
+
+async function handleListScenarioCategories(req, res) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  try {
+    const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      console.error('[admin_list_scenario_categories] Missing service credentials');
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data, error } = await admin
+      .from('categories')
+      .select('id, name, description, kind, is_active')
+      .order('name', { ascending: true });
+    if (error) {
+      console.error('[admin_list_scenario_categories] select error', error);
+      return res.status(500).json({ ok: false, error: 'select_failed', details: error.message });
+    }
+
+    return res.status(200).json({ ok: true, categories: data || [] });
+  } catch (err) {
+    console.error('[admin_list_scenario_categories] unexpected error', err);
     return res.status(500).json({ ok: false, error: 'internal_error' });
   }
 }
