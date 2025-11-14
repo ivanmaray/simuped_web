@@ -24,7 +24,7 @@ const statusOptions = [
 
 const levelOptions = [
   { value: "basico", label: "Nivel básico" },
-  { value: "intermedio", label: "Nivel intermedio" },
+  { value: "medio", label: "Nivel medio" },
   { value: "avanzado", label: "Nivel avanzado" },
 ];
 
@@ -40,9 +40,9 @@ function normalizeLevelValue(raw) {
   const key = String(raw).trim().toLowerCase();
   if (!key) return defaultLevel;
   const synonyms = {
-    medio: "intermedio",
-    medium: "intermedio",
-    intermedio: "intermedio",
+    medio: "medio",
+    medium: "medio",
+    medio: "medio",
     basico: "basico",
     básico: "basico",
     basic: "basico",
@@ -53,7 +53,7 @@ function normalizeLevelValue(raw) {
     expert: "experto",
   };
   if (synonyms[key]) return synonyms[key];
-  if (["basico", "intermedio", "avanzado", "experto"].includes(key)) {
+  if (["basico", "medio", "avanzado", "experto"].includes(key)) {
     return key;
   }
   return defaultLevel;

@@ -8,11 +8,11 @@ const LEVEL_MAP = new Map(
 		["starter", "Básico"],
 		["intro", "Básico"],
 
-		["2", "Intermedio"],
-		["nivel 2", "Intermedio"],
-		["medio", "Intermedio"],
-		["intermedio", "Intermedio"],
-		["medium", "Intermedio"],
+		["2", "Medio"],
+		["nivel 2", "Medio"],
+		["medio", "Medio"],
+		["intermedio", "Medio"],
+		["medium", "Medio"],
 
 		["3", "Avanzado"],
 		["nivel 3", "Avanzado"],
@@ -46,9 +46,6 @@ const MODE_MAP = new Map(
 );
 
 const ROLE_PATTERNS = [
-	{ test: /^med$/, label: "Medicina" },
-	{ test: /^nur$/, label: "Enfermería" },
-	{ test: /^pharm$/, label: "Farmacia" },
 	{ test: /medic/, label: "Médico" },
 	{ test: /enfer/, label: "Enfermería" },
 	{ test: /farm/, label: "Farmacia" },
