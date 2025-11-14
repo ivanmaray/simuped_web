@@ -66,6 +66,319 @@ function normalizeMode(value) {
   return [];
 }
 
+const TRIANGLE_VALUES = ["green", "amber", "red"];
+
+function createEmptyBriefForm() {
+  return {
+    id: null,
+    title: "",
+    context: "",
+    chipsText: "",
+    demographics: { age: "", weightKg: "", sex: "", location: "" },
+    chiefComplaint: "",
+    historyRaw: "",
+    vitals: { fc: "", fr: "", sat: "", temp: "", notesText: "" },
+    examText: "",
+    quickLabsText: "",
+    imagingText: "",
+    triangle: { appearance: "", breathing: "", circulation: "" },
+    redFlagsText: "",
+    criticalActionsText: "",
+    learningObjective: "",
+    objectivesByRole: {},
+    estimatedMinutes: "",
+    level: "",
+  };
+}
+
+function safeJsonValue(value) {
+  if (value == null) return null;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function listToTextarea(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (item == null ? "" : String(item)))
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .join("\n");
+  }
+  if (typeof value === "string") return value;
+  return "";
+}
+
+function formatHistoryTextarea(value) {
+  if (!value) return "";
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join("\n");
+  }
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, raw]) => {
+        if (raw == null) return key;
+        if (Array.isArray(raw)) {
+          return `${key}: ${raw.map((item) => String(item).trim()).filter(Boolean).join(" | ")}`;
+        }
+        return `${key}: ${String(raw)}`;
+      })
+      .join("\n");
+  }
+  return "";
+}
+
+function formatVitalsForForm(value) {
+  const next = { fc: "", fr: "", sat: "", temp: "", notesText: "" };
+  if (!value || typeof value !== "object") return next;
+  if (value.fc != null) next.fc = String(value.fc);
+  if (value.fr != null) next.fr = String(value.fr);
+  if (value.sat != null) next.sat = String(value.sat);
+  if (value.temp != null) next.temp = String(value.temp);
+  if (Array.isArray(value.notes)) {
+    next.notesText = value.notes.map((item) => String(item)).join("\n");
+  } else if (typeof value.notes === "string") {
+    next.notesText = value.notes;
+  }
+  return next;
+}
+
+function formatQuickLabsTextarea(list) {
+  if (!Array.isArray(list)) return "";
+  return list
+    .map((item) => {
+      const name = item?.name ? String(item.name).trim() : "";
+      const value = item?.value ? String(item.value).trim() : "";
+      if (!name && !value) return null;
+      if (!value) return name;
+      return `${name} | ${value}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatImagingTextarea(list) {
+  if (!Array.isArray(list)) return "";
+  return list
+    .map((item) => {
+      const name = item?.name ? String(item.name).trim() : "";
+      const status = item?.status ? String(item.status).trim() : "";
+      if (!name && !status) return null;
+      if (!status) return name;
+      return `${name} | ${status}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function parseListInput(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function parseChipsInput(text) {
+  return String(text || "")
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function sanitizeDemographicsInput(demo) {
+  if (!demo || typeof demo !== "object") return null;
+  const age = demo.age ? String(demo.age).trim() : "";
+  const weight = demo.weightKg ? String(demo.weightKg).trim() : "";
+  const sex = demo.sex ? String(demo.sex).trim() : "";
+  const location = demo.location ? String(demo.location).trim() : "";
+  const next = {};
+  if (age) next.age = age;
+  if (weight) {
+    const parsed = Number(weight);
+    next.weightKg = Number.isFinite(parsed) ? parsed : weight;
+  }
+  if (sex) next.sex = sex;
+  if (location) next.context = location;
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function parseHistoryInput(text) {
+  const lines = parseListInput(text);
+  if (lines.length === 0) return null;
+  const obj = {};
+  const free = [];
+  let hasKey = false;
+  lines.forEach((line) => {
+    const idx = line.indexOf(":");
+    if (idx > -1) {
+      const key = line.slice(0, idx).trim();
+      const valueRaw = line.slice(idx + 1).trim();
+      if (!key) {
+        if (valueRaw) free.push(valueRaw);
+        return;
+      }
+      const segments = valueRaw
+        ? valueRaw
+            .split(/\|/)
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0)
+        : [];
+      if (segments.length > 1) {
+        obj[key] = segments;
+      } else if (segments.length === 1) {
+        obj[key] = segments[0];
+      } else {
+        obj[key] = "";
+      }
+      hasKey = true;
+    } else {
+      free.push(line);
+    }
+  });
+  if (hasKey) {
+    if (free.length > 0) obj.general = free;
+    return obj;
+  }
+  return free.length > 0 ? free : null;
+}
+
+function parseNumberField(value) {
+  if (value == null || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function sanitizeVitalsInput(vitals) {
+  if (!vitals || typeof vitals !== "object") return null;
+  const fc = parseNumberField(vitals.fc);
+  const fr = parseNumberField(vitals.fr);
+  const sat = parseNumberField(vitals.sat);
+  const temp = parseNumberField(vitals.temp);
+  const notes = parseListInput(vitals.notesText);
+  const next = {};
+  if (fc != null) next.fc = fc;
+  if (fr != null) next.fr = fr;
+  if (sat != null) next.sat = sat;
+  if (temp != null) next.temp = temp;
+  if (notes.length > 0) next.notes = notes;
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function parseQuickLabsInput(text) {
+  const lines = parseListInput(text);
+  if (lines.length === 0) return [];
+  return lines.map((line) => {
+    const segments = line.split("|");
+    const name = segments.shift()?.trim() || "";
+    const value = segments.join("|").trim();
+    return {
+      name: name || (value ? value : ""),
+      value: value || null,
+    };
+  });
+}
+
+function parseImagingInput(text) {
+  const lines = parseListInput(text);
+  if (lines.length === 0) return [];
+  return lines.map((line) => {
+    const segments = line.split("|");
+    const name = segments.shift()?.trim() || "";
+    const status = segments.join("|").trim();
+    return {
+      name: name || (status ? status : ""),
+      status: status || null,
+    };
+  });
+}
+
+function sanitizeTriangleInput(triangle) {
+  if (!triangle || typeof triangle !== "object") return null;
+  const next = {};
+  ["appearance", "breathing", "circulation"].forEach((key) => {
+    const raw = triangle[key] ? String(triangle[key]).trim().toLowerCase() : "";
+    if (TRIANGLE_VALUES.includes(raw)) {
+      next[key] = raw;
+    }
+  });
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function sanitizeRedFlagsInput(text) {
+  return parseListInput(text);
+}
+
+function sanitizeCriticalActionsInput(text) {
+  return parseListInput(text);
+}
+
+function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
+  const base = createEmptyBriefForm();
+  const data = row ? { ...row } : {};
+  base.id = data.id ?? null;
+  base.title = data.title ? String(data.title) : "";
+  base.context = data.context ? String(data.context) : "";
+  base.chiefComplaint = data.chief_complaint ? String(data.chief_complaint) : "";
+  base.chipsText = listToTextarea(Array.isArray(data.chips) ? data.chips : safeJsonValue(data.chips));
+  const demographicsSource = safeJsonValue(data.demographics);
+  if (demographicsSource && typeof demographicsSource === "object") {
+    base.demographics = {
+      age: demographicsSource.age ? String(demographicsSource.age) : "",
+      weightKg: demographicsSource.weightKg != null ? String(demographicsSource.weightKg) : "",
+      sex: demographicsSource.sex ? String(demographicsSource.sex) : "",
+      location: demographicsSource.context ? String(demographicsSource.context) : "",
+    };
+  }
+  base.historyRaw = formatHistoryTextarea(safeJsonValue(data.history));
+  base.vitals = formatVitalsForForm(safeJsonValue(data.vitals));
+  base.examText = listToTextarea(safeJsonValue(data.exam));
+  base.quickLabsText = formatQuickLabsTextarea(safeJsonValue(data.quick_labs));
+  base.imagingText = formatImagingTextarea(safeJsonValue(data.imaging));
+  const triangleSource = safeJsonValue(data.triangle);
+  if (triangleSource && typeof triangleSource === "object") {
+    base.triangle = {
+      appearance: triangleSource.appearance ? String(triangleSource.appearance).toLowerCase() : "",
+      breathing: triangleSource.breathing ? String(triangleSource.breathing).toLowerCase() : "",
+      circulation: triangleSource.circulation ? String(triangleSource.circulation).toLowerCase() : "",
+    };
+  }
+  base.redFlagsText = listToTextarea(safeJsonValue(data.red_flags));
+  base.criticalActionsText = listToTextarea(safeJsonValue(data.critical_actions));
+  base.learningObjective = data.learning_objective ? String(data.learning_objective) : "";
+  const objectivesSource = data.objectives && typeof data.objectives === "object" ? data.objectives : {};
+  const objectivesByRole = {};
+  roles.forEach((role) => {
+    const raw = objectivesSource?.[role];
+    if (Array.isArray(raw)) {
+      objectivesByRole[role] = raw.map((item) => String(item)).join("\n");
+    } else if (typeof raw === "string") {
+      objectivesByRole[role] = raw;
+    } else {
+      objectivesByRole[role] = "";
+    }
+  });
+  base.objectivesByRole = objectivesByRole;
+  const chipsArray = Array.isArray(data.chips) ? data.chips : safeJsonValue(data.chips);
+  if (!base.chipsText && Array.isArray(chipsArray)) {
+    base.chipsText = chipsArray.map((item) => String(item)).join("\n");
+  }
+  if (data.estimated_minutes != null) {
+    base.estimatedMinutes = String(data.estimated_minutes);
+  }
+  if (data.level) {
+    base.level = String(data.level);
+  }
+  return base;
+}
+
 export default function Admin_ScenarioEditor() {
   const { scenarioId } = useParams();
   const navigate = useNavigate();
@@ -82,7 +395,7 @@ export default function Admin_ScenarioEditor() {
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryError, setCategoryError] = useState("");
   const [categorySuccess, setCategorySuccess] = useState("");
-  const [briefForm, setBriefForm] = useState({ id: null, learningObjective: "", objectivesByRole: {} });
+  const [briefForm, setBriefForm] = useState(() => createEmptyBriefForm());
   const [briefRoles, setBriefRoles] = useState(["MED", "NUR", "PHARM"]);
   const [newRole, setNewRole] = useState("");
   const [briefSaving, setBriefSaving] = useState(false);
@@ -396,7 +709,7 @@ export default function Admin_ScenarioEditor() {
           setSelectedCategories([]);
           setInitialCategories([]);
           setAllCategories([]);
-          setBriefForm({ id: null, learningObjective: "", objectivesByRole: {} });
+          setBriefForm(createEmptyBriefForm());
           setBriefRoles(["MED", "NUR", "PHARM"]);
           setResources([]);
           setInitialResources([]);
@@ -424,7 +737,9 @@ export default function Admin_ScenarioEditor() {
             .eq("scenario_id", data.id),
           supabase
             .from("case_briefs")
-            .select("id,learning_objective,objectives")
+            .select(
+              "id,title,context,chips,demographics,chief_complaint,history,vitals,exam,quick_labs,imaging,triangle,red_flags,critical_actions,learning_objective,objectives,estimated_minutes,level"
+            )
             .eq("scenario_id", data.id)
             .maybeSingle(),
           supabase
@@ -481,24 +796,24 @@ export default function Admin_ScenarioEditor() {
           setCategoryError(catErr?.message || "No se pudieron cargar las categorías");
         }
 
-        const objectivesSource = briefRes?.data?.objectives && typeof briefRes.data.objectives === "object"
-          ? briefRes.data.objectives
+        const briefData = briefRes?.data ?? null;
+        const roleSet = new Set(["MED", "NUR", "PHARM"]);
+        const incomingObjectives = briefData?.objectives && typeof briefData.objectives === "object"
+          ? briefData.objectives
           : {};
-        const roles = new Set(["MED", "NUR", "PHARM"]);
-        Object.keys(objectivesSource || {}).forEach((role) => {
-          if (role) roles.add(role);
+        Object.keys(incomingObjectives).forEach((key) => {
+          if (key) roleSet.add(key);
         });
-        const objectivesByRole = {};
-        Array.from(roles).forEach((role) => {
-          const raw = objectivesSource?.[role];
-          objectivesByRole[role] = Array.isArray(raw) ? raw.join("\n") : "";
-        });
-        setBriefForm({
-          id: briefRes?.data?.id || null,
-          learningObjective: briefRes?.data?.learning_objective || "",
-          objectivesByRole,
-        });
-        setBriefRoles(Array.from(roles));
+        const roleList = Array.from(roleSet);
+        const hydratedBrief = hydrateBriefForm(briefData, roleList);
+        if (!hydratedBrief.estimatedMinutes && data?.estimated_minutes != null) {
+          hydratedBrief.estimatedMinutes = String(data.estimated_minutes);
+        }
+        if (!hydratedBrief.level && data?.level) {
+          hydratedBrief.level = normalizeLevelValue(data.level);
+        }
+        setBriefForm(hydratedBrief);
+        setBriefRoles(roleList);
 
         const resourceRows = (resourcesRes.data || []).map((row) => ({ ...row }));
         setResources(resourceRows);
@@ -779,36 +1094,61 @@ export default function Admin_ScenarioEditor() {
         }
       });
       const learningObjective = briefForm?.learningObjective?.trim() || null;
+      const title = briefForm?.title?.trim() || scenario?.title || "Escenario sin titulo";
+      const context = briefForm?.context?.trim() || null;
+      const chipsList = parseChipsInput(briefForm?.chipsText);
+      const demographicsPayload = sanitizeDemographicsInput(briefForm?.demographics);
+      const chiefComplaint = briefForm?.chiefComplaint?.trim() || null;
+      const historyPayload = parseHistoryInput(briefForm?.historyRaw);
+      const vitalsPayload = sanitizeVitalsInput(briefForm?.vitals);
+      const examList = parseListInput(briefForm?.examText);
+      const quickLabsList = parseQuickLabsInput(briefForm?.quickLabsText);
+      const imagingList = parseImagingInput(briefForm?.imagingText);
+      const trianglePayload = sanitizeTriangleInput(briefForm?.triangle);
+      const redFlagsList = sanitizeRedFlagsInput(briefForm?.redFlagsText);
+      const criticalActionsList = sanitizeCriticalActionsInput(briefForm?.criticalActionsText);
+      const explicitMinutes = parseNumberField(briefForm?.estimatedMinutes);
+      const scenarioMinutes = parseNumberField(scenario?.estimated_minutes);
+      const finalMinutes = explicitMinutes ?? scenarioMinutes ?? 10;
+      const levelValue = briefForm?.level ? normalizeLevelValue(briefForm.level) : normalizeLevelValue(scenario?.level);
+      const basePayload = {
+        title,
+        context,
+        chips: chipsList.length > 0 ? chipsList : null,
+        demographics: demographicsPayload,
+        chief_complaint: chiefComplaint,
+        history: historyPayload,
+        vitals: vitalsPayload,
+        exam: examList.length > 0 ? examList : null,
+        quick_labs: quickLabsList.length > 0 ? quickLabsList : null,
+        imaging: imagingList.length > 0 ? imagingList : null,
+        triangle: trianglePayload,
+        red_flags: redFlagsList.length > 0 ? redFlagsList : null,
+        critical_actions: criticalActionsList.length > 0 ? criticalActionsList : null,
+        learning_objective: learningObjective,
+        objectives: objectivesPayload,
+        estimated_minutes: finalMinutes,
+        level: levelValue,
+      };
       if (briefForm?.id) {
         const { data, error: updateErr } = await supabase
           .from("case_briefs")
-          .update({
-            learning_objective: learningObjective,
-            objectives: objectivesPayload,
-          })
+          .update(basePayload)
           .eq("id", briefForm.id)
           .select()
           .maybeSingle();
         if (updateErr) throw updateErr;
-        const updatedObjectives = {};
-        briefRoles.forEach((role) => {
-          const rawList = Array.isArray(data?.objectives?.[role]) ? data.objectives[role] : [];
-          updatedObjectives[role] = rawList.join("\n");
+        const updatedRoles = new Set(briefRoles);
+        Object.keys(data?.objectives || {}).forEach((roleKey) => {
+          if (roleKey) updatedRoles.add(roleKey);
         });
-        setBriefForm({
-          id: data?.id || briefForm.id,
-          learningObjective: data?.learning_objective || "",
-          objectivesByRole: updatedObjectives,
-        });
+        const hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
+        setBriefForm(hydrated);
+        setBriefRoles(Array.from(updatedRoles));
       } else {
         const insertPayload = {
           scenario_id: scenarioNumericId,
-          title: scenario?.title || "Escenario sin título",
-          context: scenario?.summary || null,
-          learning_objective: learningObjective,
-          objectives: objectivesPayload,
-          estimated_minutes: scenario?.estimated_minutes ?? 10,
-          level: normalizeLevelValue(scenario?.level),
+          ...basePayload,
         };
         const { data, error: insertErr } = await supabase
           .from("case_briefs")
@@ -816,25 +1156,25 @@ export default function Admin_ScenarioEditor() {
           .select()
           .maybeSingle();
         if (insertErr) throw insertErr;
-        const updatedObjectives = {};
-        briefRoles.forEach((role) => {
-          const rawList = Array.isArray(data?.objectives?.[role]) ? data.objectives[role] : [];
-          updatedObjectives[role] = rawList.join("\n");
+        const updatedRoles = new Set(briefRoles);
+        Object.keys(data?.objectives || {}).forEach((roleKey) => {
+          if (roleKey) updatedRoles.add(roleKey);
         });
-        setBriefForm({
-          id: data?.id || null,
-          learningObjective: data?.learning_objective || "",
-          objectivesByRole: updatedObjectives,
-        });
+        const hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
+        setBriefForm(hydrated);
+        setBriefRoles(Array.from(updatedRoles));
       }
       await registerChange("brief", "Actualizó el brief y los objetivos del caso", {
         learning_objective: Boolean(learningObjective),
         roles: Object.keys(objectivesPayload),
+        chips: chipsList.length,
+        red_flags: redFlagsList.length,
+        critical_actions: criticalActionsList.length,
       });
-      setBriefSuccess("Objetivos actualizados");
+      setBriefSuccess("Brief actualizado");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] brief", err);
-      setBriefError(err?.message || "No se pudieron actualizar los objetivos");
+      setBriefError(err?.message || "No se pudo actualizar el brief");
     } finally {
       setBriefSaving(false);
     }
@@ -1790,6 +2130,382 @@ export default function Admin_ScenarioEditor() {
                   <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{briefSuccess}</div>
                 ) : null}
                 <div className="mt-4 space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Título del briefing</span>
+                      <input
+                        type="text"
+                        value={briefForm.title}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, title: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder="Nombre visible en el briefing"
+                      />
+                    </label>
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Contexto / introducción</span>
+                      <textarea
+                        rows={3}
+                        value={briefForm.context}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, context: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder="Resumen corto que aparecera en la cabecera"
+                      />
+                    </label>
+                  </div>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Etiquetas (chips)</span>
+                    <textarea
+                      rows={2}
+                      value={briefForm.chipsText}
+                      onChange={(event) => setBriefForm((prev) => ({ ...prev, chipsText: event.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="Una etiqueta por línea o separadas por coma"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">Ejemplo: Anafilaxia, Emergencia farmacologica</span>
+                  </label>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-medium text-slate-700">Datos del paciente</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-4">
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Edad
+                        <input
+                          type="text"
+                          value={briefForm.demographics.age}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              demographics: {
+                                ...prev.demographics,
+                                age: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="8 años"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Peso (kg)
+                        <input
+                          type="text"
+                          value={briefForm.demographics.weightKg}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              demographics: {
+                                ...prev.demographics,
+                                weightKg: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="26"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Sexo
+                        <input
+                          type="text"
+                          value={briefForm.demographics.sex}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              demographics: {
+                                ...prev.demographics,
+                                sex: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="Femenino"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Localización
+                        <input
+                          type="text"
+                          value={briefForm.demographics.location}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              demographics: {
+                                ...prev.demographics,
+                                location: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="Planta de hospitalizacion"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-3 block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Motivo de consulta</span>
+                      <textarea
+                        rows={2}
+                        value={briefForm.chiefComplaint}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, chiefComplaint: event.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                        placeholder="Disnea brusca, urticaria generalizada tras antibiotico"
+                      />
+                    </label>
+                  </div>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Historia clinica / antecedentes</span>
+                    <textarea
+                      rows={4}
+                      value={briefForm.historyRaw}
+                      onChange={(event) => setBriefForm((prev) => ({ ...prev, historyRaw: event.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder={'Antecedentes: Asma leve\nEvento actual: Reaccion tras ceftriaxona'}
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">Formato sugerido: clave: valor. Usa "|" para separar ítems dentro de la misma clave.</span>
+                  </label>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-medium text-slate-700">Constantes y observaciones</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-4">
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        FC
+                        <input
+                          type="text"
+                          value={briefForm.vitals.fc}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              vitals: {
+                                ...prev.vitals,
+                                fc: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="156"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        FR
+                        <input
+                          type="text"
+                          value={briefForm.vitals.fr}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              vitals: {
+                                ...prev.vitals,
+                                fr: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="34"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        SatO2 (%)
+                        <input
+                          type="text"
+                          value={briefForm.vitals.sat}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              vitals: {
+                                ...prev.vitals,
+                                sat: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="86"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Temperatura (ºC)
+                        <input
+                          type="text"
+                          value={briefForm.vitals.temp}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              vitals: {
+                                ...prev.vitals,
+                                temp: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="36.2"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-3 block text-xs uppercase tracking-wide text-slate-400">
+                      Notas
+                      <textarea
+                        rows={3}
+                        value={briefForm.vitals.notesText}
+                        onChange={(event) =>
+                          setBriefForm((prev) => ({
+                            ...prev,
+                            vitals: {
+                              ...prev.vitals,
+                              notesText: event.target.value,
+                            },
+                          }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                        placeholder="TA 78/42 mmHg"
+                      />
+                    </label>
+                  </div>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Exploración física (una línea por hallazgo)</span>
+                    <textarea
+                      rows={3}
+                      value={briefForm.examText}
+                      onChange={(event) => setBriefForm((prev) => ({ ...prev, examText: event.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="Edema facial marcado"
+                    />
+                  </label>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Analítica rápida (nombre | valor)</span>
+                      <textarea
+                        rows={3}
+                        value={briefForm.quickLabsText}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, quickLabsText: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder={'Glucemia capilar | 142 mg/dL\nLactato | 3.8 mmol/L'}
+                      />
+                    </label>
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Pruebas de imagen / monitorizacion (nombre | estado)</span>
+                      <textarea
+                        rows={3}
+                        value={briefForm.imagingText}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, imagingText: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder={'Radiografia de torax | No indicada inmediata\nECG continuo | Monitorizado'}
+                      />
+                    </label>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <p className="text-sm font-medium text-slate-700">Triangulo de evaluacion pediatrica</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Apariencia
+                        <select
+                          value={briefForm.triangle.appearance}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              triangle: {
+                                ...prev.triangle,
+                                appearance: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                        >
+                          <option value="">Sin definir</option>
+                          <option value="green">Normal</option>
+                          <option value="amber">Sospechoso</option>
+                          <option value="red">Alterado</option>
+                        </select>
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Respiracion
+                        <select
+                          value={briefForm.triangle.breathing}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              triangle: {
+                                ...prev.triangle,
+                                breathing: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                        >
+                          <option value="">Sin definir</option>
+                          <option value="green">Normal</option>
+                          <option value="amber">Sospechoso</option>
+                          <option value="red">Alterado</option>
+                        </select>
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        Circulacion cutanea
+                        <select
+                          value={briefForm.triangle.circulation}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              triangle: {
+                                ...prev.triangle,
+                                circulation: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                        >
+                          <option value="">Sin definir</option>
+                          <option value="green">Normal</option>
+                          <option value="amber">Sospechoso</option>
+                          <option value="red">Alterado</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Signos de alarma (uno por línea)</span>
+                      <textarea
+                        rows={3}
+                        value={briefForm.redFlagsText}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, redFlagsText: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder={'Hipotension sostenida\nEstridor con compromiso de via aerea'}
+                      />
+                    </label>
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Acciones criticas (una por linea)</span>
+                      <textarea
+                        rows={3}
+                        value={briefForm.criticalActionsText}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, criticalActionsText: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder={'Administrar adrenalina IM 0.01 mg/kg inmediatamente'}
+                      />
+                    </label>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (min)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={briefForm.estimatedMinutes}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, estimatedMinutes: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder="18"
+                      />
+                    </label>
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Nivel recomendado</span>
+                      <select
+                        value={briefForm.level}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, level: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      >
+                        <option value="">Usar nivel del escenario</option>
+                        {levelOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
                   <label className="block text-sm text-slate-600">
                     <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
                     <textarea
