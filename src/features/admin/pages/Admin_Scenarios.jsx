@@ -5,7 +5,7 @@ import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
 import AdminNav from "../components/AdminNav.jsx";
 import { formatLevel } from "../../../utils/formatUtils.js";
-import { shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
+import { isColumnMissing, shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
 import {
   PlusCircleIcon,
   ArrowPathIcon,
@@ -81,22 +81,31 @@ async function fetchScenarioList() {
   let data = null;
   let error = null;
 
-  ({ data, error } = await supabase
-    .from("scenarios")
-    .select(baseSelect)
-    .contains("mode", ["online"])
-    .order("idx", { ascending: true, nullsFirst: true })
-    .order("created_at", { ascending: false }));
+  const skipIdx = isColumnMissing("scenarios", "idx");
+  if (!skipIdx) {
+    ({ data, error } = await supabase
+      .from("scenarios")
+      .select(baseSelect)
+      .contains("mode", ["online"])
+      .order("idx", { ascending: true, nullsFirst: true })
+      .order("created_at", { ascending: false }));
 
-  if (error && shouldRetryWithoutIdx(error)) {
-    console.warn("[Admin_Scenarios] idx column missing, retrying without idx", error);
-    const fallback = await supabase
+    if (error && shouldRetryWithoutIdx(error)) {
+      console.warn("[Admin_Scenarios] idx column missing, retrying without idx", error);
+      const fallback = await supabase
+        .from("scenarios")
+        .select(fallbackSelect)
+        .contains("mode", ["online"])
+        .order("created_at", { ascending: false });
+      data = fallback.data;
+      error = fallback.error;
+    }
+  } else {
+    ({ data, error } = await supabase
       .from("scenarios")
       .select(fallbackSelect)
       .contains("mode", ["online"])
-      .order("created_at", { ascending: false });
-    data = fallback.data;
-    error = fallback.error;
+      .order("created_at", { ascending: false }));
   }
 
   if (error) throw error;

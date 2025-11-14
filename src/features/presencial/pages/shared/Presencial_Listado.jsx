@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../../../supabaseClient";
 import Navbar from "../../../../components/Navbar.jsx";
-import { shouldRetryWithoutIdx } from "../../../../utils/supabaseHelpers.js";
+import { isColumnMissing, shouldRetryWithoutIdx } from "../../../../utils/supabaseHelpers.js";
 import {
   AdjustmentsHorizontalIcon,
   MagnifyingGlassIcon,
@@ -127,13 +127,18 @@ export default function Presencial_Listado() {
           `)
           .order("title", { ascending: true });
 
-      ({ data, error } = await fetchWithIdx());
+      const skipIdx = isColumnMissing("scenarios", "idx");
+      if (!skipIdx) {
+        ({ data, error } = await fetchWithIdx());
 
-      if (error && shouldRetryWithoutIdx(error)) {
-        console.warn("[PresencialListado] idx column missing, retrying without idx", error);
-        const fallback = await fetchWithoutIdx();
-        data = fallback.data;
-        error = fallback.error;
+        if (error && shouldRetryWithoutIdx(error)) {
+          console.warn("[PresencialListado] idx column missing, retrying without idx", error);
+          const fallback = await fetchWithoutIdx();
+          data = fallback.data;
+          error = fallback.error;
+        }
+      } else {
+        ({ data, error } = await fetchWithoutIdx());
       }
 
       if (!mounted) return;

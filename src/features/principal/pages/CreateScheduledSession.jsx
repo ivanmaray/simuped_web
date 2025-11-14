@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import { useAuth } from "../../../auth";
 import Navbar from "../../../components/Navbar.jsx";
-import { shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
+import { isColumnMissing, shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
 // Invite-by-email feature removed: no external invitations will be sent
 
 const CreateScheduledSession = () => {
@@ -69,13 +69,18 @@ const CreateScheduledSession = () => {
           .select("id, title, summary, level, mode, estimated_minutes")
           .order("title", { ascending: true });
 
-      ({ data, error } = await fetchWithIdx());
+      const skipIdx = isColumnMissing("scenarios", "idx");
+      if (!skipIdx) {
+        ({ data, error } = await fetchWithIdx());
 
-      if (error && shouldRetryWithoutIdx(error)) {
-        console.warn("[CreateScheduledSession] idx column missing, retrying without idx", error);
-        const fallback = await fetchWithoutIdx();
-        data = fallback.data;
-        error = fallback.error;
+        if (error && shouldRetryWithoutIdx(error)) {
+          console.warn("[CreateScheduledSession] idx column missing, retrying without idx", error);
+          const fallback = await fetchWithoutIdx();
+          data = fallback.data;
+          error = fallback.error;
+        }
+      } else {
+        ({ data, error } = await fetchWithoutIdx());
       }
 
       if (error) throw error;

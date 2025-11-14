@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
-import { shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
+import { isColumnMissing, shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
 import {
   MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
@@ -160,13 +160,17 @@ export default function Online_Main() {
           .order("title", { ascending: true });
 
       try {
-        ({ data, error } = await fetchWithIdx());
-
-        if (error && shouldRetryWithoutIdx(error)) {
-          console.warn("[Simulacion] idx column unavailable, retrying without idx", error);
-          const fallback = await fetchWithoutIdx();
-          data = fallback.data;
-          error = fallback.error;
+        const skipIdx = isColumnMissing("scenarios", "idx");
+        if (!skipIdx) {
+          ({ data, error } = await fetchWithIdx());
+          if (error && shouldRetryWithoutIdx(error)) {
+            console.warn("[Simulacion] idx column unavailable, retrying without idx", error);
+            const fallback = await fetchWithoutIdx();
+            data = fallback.data;
+            error = fallback.error;
+          }
+        } else {
+          ({ data, error } = await fetchWithoutIdx());
         }
 
         if (error) {
