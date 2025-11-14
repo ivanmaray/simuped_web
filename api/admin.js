@@ -815,7 +815,7 @@ async function handleListScenarioCategories(req, res) {
 
     const { data, error } = await admin
       .from('categories')
-      .select('id, name, description, kind, is_active')
+      .select('id, name')
       .order('name', { ascending: true });
     if (error) {
       console.error('[admin_list_scenario_categories] select error', error);
