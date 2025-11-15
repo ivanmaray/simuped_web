@@ -199,7 +199,7 @@ export default function Admin_Scenarios() {
           status: "borrador",
           mode: ["online"],
           level: "basico",
-          difficulty: "facil",
+          difficulty: "Básico",
           estimated_minutes: 15,
           max_attempts: 3,
         })
