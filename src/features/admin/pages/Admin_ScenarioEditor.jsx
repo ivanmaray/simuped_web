@@ -87,7 +87,6 @@ function createEmptyBriefForm() {
     learningObjective: "",
     objectivesByRole: {},
     estimatedMinutes: "",
-    level: "",
   };
 }
 
@@ -809,8 +808,6 @@ export default function Admin_ScenarioEditor() {
         if (!hydratedBrief.estimatedMinutes && data?.estimated_minutes != null) {
           hydratedBrief.estimatedMinutes = String(data.estimated_minutes);
         }
-        if (!hydratedBrief.level && data?.level) {
-          hydratedBrief.level = normalizeLevelValue(data.level);
         }
         setBriefForm(hydratedBrief);
         setBriefRoles(roleList);
@@ -1110,7 +1107,7 @@ export default function Admin_ScenarioEditor() {
       const explicitMinutes = parseNumberField(briefForm?.estimatedMinutes);
       const scenarioMinutes = parseNumberField(scenario?.estimated_minutes);
       const finalMinutes = explicitMinutes ?? scenarioMinutes ?? 10;
-      const levelValue = briefForm?.level ? normalizeLevelValue(briefForm.level) : normalizeLevelValue(scenario?.level);
+      const levelValue = normalizeLevelValue(scenario?.level);
       const basePayload = {
         title,
         context,
@@ -2478,7 +2475,7 @@ export default function Admin_ScenarioEditor() {
                       />
                     </label>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="max-w-xs">
                     <label className="block text-sm text-slate-600">
                       <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (min)</span>
                       <input
@@ -2491,20 +2488,6 @@ export default function Admin_ScenarioEditor() {
                       />
                     </label>
                     <label className="block text-sm text-slate-600">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Nivel recomendado</span>
-                      <select
-                        value={briefForm.level}
-                        onChange={(event) => setBriefForm((prev) => ({ ...prev, level: event.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      >
-                        <option value="">Usar nivel del escenario</option>
-                        {levelOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                   </div>
                   <label className="block text-sm text-slate-600">
                     <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
