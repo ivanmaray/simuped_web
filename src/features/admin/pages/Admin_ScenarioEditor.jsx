@@ -3071,7 +3071,6 @@ export default function Admin_ScenarioEditor() {
               </>
             ) : null}
           </div>
-          </div>
 
           {/* Sección de Parámetros movida hacia arriba */}
 
