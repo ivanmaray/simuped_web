@@ -196,7 +196,7 @@ export default function Admin_Scenarios() {
         .insert({
           title: "Nuevo escenario",
           summary: "Descripción pendiente",
-          status: "borrador",
+          status: "Borrador",
           mode: ["online"],
           level: "basico",
           difficulty: "Básico",
