@@ -191,21 +191,28 @@ export default function Admin_Scenarios() {
     setCreating(true);
     setError("");
     try {
-      const { data, error: insertError } = await supabase
-        .from("scenarios")
-        .insert({
-          title: "Nuevo escenario",
-          summary: "Descripción pendiente",
-          status: "Borrador",
-          mode: ["online"],
-          level: "basico",
-          difficulty: "Básico",
-          estimated_minutes: 15,
-          max_attempts: 3,
-        })
-        .select("id")
-        .single();
+      async function attemptInsert(statusValue) {
+        return await supabase
+          .from("scenarios")
+          .insert({
+            title: "Nuevo escenario",
+            summary: "Descripción pendiente",
+            status: statusValue,
+            mode: ["online"],
+            level: "basico",
+            difficulty: "Básico",
+            estimated_minutes: 15,
+            max_attempts: 3,
+          })
+          .select("id")
+          .single();
+      }
 
+      // Prefer 'Borrador'; fallback if constraint not yet migrated.
+      let { data, error: insertError } = await attemptInsert("Borrador");
+      if (insertError && String(insertError.message).includes("scenarios_status_check")) {
+        ({ data, error: insertError } = await attemptInsert("En construcción: en proceso"));
+      }
       if (insertError) throw insertError;
       if (!data?.id) throw new Error("No se recibió ID del nuevo escenario");
 
