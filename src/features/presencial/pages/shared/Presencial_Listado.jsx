@@ -10,7 +10,6 @@ import {
   ArrowRightIcon,
   AcademicCapIcon,
   UsersIcon,
-  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 
 console.debug("[PresencialListado] componente cargado");
@@ -63,12 +62,6 @@ export default function Presencial_Listado() {
   const [errorMsg, setErrorMsg] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Equipment state
-  const [equipOpen, setEquipOpen] = useState(null); // scenario id
-  const [equipmentBy, setEquipmentBy] = useState({}); // { [scenario_id]: [...] }
-  const [equipLoadingBy, setEquipLoadingBy] = useState({});
-  const [equipErrorBy, setEquipErrorBy] = useState({});
-
   // Lista de categorías (para el select)
   const categoriasDisponibles = useMemo(() => {
     const set = new Set();
@@ -102,28 +95,7 @@ export default function Presencial_Listado() {
     });
   }, [escenarios, q, nivel, categoria, estado]);
 
-  async function fetchEquipmentForScenario(scenarioId) {
-    if (!scenarioId) return;
-    if (equipmentBy[scenarioId]) return; // cached
-    setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: true }));
-    setEquipErrorBy(prev => ({ ...prev, [scenarioId]: "" }));
-    try {
-      const { data, error } = await supabase
-        .from("scenario_equipment")
-        .select("id,name,quantity,location,category,required,notes")
-        .eq("scenario_id", scenarioId)
-        .order("name", { ascending: true });
-      if (error) throw error;
-      setEquipmentBy(prev => ({ ...prev, [scenarioId]: data || [] }));
-    } catch (err) {
-      console.error("[PresencialListado] fetchEquipmentForScenario error:", err);
-      setEquipErrorBy(prev => ({ ...prev, [scenarioId]: err?.message || "No se pudo cargar equipamiento" }));
-    } finally {
-      setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: false }));
-    }
-  }
-
-  useEffect(() {
+  useEffect(() => {
     let mounted = true;
 
     async function cargarEscenarios() {
@@ -436,60 +408,16 @@ export default function Presencial_Listado() {
                       ))}
                     </div>
 
-                    <div className="mt-auto space-y-3 pt-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${estadoStyle.color}`}>
-                          <span className="inline-block h-2 w-2 rounded-full bg-current opacity-70" />
-                          {estadoStyle.label}
+                    <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+                      <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${estadoStyle.color}`}>
+                        <span className="inline-block h-2 w-2 rounded-full bg-current opacity-70" />
+                        {estadoStyle.label}
+                      </span>
+                      {isClickable && (
+                        <span className="inline-flex items-center gap-1 text-sm font-medium text-[#0A3D91]">
+                          {isDual ? 'Preparar sesión dual' : 'Abrir consola'}
+                          <ArrowRightIcon className="h-4 w-4" />
                         </span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const next = equipOpen === esc.id ? null : esc.id;
-                              setEquipOpen(next);
-                              if (next) fetchEquipmentForScenario(esc.id);
-                            }}
-                            className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg transition text-slate-700 border border-slate-200 hover:bg-slate-50"
-                          >
-                            Equipamiento{(equipmentBy[esc.id] || []).length ? ` (${(equipmentBy[esc.id] || []).length})` : ''}
-                            <ChevronDownIcon className={`h-3 w-3 transition-transform ${equipOpen === esc.id ? 'rotate-180' : ''}`} />
-                          </button>
-                          {isClickable && (
-                            <span className="inline-flex items-center gap-1 text-sm font-medium text-[#0A3D91]">
-                              {isDual ? 'Preparar sesión dual' : 'Abrir consola'}
-                              <ArrowRightIcon className="h-4 w-4" />
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {equipOpen === esc.id && (
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                          {equipLoadingBy[esc.id] ? (
-                            <div className="text-slate-500">Cargando equipamiento…</div>
-                          ) : equipErrorBy[esc.id] ? (
-                            <div className="text-rose-600">{equipErrorBy[esc.id]}</div>
-                          ) : (equipmentBy[esc.id] || []).length === 0 ? (
-                            <div className="text-slate-500">Sin equipamiento asociado.</div>
-                          ) : (
-                            <ul className="space-y-2">
-                              {(equipmentBy[esc.id] || []).map((item) => (
-                                <li key={item.id} className="flex items-start justify-between gap-3">
-                                  <div className="flex-1">
-                                    <div className="text-sm font-medium text-slate-800">{item.name}</div>
-                                    <div className="text-xs text-slate-600">
-                                      {item.category || ''} {item.location ? `· ${item.location}` : ''}
-                                    </div>
-                                    {item.notes ? <div className="text-xs text-slate-500 mt-1">{item.notes}</div> : null}
-                                  </div>
-                                  <div className="text-xs text-slate-700">x{item.quantity || 1}</div>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
                       )}
                     </div>
                   </div>
