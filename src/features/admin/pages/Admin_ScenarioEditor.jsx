@@ -2100,6 +2100,49 @@ export default function Admin_ScenarioEditor() {
             ) : null}
           </div>
 
+          {/* Parámetros de intento: mover justo después de Categorías */}
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Parámetros de intento</h2>
+                <p className="text-sm text-slate-600">Configura límites básicos para el escenario.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSection("attempts")}
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              >
+                <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.attempts ? "-rotate-90" : "rotate-0"}`} />
+                <span className="sr-only">{collapsedSections.attempts ? "Expandir sección" : "Contraer sección"}</span>
+              </button>
+            </div>
+            {!collapsedSections.attempts ? (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (minutos)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.estimated_minutes}
+                    onChange={(event) => handleFieldChange("estimated_minutes", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                  <span className="mt-1 block text-[11px] text-slate-400">Limita el temporizador global del intento.</span>
+                </label>
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Intentos máximos</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.max_attempts}
+                    onChange={(event) => handleFieldChange("max_attempts", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  />
+                </label>
+              </div>
+            ) : null}
+          </div>
+
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -2211,19 +2254,7 @@ export default function Admin_ScenarioEditor() {
                       Se mostrarán en el resumen final tras completar las preguntas. Son conceptos clave que no se pueden pasar por alto y que el alumno debe aprender del caso.
                     </span>
                   </label>
-                  <div className="max-w-xs">
-                    <label className="block text-sm text-slate-600">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (min)</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={briefForm.estimatedMinutes}
-                        onChange={(event) => setBriefForm((prev) => ({ ...prev, estimatedMinutes: event.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        placeholder="18"
-                      />
-                    </label>
-                  </div>
+                  {/* Duración estimada se gestiona en Parámetros de intento */}
                 </div>
               </>
             ) : null}
@@ -2720,46 +2751,7 @@ export default function Admin_ScenarioEditor() {
             ) : null}
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Parámetros de intento</h2>
-                <p className="text-sm text-slate-600">Configura límites básicos para el escenario.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => toggleSection("attempts")}
-                className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-              >
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.attempts ? "-rotate-90" : "rotate-0"}`} />
-                <span className="sr-only">{collapsedSections.attempts ? "Expandir sección" : "Contraer sección"}</span>
-              </button>
-            </div>
-            {!collapsedSections.attempts ? (
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <label className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (minutos)</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={form.estimated_minutes}
-                    onChange={(event) => handleFieldChange("estimated_minutes", event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
-                </label>
-                <label className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Intentos máximos</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={form.max_attempts}
-                    onChange={(event) => handleFieldChange("max_attempts", event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
-                </label>
-              </div>
-            ) : null}
-          </div>
+          {/* Sección de Parámetros movida hacia arriba */}
 
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
