@@ -504,6 +504,10 @@ export default function Admin_ScenarioEditor() {
   const [changeLogs, setChangeLogs] = useState([]);
   const [changeLogsLoading, setChangeLogsLoading] = useState(false);
   const [changeLogsError, setChangeLogsError] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteInput, setDeleteInput] = useState("");
+  const [deletingScenario, setDeletingScenario] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const scenarioNumericId = Number.parseInt(scenarioId, 10);
   const roleDisplay = {
     MED: "Medicina",
@@ -2014,6 +2018,17 @@ export default function Admin_ScenarioEditor() {
                 disabled={saving}
               >
                 <ArrowPathIcon className={`h-4 w-4 ${saving ? "animate-spin" : ""}`} /> Recargar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError("");
+                  setDeleteInput("");
+                  setShowDeleteModal(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-100"
+              >
+                Eliminar escenario
               </button>
             </div>
           </div>
@@ -3573,6 +3588,66 @@ export default function Admin_ScenarioEditor() {
           </div>
         </section>
       </div>
+      {showDeleteModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-rose-300 bg-white p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-rose-700">Confirmar eliminación</h2>
+            <p className="mt-2 text-sm text-slate-600">Esta acción borrará el escenario y su contenido asociado. Escribe <span className="font-semibold text-rose-600">eliminar</span> para continuar.</p>
+            {deleteError ? (
+              <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{deleteError}</div>
+            ) : null}
+            <input
+              type="text"
+              value={deleteInput}
+              onChange={(e) => setDeleteInput(e.target.value)}
+              className="mt-4 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-300"
+              placeholder="escribe 'eliminar'"
+              autoFocus
+            />
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (deletingScenario) return;
+                  setShowDeleteModal(false);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                disabled={deletingScenario}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (deleteInput.trim().toLowerCase() !== "eliminar") {
+                    setDeleteError("Introduce 'eliminar' para confirmar");
+                    return;
+                  }
+                  setDeleteError("");
+                  setDeletingScenario(true);
+                  try {
+                    const resolvedId = getResolvedScenarioId();
+                    if (!resolvedId) throw new Error("ID no válido");
+                    const { error: delErr } = await supabase.from("scenarios").delete().eq("id", resolvedId);
+                    if (delErr) throw delErr;
+                    navigate(-1);
+                  } catch (err) {
+                    console.error("[Admin_ScenarioEditor] delete scenario", err);
+                    setDeleteError(err?.message || "No se pudo eliminar");
+                  } finally {
+                    setDeletingScenario(false);
+                  }
+                }}
+                disabled={deletingScenario || deleteInput.trim().toLowerCase() !== "eliminar"}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-400 bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {deletingScenario ? "Eliminando…" : "Eliminar definitivamente"}
+              </button>
+            </div>
+            <p className="mt-3 text-[11px] text-rose-600">Acción irreversible. Comprueba que no necesitas conservar intentos o historial.</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
