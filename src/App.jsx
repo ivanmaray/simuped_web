@@ -117,19 +117,35 @@ export default function App() {
       }
       setResetLoading(true);
 
-      const redirectBase =
-        import.meta.env.VITE_SITE_URL?.trim() ||
-        (typeof window !== 'undefined' ? window.location.origin : '');
-      const redirectTo = redirectBase ? `${redirectBase}/perfil?set_password=1` : undefined;
+      // Intentar enviar correo bonito desde el backend (Resend). Si el servidor no está configurado, fallback a Supabase.
+      try {
+        const resp = await fetch('/api/reset_password?action=send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const json = await resp.json().catch(() => ({}));
+        if (resp.ok && json && json.ok !== false) {
+          setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
+          return;
+        }
+      } catch {}
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo,
-      });
-      if (error) {
-        setResetMsg(error.message || 'No se pudo enviar el enlace.');
-        return;
+      // Fallback: usar email por defecto de Supabase
+      try {
+        const redirectBase =
+          import.meta.env.VITE_SITE_URL?.trim() ||
+          (typeof window !== 'undefined' ? window.location.origin : '');
+        const redirectTo = redirectBase ? `${redirectBase}/perfil?set_password=1` : undefined;
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+        if (error) {
+          setResetMsg(error.message || 'No se pudo enviar el enlace.');
+          return;
+        }
+        setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
+      } catch {
+        setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
       }
-      setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
     } finally {
       setResetLoading(false);
     }
