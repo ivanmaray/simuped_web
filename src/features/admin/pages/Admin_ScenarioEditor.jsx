@@ -31,7 +31,6 @@ const levelOptions = [
 const baseModeOptions = [
   { value: "online", label: "Online" },
   { value: "presencial", label: "Presencial" },
-  
 ];
 
 function normalizeLevelValue(raw) {
@@ -42,7 +41,6 @@ function normalizeLevelValue(raw) {
   const synonyms = {
     medio: "medio",
     medium: "medio",
-    medio: "medio",
     basico: "basico",
     básico: "basico",
     basic: "basico",
@@ -61,17 +59,37 @@ function normalizeLevelValue(raw) {
 
 function normalizeMode(value) {
   if (!value) return [];
-  if (Array.isArray(value)) return value.filter(Boolean);
-  if (typeof value === "string") {
-    if (value === "dual") return ["online", "presencial"];
-    return value ? [value] : [];
-  }
-  return [];
+  const raw = Array.isArray(value) ? value : [value];
+  const normalized = new Set();
+  raw.forEach((item) => {
+    const entry = (item == null ? "" : String(item)).trim().toLowerCase();
+    if (!entry) return;
+    if (entry === "dual") {
+      normalized.add("online");
+      normalized.add("presencial");
+      return;
+    }
+    normalized.add(entry);
+  });
+  return Array.from(normalized);
 }
-  if (!value) return [];
-  if (Array.isArray(value)) return value.filter(Boolean);
-  if (typeof value === "string") return value ? [value] : [];
-  return [];
+
+function serializeModeSelection(selected) {
+  if (!Array.isArray(selected)) return [];
+  const cleaned = Array.from(
+    new Set(
+      selected
+        .map((value) => (value == null ? "" : String(value)).trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const hasOnline = cleaned.includes("online");
+  const hasPresencial = cleaned.includes("presencial");
+  if (hasOnline && hasPresencial && cleaned.length === 2) {
+    return ["dual"];
+  }
+  return cleaned;
 }
 
 const TRIANGLE_VALUES = ["green", "amber", "red"];
@@ -395,7 +413,6 @@ export default function Admin_ScenarioEditor() {
   const [success, setSuccess] = useState("");
   const [scenario, setScenario] = useState(null);
   const [form, setForm] = useState(null);
-  const [customMode, setCustomMode] = useState("");
   const [allCategories, setAllCategories] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [initialCategories, setInitialCategories] = useState([]);
@@ -762,12 +779,14 @@ export default function Admin_ScenarioEditor() {
             .order("created_at", { ascending: false })
             .limit(25),
         ]);
-  if (stepsRes.error) throw stepsRes.error;
-  if (categoryLinkRes.error) throw categoryLinkRes.error;
-    if (briefRes.error) throw briefRes.error;
-  if (resourcesRes.error) throw resourcesRes.error;
-  if (logsRes.error) throw logsRes.error;
+
+        if (stepsRes.error) throw stepsRes.error;
+        if (categoryLinkRes.error) throw categoryLinkRes.error;
+        if (briefRes.error) throw briefRes.error;
+        if (resourcesRes.error) throw resourcesRes.error;
+        if (logsRes.error) throw logsRes.error;
         if (!active) return;
+
         setScenario(data);
         setForm({
           title: data.title || "",
@@ -778,6 +797,7 @@ export default function Admin_ScenarioEditor() {
           estimated_minutes: data.estimated_minutes ?? 10,
           max_attempts: data.max_attempts ?? 3,
         });
+
         const currentCategories = (categoryLinkRes.data || []).map((row) => row.category_id);
         setSelectedCategories(currentCategories);
         setInitialCategories(currentCategories);
@@ -816,7 +836,6 @@ export default function Admin_ScenarioEditor() {
         if (!hydratedBrief.estimatedMinutes && data?.estimated_minutes != null) {
           hydratedBrief.estimatedMinutes = String(data.estimated_minutes);
         }
-        }
         setBriefForm(hydratedBrief);
         setBriefRoles(roleList);
 
@@ -824,10 +843,10 @@ export default function Admin_ScenarioEditor() {
         setResources(resourceRows);
         setInitialResources(resourceRows);
 
-  const logRows = Array.isArray(logsRes.data) ? logsRes.data : [];
-  setChangeLogs(logRows);
-  setChangeLogsError("");
-  setChangeLogsLoading(false);
+        const logRows = Array.isArray(logsRes.data) ? logsRes.data : [];
+        setChangeLogs(logRows);
+        setChangeLogsError("");
+        setChangeLogsLoading(false);
 
         const stepRows = (stepsRes.data || []).map((row, idx) => ({
           id: row.id,
@@ -841,8 +860,8 @@ export default function Admin_ScenarioEditor() {
         }));
         setSteps(stepRows);
         setInitialSteps(stepRows);
-  setQuestionsSuccess("");
-  setQuestionOperationState({});
+        setQuestionsSuccess("");
+        setQuestionOperationState({});
         if (!active) return;
         await loadQuestionsForStepIds(stepRows.map((row) => row.id).filter(Boolean));
         if (!active) return;
@@ -949,21 +968,6 @@ export default function Admin_ScenarioEditor() {
         mode: Array.from(current),
       };
     });
-  }
-
-  function addCustomMode(event) {
-    event.preventDefault();
-    const value = customMode.trim();
-    if (!value) return;
-    setForm((prev) => {
-      const current = new Set(prev?.mode || []);
-      current.add(value);
-      return {
-        ...prev,
-        mode: Array.from(current),
-      };
-    });
-    setCustomMode("");
   }
 
   function toggleCategorySelection(categoryId) {
@@ -1793,7 +1797,7 @@ export default function Admin_ScenarioEditor() {
         title: form.title.trim(),
         summary: form.summary.trim() || null,
         status: form.status || null,
-        mode: form.mode.includes("online") mode: form.mode,mode: form.mode, form.mode.includes("presencial") ? ["dual"] : form.mode,
+        mode: serializeModeSelection(form.mode),
         level: levelValue || null,
         estimated_minutes: Number.isFinite(estimated) ? estimated : 10,
         max_attempts: Number.isFinite(attempts) ? attempts : 3,
@@ -2480,7 +2484,6 @@ export default function Admin_ScenarioEditor() {
                         placeholder="18"
                       />
                     </label>
-                    <label className="block text-sm text-slate-600">
                   </div>
                   <label className="block text-sm text-slate-600">
                     <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
