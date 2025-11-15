@@ -2119,7 +2119,7 @@ export default function Admin_ScenarioEditor() {
             {!collapsedSections.attempts ? (
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="block text-sm text-slate-600">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (minutos)</span>
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Duración del intento (minutos)</span>
                   <input
                     type="number"
                     min="1"
@@ -2188,24 +2188,9 @@ export default function Admin_ScenarioEditor() {
                     />
                   </label>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-4">
                       <p className="text-sm font-medium text-slate-700">Objetivos por rol</p>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newRole}
-                          onChange={(event) => setNewRole(event.target.value)}
-                          placeholder="Añadir rol (p. ej. RES)"
-                          className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddRole}
-                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-                        >
-                          Añadir
-                        </button>
-                      </div>
+                      <p className="text-xs text-slate-500 mt-1">Roles disponibles: Médico, Enfermería, Farmacia</p>
                     </div>
                     <div className="mt-4 space-y-4">
                       {briefRoles.map((role) => (
@@ -2242,13 +2227,13 @@ export default function Admin_ScenarioEditor() {
                     </div>
                   </div>
                   <label className="block text-sm text-slate-600">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso (una por línea)</span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso</span>
                     <textarea
-                      rows={3}
+                      rows={5}
                       value={briefForm.criticalActionsText}
                       onChange={(event) => setBriefForm((prev) => ({ ...prev, criticalActionsText: event.target.value }))}
                       className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      placeholder={'Administrar adrenalina IM 0.01 mg/kg inmediatamente'}
+                      placeholder={'Administrar adrenalina IM 0.01 mg/kg inmediatamente\nAsegurar vía aérea permeable\nMonitorizar constantes cada 5 minutos'}
                     />
                     <span className="mt-1 block text-[11px] text-slate-400">
                       Se mostrarán en el resumen final tras completar las preguntas. Son conceptos clave que no se pueden pasar por alto y que el alumno debe aprender del caso.
