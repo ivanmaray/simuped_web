@@ -64,8 +64,8 @@ export default function Presencial_Listado() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Equipment state
-  const [equipOpen, setEquipOpen] = useState(null);
-  const [equipmentBy, setEquipmentBy] = useState({});
+  const [equipOpen, setEquipOpen] = useState(null); // scenario id
+  const [equipmentBy, setEquipmentBy] = useState({}); // { [scenario_id]: [...] }
   const [equipLoadingBy, setEquipLoadingBy] = useState({});
   const [equipErrorBy, setEquipErrorBy] = useState({});
 
@@ -104,9 +104,9 @@ export default function Presencial_Listado() {
 
   async function fetchEquipmentForScenario(scenarioId) {
     if (!scenarioId) return;
-    if (equipmentBy[scenarioId]) return;
-    setEquipLoadingBy((prev) => ({ ...prev, [scenarioId]: true }));
-    setEquipErrorBy((prev) => ({ ...prev, [scenarioId]: "" }));
+    if (equipmentBy[scenarioId]) return; // cached
+    setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: true }));
+    setEquipErrorBy(prev => ({ ...prev, [scenarioId]: "" }));
     try {
       const { data, error } = await supabase
         .from("scenario_equipment")
@@ -114,16 +114,16 @@ export default function Presencial_Listado() {
         .eq("scenario_id", scenarioId)
         .order("name", { ascending: true });
       if (error) throw error;
-      setEquipmentBy((prev) => ({ ...prev, [scenarioId]: data || [] }));
+      setEquipmentBy(prev => ({ ...prev, [scenarioId]: data || [] }));
     } catch (err) {
       console.error("[PresencialListado] fetchEquipmentForScenario error:", err);
-      setEquipErrorBy((prev) => ({ ...prev, [scenarioId]: err?.message || "No se pudo cargar equipamiento" }));
+      setEquipErrorBy(prev => ({ ...prev, [scenarioId]: err?.message || "No se pudo cargar equipamiento" }));
     } finally {
-      setEquipLoadingBy((prev) => ({ ...prev, [scenarioId]: false }));
+      setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: false }));
     }
   }
 
-  useEffect(() => {
+  useEffect(() {
     let mounted = true;
 
     async function cargarEscenarios() {
