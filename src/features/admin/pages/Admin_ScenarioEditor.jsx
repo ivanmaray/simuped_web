@@ -2169,7 +2169,7 @@ export default function Admin_ScenarioEditor() {
                   </label>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <p className="text-sm font-medium text-slate-700">Datos del paciente</p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-4">
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
                       <label className="block text-xs uppercase tracking-wide text-slate-400">
                         Edad
                         <input
@@ -2222,24 +2222,6 @@ export default function Admin_ScenarioEditor() {
                           }
                           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
                           placeholder="Femenino"
-                        />
-                      </label>
-                      <label className="block text-xs uppercase tracking-wide text-slate-400">
-                        Localización
-                        <input
-                          type="text"
-                          value={briefForm.demographics.location}
-                          onChange={(event) =>
-                            setBriefForm((prev) => ({
-                              ...prev,
-                              demographics: {
-                                ...prev.demographics,
-                                location: event.target.value,
-                              },
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                          placeholder="Planta de hospitalizacion"
                         />
                       </label>
                     </div>

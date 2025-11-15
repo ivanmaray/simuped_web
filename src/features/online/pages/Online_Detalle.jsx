@@ -1266,7 +1266,7 @@ export default function Online_Detalle() {
                   </>
                 )}
                 {brief?.chief_complaint && (
-                  <p className="text-sm text-slate-800 mb-2">{brief.chief_complaint}</p>
+                  <Row label="Motivo de consulta" value={brief.chief_complaint} />
                 )}
               </div>
               <div>
