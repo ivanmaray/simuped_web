@@ -56,8 +56,8 @@ BEGIN
   ) VALUES (
     v_scenario_id,
     true,
-    $$Niño de 8 años con traumatismo craneoencefálico tras caída. Ingreso al área de reanimación; equipo debe priorizar ABC y preparación para intervenciones avanzadas si empeora. Objetivos instructor: supervisión de la priorización y manejo del equipo.$$,
-    $$Breve: participante del equipo de reanimación pediátrica; estabiliza ABC y decide intervenciones prioritarias.$$,
+    $INSTRUCTOR$Niño de 8 años con traumatismo craneoencefálico tras caída. Ingreso al área de reanimación; equipo debe priorizar ABC y preparación para intervenciones avanzadas si empeora. Objetivos instructor: supervisión de la priorización y manejo del equipo.$INSTRUCTOR$,
+    $STUDENT$Breve: participante del equipo de reanimación pediátrica; estabiliza ABC y decide intervenciones prioritarias.$STUDENT$,
     '{"stations":[{"id":"A","label":"Reanimación"},{"id":"B","label":"Farmacología"},{"id":"C","label":"Monitorización"}]}'::jsonb,
     '[{"role":"medico","min":1,"max":2},{"role":"enfermeria","min":1,"max":2},{"role":"farmacia","min":1,"max":1}]'::jsonb,
     '[{"group":"Primario","items":[{"label":"Asegurar protección cervical","type":"bool"},{"label":"Evaluar Glasgow inicial","type":"bool"},{"label":"Valoración pupilas","type":"bool"},{"label":"Plan intubación si Glasgow ≤8","type":"bool"}]},{"group":"Ventilación","items":[{"label":"Preparar secuencia rápida","type":"bool"},{"label":"Capnografía post intubación","type":"bool"},{"label":"Mantener EtCO2 35-40","type":"bool"}]},{"group":"Neuroprotección","items":[{"label":"Evitar hipotensión (PA > P5)","type":"bool"},{"label":"Sat > 94%","type":"bool"},{"label":"Considerar manitol/SS hipertónica si anisocoria","type":"bool"}]}]'::jsonb,
