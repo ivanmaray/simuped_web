@@ -72,71 +72,18 @@ function isTimedStep(step) {
 
 // Normaliza el rol del usuario a 'medico' | 'enfermeria' | 'farmacia'
 function normalizeRole(rol) {
-  const k = String(rol || "").toLowerCase().trim();
-  if (!k) return "";
-  if (k === "med" || k.includes("medic")) return "medico";
-  if (k === "nur" || k.includes("enfer") || k.includes("nurse")) return "enfermeria";
-  if (k === "pharm" || k.includes("farm")) return "farmacia";
-  return k;
-}
-
-function normalizeRoleList(rawRoles) {
-  if (!rawRoles) return [];
-  if (Array.isArray(rawRoles)) {
-    return rawRoles
-      .map((role) => (role == null ? "" : String(role).trim()))
-      .filter(Boolean);
-  }
-  if (typeof rawRoles === "string") {
-    const trimmed = rawRoles.trim();
-    if (!trimmed) return [];
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .map((role) => (role == null ? "" : String(role).trim()))
-          .filter(Boolean);
-      }
-    } catch (_) {
-      // Ignored: el string no era JSON, usamos el valor crudo
-    }
-    return [trimmed];
-  }
-  if (typeof rawRoles === "object") {
-    if (rawRoles instanceof Set) {
-      return Array.from(rawRoles)
-        .map((role) => (role == null ? "" : String(role).trim()))
-        .filter(Boolean);
-    }
-    try {
-      return Object.values(rawRoles)
-        .map((role) => (role == null ? "" : String(role).trim()))
-        .filter(Boolean);
-    } catch (_) {
-      return [];
-    }
-  }
-  return [];
-}
-
-function getRoleLabels(rawRoles) {
-  const unique = [];
-  normalizeRoleList(rawRoles).forEach((role) => {
-    const key = role.toLowerCase();
-    if (!unique.some((existing) => existing.toLowerCase() === key)) {
-      unique.push(role);
-    }
-  });
-  return unique.map((role) => formatRole(role));
+  const k = String(rol || "").toLowerCase();
+  if (k.includes("medic")) return "medico";
+  if (k.includes("enfer")) return "enfermeria";
+  if (k.includes("farm")) return "farmacia";
+  return "";
 }
 
 // Visible si roles es null/[] o incluye el userRole
 function isVisibleForRole(roles, userRole) {
-  const list = normalizeRoleList(roles);
-  if (list.length === 0) return true;
-  const normalizedUser = normalizeRole(userRole);
-  if (!normalizedUser) return true;
-  return list.some((role) => normalizeRole(role) === normalizedUser);
+  if (!roles || roles.length === 0) return true;
+  const arr = roles.map((r) => String(r).toLowerCase());
+  return arr.includes(String(userRole || "").toLowerCase());
 }
 
 // Intenta normalizar "options": puede venir como array de strings o de objetos {key,label}
@@ -700,7 +647,6 @@ export default function Online_Detalle() {
 
   useEffect(() => {
     if (!currentStep) return;
-    if (showBriefing) return; // No iniciar temporizadores durante el briefing
     if (!isTimedStep(currentStep)) return; // Solo pasos urgentes tienen countdown
     setQTimers((prev) => {
       const next = { ...prev };
@@ -711,7 +657,7 @@ export default function Online_Detalle() {
       }
       return next;
     });
-  }, [currentStep, showBriefing]);
+  }, [currentStep]);
 
   const totalQuestions = useMemo(() => {
     return steps.reduce((acc, s) => acc + (s.questions?.length || 0), 0);
@@ -725,8 +671,6 @@ export default function Online_Detalle() {
     }
     return c;
   }, [answers, currentStep]);
-
-  const currentStepRoleLabels = useMemo(() => getRoleLabels(currentStep?.roles), [currentStep]);
 
   const answeredTotal = useMemo(() => Object.keys(answers).length, [answers]);
   const allAnswered = totalQuestions > 0 && answeredTotal >= totalQuestions;
@@ -925,29 +869,24 @@ export default function Online_Detalle() {
       }
 
       const stepsWithQs = (stepsFull || [])
+        .filter((s) => isVisibleForRole(s.roles, userRole))
         .map((s) => {
-          const stepRoles = normalizeRoleList(s.roles);
           const qs = (s.questions || [])
-            .map((q) => {
-              const questionRoles = normalizeRoleList(q.roles);
-              if (!isVisibleForRole(questionRoles, userRole)) return null;
-              return {
-                id: q.id,
-                text: q.question_text,
-                options: q.options,
-                correct_option: q.correct_option,
-                explanation: q.explanation,
-                roles: questionRoles,
-                is_critical: q.is_critical,
-                hints: q.hints,
-                time_limit: q.time_limit,
-                _options: normalizeOptions(q.options),
-              };
-            })
-            .filter(Boolean);
-          return { ...s, roles: stepRoles, questions: qs };
-        })
-        .filter((s) => isVisibleForRole(s.roles, userRole));
+            .filter((q) => isVisibleForRole(q.roles, userRole))
+            .map((q) => ({
+              id: q.id,
+              text: q.question_text, // alias local para mantener el resto del componente
+              options: q.options,
+              correct_option: q.correct_option,
+              explanation: q.explanation,
+              roles: q.roles,
+              is_critical: q.is_critical,
+              hints: q.hints,
+              time_limit: q.time_limit,
+              _options: normalizeOptions(q.options),
+            }));
+          return { ...s, questions: qs };
+        });
 
       setSteps(stepsWithQs);
       // Si estamos en resumen, cargar respuestas guardadas para pintar la corrección
@@ -1028,7 +967,7 @@ export default function Online_Detalle() {
   }, [expiresAt, timeUp, nowDrifted]);
 
   useEffect(() => {
-    if (!currentStep || showSummary || showBriefing || !isTimedStep(currentStep)) return;
+    if (!currentStep || showSummary || !isTimedStep(currentStep)) return;
     const int = setInterval(() => {
       setQTick((t) => t + 1);
       setQTimers((prev) => {
@@ -1282,9 +1221,9 @@ export default function Online_Detalle() {
                 </div>
               </div>
               <div className="shrink-0 text-right">
-                <div className="text-xs opacity-90">Nivel · Modo · Duración</div>
+                <div className="text-xs opacity-90">Modo · Duración</div>
                 <div className="text-sm font-medium">
-                  {formatLevel(scenario?.level || brief?.level)} · {formatMode(scenario?.mode || "online")} · ~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min
+                  {formatMode(scenario?.mode || "online")} · ~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min
                 </div>
                 {/* Cronómetro visible (cuenta durante briefing) */}
                 {Number(attemptTimeLimit) > 0 && (
@@ -1355,79 +1294,12 @@ export default function Online_Detalle() {
             </div>
           </AccordionSection>
 
-          {/* ACCORDION: 2. Constantes y exploración (lectura rápida) */}
+          {/* ACCORDION: 2. Triángulo de evaluación pediátrica (interactivo) */}
           <AccordionSection
-            title="2) Constantes y exploración"
-            subtitle="Repasa constantes y hallazgos al examen físico."
+            title="2) Triángulo de evaluación pediátrica (TEP)"
+            subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
             open={accordionOpen[1]}
             onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 1 ? !v : v)))}
-          >
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-200 p-4">
-                <Row label="FC" value={brief?.vitals?.fc != null ? `${brief.vitals.fc} lpm` : "—"} alert={brief?.vitals?.fc > 170} />
-                <Row label="FR" value={brief?.vitals?.fr != null ? `${brief.vitals.fr} rpm` : "—"} />
-                <Row label="SatO₂" value={brief?.vitals?.sat != null ? `${brief.vitals.sat} %` : "—"} alert={brief?.vitals?.sat < 92} />
-                <Row label="Tª" value={brief?.vitals?.temp != null ? `${brief.vitals.temp} ºC` : "—"} />
-                {Array.isArray(brief?.vitals?.notes) && brief.vitals.notes.length > 0 && (
-                  <ul className="list-disc pl-5 mt-2 text-sm text-slate-700">
-                    {brief.vitals.notes.map((n, i) => (
-                      <li key={i}>{n}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="rounded-xl border border-slate-200 p-4">
-                <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {toArray(brief?.exam).map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                  {!brief?.exam?.length && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
-            </div>
-          </AccordionSection>
-
-          {/* ACCORDION: 3. Pruebas complementarias (señala indicadas) */}
-          <AccordionSection
-            title="3) Pruebas complementarias"
-            subtitle="Identifica qué está indicado ahora mismo."
-            open={accordionOpen[2]}
-            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 2 ? !v : v)))}
-          >
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <h4 className="text-sm font-semibold text-slate-600 mb-2">Analítica rápida</h4>
-                <ul className="text-sm text-slate-700">
-                  {toArray(brief?.quick_labs).map((q, i) => (
-                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
-                      <span>{q.name}</span>
-                      <span className="font-medium">{q.value ?? "—"}</span>
-                    </li>
-                  ))}
-                  {!brief?.quick_labs?.length && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-sm font-semibold text-slate-600 mb-2">Imagen</h4>
-                <ul className="text-sm text-slate-700">
-                  {toArray(brief?.imaging).map((im, i) => (
-                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
-                      <span>{im.name}</span>
-                      <span className="font-medium">{im.status === "ordered" ? "Solicitada" : "Disponible"}</span>
-                    </li>
-                  ))}
-                  {!brief?.imaging?.length && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
-            </div>
-          </AccordionSection>
-
-          {/* ACCORDION: 4. Triángulo de evaluación pediátrica (interactivo) */}
-          <AccordionSection
-            title="4) Triángulo de evaluación pediátrica (TEP)"
-            subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
-            open={accordionOpen[3]}
-            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
           >
             <div className="grid lg:grid-cols-2 gap-4 items-start">
               <div>
@@ -1507,6 +1379,73 @@ export default function Online_Detalle() {
             </div>
           </AccordionSection>
 
+          {/* ACCORDION: 3. Constantes y exploración (lectura rápida) */}
+          <AccordionSection
+            title="3) Constantes y exploración"
+            subtitle="Repasa constantes y hallazgos al examen físico."
+            open={accordionOpen[2]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 2 ? !v : v)))}
+          >
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-200 p-4">
+                <Row label="FC" value={brief?.vitals?.fc != null ? `${brief.vitals.fc} lpm` : "—"} alert={brief?.vitals?.fc > 170} />
+                <Row label="FR" value={brief?.vitals?.fr != null ? `${brief.vitals.fr} rpm` : "—"} />
+                <Row label="SatO₂" value={brief?.vitals?.sat != null ? `${brief.vitals.sat} %` : "—"} alert={brief?.vitals?.sat < 92} />
+                <Row label="Tª" value={brief?.vitals?.temp != null ? `${brief.vitals.temp} ºC` : "—"} />
+                {Array.isArray(brief?.vitals?.notes) && brief.vitals.notes.length > 0 && (
+                  <ul className="list-disc pl-5 mt-2 text-sm text-slate-700">
+                    {brief.vitals.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-200 p-4">
+                <ul className="list-disc pl-5 text-sm text-slate-700">
+                  {toArray(brief?.exam).map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                  {!brief?.exam?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </AccordionSection>
+
+          {/* ACCORDION: 4. Pruebas complementarias (señala indicadas) */}
+          <AccordionSection
+            title="4) Pruebas complementarias"
+            subtitle="Identifica qué está indicado ahora mismo."
+            open={accordionOpen[3]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
+          >
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-600 mb-2">Analítica rápida</h4>
+                <ul className="text-sm text-slate-700">
+                  {toArray(brief?.quick_labs).map((q, i) => (
+                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
+                      <span>{q.name}</span>
+                      <span className="font-medium">{q.value ?? "—"}</span>
+                    </li>
+                  ))}
+                  {!brief?.quick_labs?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-600 mb-2">Imagen</h4>
+                <ul className="text-sm text-slate-700">
+                  {toArray(brief?.imaging).map((im, i) => (
+                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
+                      <span>{im.name}</span>
+                      <span className="font-medium">{im.status === "ordered" ? "Solicitada" : "Disponible"}</span>
+                    </li>
+                  ))}
+                  {!brief?.imaging?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </AccordionSection>
+
           {/* ACCORDION: 5. Signos de alarma (elige los preocupantes) */}
           <AccordionSection
             title="5) Signos de alarma"
@@ -1545,8 +1484,6 @@ export default function Online_Detalle() {
           <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">
             <div className="text-sm text-slate-600">
               <span className="font-medium text-slate-900">{scenario?.title}</span>
-              <span className="mx-2">·</span>
-              <span>{formatLevel(scenario?.level || brief?.level)}</span>
               <span className="mx-2">·</span>
               <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
@@ -1814,7 +1751,6 @@ export default function Online_Detalle() {
                 <ol className="space-y-2">
                   {steps.map((s, idx) => {
                     const active = idx === currentIdx;
-                    const sidebarRoleLabels = getRoleLabels(s.roles);
                     return (
                       <li key={s.id}>
                         <button
@@ -1827,11 +1763,9 @@ export default function Online_Detalle() {
                             }`}
                         >
                           <div className="text-sm font-medium">{s.description || `Bloque ${idx + 1}`}</div>
-                          {s.role_specific ? (
-                            <div className="text-xs text-slate-500">
-                              Específico de rol{sidebarRoleLabels.length ? ` · ${sidebarRoleLabels.join(", ")}` : ""}
-                            </div>
-                          ) : null}
+                          {s.role_specific && (
+                            <div className="text-xs text-slate-500">Específico de rol</div>
+                          )}
                         </button>
                       </li>
                     );
@@ -1868,19 +1802,6 @@ export default function Online_Detalle() {
                   </span>
                 </div>
 
-                {currentStep?.role_specific && currentStepRoleLabels.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {currentStepRoleLabels.map((label, index) => (
-                      <span
-                        key={`current-step-role-${index}`}
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
-                      >
-                        Rol · {label}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-
                 {/* Aviso por tiempo */}
                 {timeUp && (
                   <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 px-3 py-2 text-sm">
@@ -1903,23 +1824,10 @@ export default function Online_Detalle() {
                     const saved = answers[q.id];
                     const selectedKey = saved?.selectedKey ?? null;
                     const isCorrect = saved?.isCorrect;
-                    const questionRoleLabels = getRoleLabels(q.roles);
 
                     return (
                       <article key={q.id} className={`rounded-xl border p-4 ${q.is_critical ? "border-amber-300 bg-amber-50/30" : "border-slate-200"}`}>
                         <p className="font-medium">{q.text}</p>
-                        {questionRoleLabels.length > 0 ? (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {questionRoleLabels.map((label, index) => (
-                              <span
-                                key={`question-${q.id}-role-${index}`}
-                                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
-                              >
-                                Rol · {label}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
                         {q.is_critical && (
                           <div className="mt-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
                             ⚠️ Pregunta crítica
