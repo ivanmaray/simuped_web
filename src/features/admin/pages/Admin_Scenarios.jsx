@@ -118,6 +118,7 @@ export default function Admin_Scenarios() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -186,6 +187,37 @@ export default function Admin_Scenarios() {
     }
   }
 
+  async function createNewScenario() {
+    setCreating(true);
+    setError("");
+    try {
+      const { data, error: insertError } = await supabase
+        .from("scenarios")
+        .insert({
+          title: "Nuevo escenario",
+          summary: "Descripción pendiente",
+          status: "borrador",
+          mode: ["online"],
+          level: "basico",
+          difficulty: "facil",
+          estimated_minutes: 15,
+          max_attempts: 3,
+        })
+        .select("id")
+        .single();
+
+      if (insertError) throw insertError;
+      if (!data?.id) throw new Error("No se recibió ID del nuevo escenario");
+
+      navigate(`/admin/escenarios/${data.id}`);
+    } catch (err) {
+      console.error("[Admin_Scenarios] create", err);
+      setError(err?.message || "No se pudo crear el escenario");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return scenarios.filter((scenario) => {
@@ -208,7 +240,7 @@ export default function Admin_Scenarios() {
     });
   }, [scenarios, search, statusFilter]);
 
-  const busy = loading || refreshing;
+  const busy = loading || refreshing || creating;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -234,10 +266,9 @@ export default function Admin_Scenarios() {
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-              onClick={() => {
-                console.info("TODO: lanzar flujo de creación de escenario");
-              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={createNewScenario}
+              disabled={busy}
             >
               <PlusCircleIcon className="h-5 w-5" />
               Nuevo escenario

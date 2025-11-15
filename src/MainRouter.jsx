@@ -51,6 +51,7 @@ const AdminUsuarios = React.lazy(() => import("./features/admin/pages/Admin_Usua
 const AdminScenarios = React.lazy(() => import("./features/admin/pages/Admin_Scenarios.jsx"));
 const AdminScenarioEditor = React.lazy(() => import("./features/admin/pages/Admin_ScenarioEditor.jsx"));
 const AdminScenariosPresenciales = React.lazy(() => import("./features/admin/pages/Admin_ScenariosPresenciales.jsx"));
+const AdminScenarioPresencialEditor = React.lazy(() => import("./features/admin/pages/Admin_ScenarioPresencialEditor.jsx"));
 
 import { useAuth } from "./auth";
 
@@ -213,6 +214,7 @@ export default function MainRouter() {
             <Route path="/admin" element={<Suspense fallback={<Spinner centered />}><AdminUsuarios /></Suspense>} />
             <Route path="/admin/escenarios" element={<Suspense fallback={<Spinner centered />}><AdminScenarios /></Suspense>} />
               <Route path="/admin/escenarios-presenciales" element={<Suspense fallback={<Spinner centered />}><AdminScenariosPresenciales /></Suspense>} />
+              <Route path="/admin/escenarios-presenciales/:scenarioId" element={<Suspense fallback={<Spinner centered />}><AdminScenarioPresencialEditor /></Suspense>} />
             <Route path="/admin/escenarios/:scenarioId" element={<Suspense fallback={<Spinner centered />}><AdminScenarioEditor /></Suspense>} />
           </Route>
         </Route>

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
+import { useAuth } from "../../../auth.jsx";
 import {
   MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
@@ -49,6 +50,7 @@ function HeroStat({ label, value, icon: Icon }) {
 }
 export default function Online_Main() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -67,6 +69,10 @@ export default function Online_Main() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [attemptStats, setAttemptStats] = useState({}); // { [scenario_id]: { count, scored, avg } }
+  const [equipOpen, setEquipOpen] = useState(null); // scenario id
+  const [equipmentBy, setEquipmentBy] = useState({}); // { [scenario_id]: [...] }
+  const [equipLoadingBy, setEquipLoadingBy] = useState({});
+  const [equipErrorBy, setEquipErrorBy] = useState({});
 
   // Cuenta atrás para redirigir al perfil si falta el rol
   const [redirectCountdown, setRedirectCountdown] = useState(5);
@@ -105,6 +111,27 @@ export default function Online_Main() {
       setFiltersOpen(true);
     }
   }, []);
+
+  async function fetchEquipmentForScenario(scenarioId) {
+    if (!scenarioId) return;
+    if (equipmentBy[scenarioId]) return; // cached
+    setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: true }));
+    setEquipErrorBy(prev => ({ ...prev, [scenarioId]: "" }));
+    try {
+      const { data, error } = await supabase
+        .from("scenario_equipment")
+        .select("id,name,quantity,location,category,required,notes")
+        .eq("scenario_id", scenarioId)
+        .order("name", { ascending: true });
+      if (error) throw error;
+      setEquipmentBy(prev => ({ ...prev, [scenarioId]: data || [] }));
+    } catch (err) {
+      console.error("[Simulacion] fetchEquipmentForScenario error:", err);
+      setEquipErrorBy(prev => ({ ...prev, [scenarioId]: err?.message || "No se pudo cargar equipamiento" }));
+    } finally {
+      setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: false }));
+    }
+  }
 
   // Filtro en cliente (asegura orden de hooks estable)
   const filtrados = useMemo(() => {
@@ -372,7 +399,7 @@ export default function Online_Main() {
                   <p className="text-sm text-slate-500">Combina criterios para encontrar la simulación que necesitas.</p>
                 </div>
               </div>
-              <button
+                      <button
                 type="button"
                 className="md:hidden inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
                 onClick={() => setFiltersOpen((prev) => !prev)}
@@ -496,11 +523,18 @@ export default function Online_Main() {
             const modeArr = Array.isArray(esc.mode) ? esc.mode : (esc.mode ? [esc.mode] : []);
             const createdAt = esc.created_at ? new Date(esc.created_at) : null;
             const isNuevo = createdAt ? ((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)) <= NEW_THRESHOLD_DAYS : false;
+
+            // No cambiar el estilo de la tarjeta cuando los intentos estén agotados;
+            // solo bloquear la acción de iniciar (salvo admins).
+            const attemptsExhausted = (stat?.count ?? 0) >= MAX_ATTEMPTS;
+            const clickableFinal = isClickable && !(attemptsExhausted && !isAdmin);
+
+            const hasPresencial = modeArr.map(m => String(m).toLowerCase()).includes('presencial');
             return (
               <article
                 key={esc.id}
                 className={`group relative overflow-hidden rounded-3xl border border-white/80 bg-white/95 p-6 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_48px_-28px_rgba(15,23,42,0.5)] ${!isClickable ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
-                onClick={() => { if (isClickable) navigate(`/simulacion/${esc.id}/confirm`); }}
+                onClick={() => { if (clickableFinal) navigate(`/simulacion/${esc.id}/confirm`); }}
               >
                 <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-br from-[#0A3D91]/8 via-transparent to-transparent" aria-hidden="true" />
                 <div className="relative z-10 flex flex-col h-full gap-4">
@@ -561,10 +595,30 @@ export default function Online_Main() {
                       {estadoStyle.label}
                     </span>
                     {isClickable && (
-                      <span className="inline-flex items-center gap-1 text-sm font-medium text-[#0A3D91]">
-                        Iniciar
-                        <ArrowRightIcon className="h-4 w-4" />
-                      </span>
+                      <div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (clickableFinal) navigate(`/simulacion/${esc.id}/confirm`); }}
+                          disabled={attemptsExhausted && !isAdmin}
+                          className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg transition ${attemptsExhausted && !isAdmin ? 'bg-slate-200 text-slate-500 cursor-not-allowed opacity-70' : 'text-[#0A3D91] hover:underline'}`}
+                        >
+                          {attemptsExhausted && !isAdmin ? 'Intentos agotados' : 'Iniciar'}
+                          {!attemptsExhausted && <ArrowRightIcon className="h-4 w-4" />}
+                        </button>
+                        {hasPresencial && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const next = equipOpen === esc.id ? null : esc.id;
+                            setEquipOpen(next);
+                            if (next) fetchEquipmentForScenario(esc.id);
+                          }}
+                          className="ml-2 inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg transition text-slate-700 border border-slate-200 hover:bg-slate-50"
+                        >
+                          {`Equipamiento${(equipmentBy[esc.id] || []).length ? ` (${(equipmentBy[esc.id] || []).length})` : ''}`}
+                        </button>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -583,6 +637,30 @@ export default function Online_Main() {
                           <ClockIcon className="h-4 w-4" />
                         </button>
                       )}
+                      {equipOpen === esc.id && (
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                          {equipLoadingBy[esc.id] ? (
+                            <div className="text-slate-500">Cargando equipamiento…</div>
+                          ) : equipErrorBy[esc.id] ? (
+                            <div className="text-rose-600">{equipErrorBy[esc.id]}</div>
+                          ) : (equipmentBy[esc.id] || []).length === 0 ? (
+                            <div className="text-slate-500">Sin equipamiento asociado.</div>
+                          ) : (
+                            <ul className="space-y-2">
+                              {(equipmentBy[esc.id] || []).map((item) => (
+                                <li key={item.id} className="flex items-start justify-between gap-3">
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium text-slate-800">{item.name}</div>
+                                    <div className="text-xs text-slate-600">{item.category || ''} {item.location ? `· ${item.location}` : ''}</div>
+                                    {item.notes ? <div className="text-xs text-slate-500 mt-1">{item.notes}</div> : null}
+                                  </div>
+                                  <div className="text-xs text-slate-700">x{item.quantity || 1}</div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -591,30 +669,7 @@ export default function Online_Main() {
           })}
         </div>
 
-        {/* Escenarios completados (abajo del todo) */}
-        {completados.length > 0 && (
-          <section className="mt-10">
-            <div className="mb-3">
-              <h3 className="text-base font-semibold text-slate-800">Escenarios completados</h3>
-              <p className="text-xs text-slate-500">Has agotado los intentos disponibles en estos escenarios.</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {completados.map((esc) => {
-                const stat = attemptStats[esc.id] || { count: MAX_ATTEMPTS };
-                return (
-                  <article key={`done-${esc.id}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="text-sm font-semibold text-slate-900 line-clamp-2">{esc.title || 'Escenario'}</h4>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2 py-0.5 text-[11px] text-slate-700">Intentos {stat.count}/{MAX_ATTEMPTS}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-600 line-clamp-2">{esc.summary || 'Intentos completados.'}</p>
-                    <div className="mt-3 text-xs text-slate-500">Intentos agotados</div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        
       </main>
     </div>
   );
