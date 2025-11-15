@@ -69,10 +69,7 @@ export default function Online_Main() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [attemptStats, setAttemptStats] = useState({}); // { [scenario_id]: { count, scored, avg } }
-  const [equipOpen, setEquipOpen] = useState(null); // scenario id
-  const [equipmentBy, setEquipmentBy] = useState({}); // { [scenario_id]: [...] }
-  const [equipLoadingBy, setEquipLoadingBy] = useState({});
-  const [equipErrorBy, setEquipErrorBy] = useState({});
+  // Equipamiento se muestra solo en listado presencial; se elimina de online.
 
   // Cuenta atrás para redirigir al perfil si falta el rol
   const [redirectCountdown, setRedirectCountdown] = useState(5);
@@ -112,26 +109,7 @@ export default function Online_Main() {
     }
   }, []);
 
-  async function fetchEquipmentForScenario(scenarioId) {
-    if (!scenarioId) return;
-    if (equipmentBy[scenarioId]) return; // cached
-    setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: true }));
-    setEquipErrorBy(prev => ({ ...prev, [scenarioId]: "" }));
-    try {
-      const { data, error } = await supabase
-        .from("scenario_equipment")
-        .select("id,name,quantity,location,category,required,notes")
-        .eq("scenario_id", scenarioId)
-        .order("name", { ascending: true });
-      if (error) throw error;
-      setEquipmentBy(prev => ({ ...prev, [scenarioId]: data || [] }));
-    } catch (err) {
-      console.error("[Simulacion] fetchEquipmentForScenario error:", err);
-      setEquipErrorBy(prev => ({ ...prev, [scenarioId]: err?.message || "No se pudo cargar equipamiento" }));
-    } finally {
-      setEquipLoadingBy(prev => ({ ...prev, [scenarioId]: false }));
-    }
-  }
+  // (fetchEquipmentForScenario) eliminado para online.
 
   // Filtro en cliente (asegura orden de hooks estable)
   const filtrados = useMemo(() => {
@@ -529,7 +507,7 @@ export default function Online_Main() {
             const attemptsExhausted = (stat?.count ?? 0) >= MAX_ATTEMPTS;
             const clickableFinal = isClickable && !(attemptsExhausted && !isAdmin);
 
-            const hasPresencial = modeArr.map(m => String(m).toLowerCase()).includes('presencial');
+            // En vista online no mostramos equipamiento aunque escenario sea dual/presencial.
             return (
               <article
                 key={esc.id}
@@ -604,20 +582,7 @@ export default function Online_Main() {
                           {attemptsExhausted && !isAdmin ? 'Intentos agotados' : 'Iniciar'}
                           {!attemptsExhausted && <ArrowRightIcon className="h-4 w-4" />}
                         </button>
-                        {hasPresencial && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const next = equipOpen === esc.id ? null : esc.id;
-                            setEquipOpen(next);
-                            if (next) fetchEquipmentForScenario(esc.id);
-                          }}
-                          className="ml-2 inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg transition text-slate-700 border border-slate-200 hover:bg-slate-50"
-                        >
-                          {`Equipamiento${(equipmentBy[esc.id] || []).length ? ` (${(equipmentBy[esc.id] || []).length})` : ''}`}
-                        </button>
-                        )}
+                        {/* Equipamiento oculto en online */}
                       </div>
                     )}
                   </div>
@@ -637,30 +602,7 @@ export default function Online_Main() {
                           <ClockIcon className="h-4 w-4" />
                         </button>
                       )}
-                      {equipOpen === esc.id && (
-                        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                          {equipLoadingBy[esc.id] ? (
-                            <div className="text-slate-500">Cargando equipamiento…</div>
-                          ) : equipErrorBy[esc.id] ? (
-                            <div className="text-rose-600">{equipErrorBy[esc.id]}</div>
-                          ) : (equipmentBy[esc.id] || []).length === 0 ? (
-                            <div className="text-slate-500">Sin equipamiento asociado.</div>
-                          ) : (
-                            <ul className="space-y-2">
-                              {(equipmentBy[esc.id] || []).map((item) => (
-                                <li key={item.id} className="flex items-start justify-between gap-3">
-                                  <div className="flex-1">
-                                    <div className="text-sm font-medium text-slate-800">{item.name}</div>
-                                    <div className="text-xs text-slate-600">{item.category || ''} {item.location ? `· ${item.location}` : ''}</div>
-                                    {item.notes ? <div className="text-xs text-slate-500 mt-1">{item.notes}</div> : null}
-                                  </div>
-                                  <div className="text-xs text-slate-700">x{item.quantity || 1}</div>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      )}
+                      {/* Panel de equipamiento eliminado en online */}
                     </div>
                   )}
                 </div>
