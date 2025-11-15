@@ -31,7 +31,7 @@ const levelOptions = [
 const baseModeOptions = [
   { value: "online", label: "Online" },
   { value: "presencial", label: "Presencial" },
-  { value: "dual", label: "Dual" },
+  
 ];
 
 function normalizeLevelValue(raw) {
@@ -60,6 +60,14 @@ function normalizeLevelValue(raw) {
 }
 
 function normalizeMode(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string") {
+    if (value === "dual") return ["online", "presencial"];
+    return value ? [value] : [];
+  }
+  return [];
+}
   if (!value) return [];
   if (Array.isArray(value)) return value.filter(Boolean);
   if (typeof value === "string") return value ? [value] : [];
@@ -1785,7 +1793,7 @@ export default function Admin_ScenarioEditor() {
         title: form.title.trim(),
         summary: form.summary.trim() || null,
         status: form.status || null,
-        mode: form.mode,
+        mode: form.mode.includes("online") mode: form.mode,mode: form.mode, form.mode.includes("presencial") ? ["dual"] : form.mode,
         level: levelValue || null,
         estimated_minutes: Number.isFinite(estimated) ? estimated : 10,
         max_attempts: Number.isFinite(attempts) ? attempts : 3,
@@ -2012,21 +2020,6 @@ export default function Admin_ScenarioEditor() {
                       );
                     })}
                   </div>
-                  <form onSubmit={addCustomMode} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={customMode}
-                      onChange={(event) => setCustomMode(event.target.value)}
-                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      placeholder="Añadir modo personalizado"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
-                    >
-                      Añadir
-                    </button>
-                  </form>
                 </div>
               </div>
             ) : null}
@@ -2036,7 +2029,7 @@ export default function Admin_ScenarioEditor() {
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Taxonomía del escenario</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Categorías</h2>
                 <p className="text-sm text-slate-600">Activa o desactiva las categorías disponibles.</p>
               </div>
               <div className="flex items-center gap-2">
