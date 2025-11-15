@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import { useAuth } from "../../../auth";
 import Navbar from "../../../components/Navbar.jsx";
-import { isColumnMissing, shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
+// Removed idx-based ordering helpers
 // Invite-by-email feature removed: no external invitations will be sent
 
 const CreateScheduledSession = () => {
@@ -53,49 +53,13 @@ const CreateScheduledSession = () => {
   const fetchScenarios = async () => {
     try {
       setLoadingScenarios(true);
-      let data = null;
-      let error = null;
-
-      const fetchWithIdx = () =>
-        supabase
-          .from("scenarios")
-          .select("id, idx, title, summary, level, mode, estimated_minutes")
-          .order("idx", { ascending: true, nullsFirst: true })
-          .order("title", { ascending: true });
-
-      const fetchWithoutIdx = () =>
-        supabase
-          .from("scenarios")
-          .select("id, title, summary, level, mode, estimated_minutes")
-          .order("title", { ascending: true });
-
-      const skipIdx = isColumnMissing("scenarios", "idx");
-      if (!skipIdx) {
-        ({ data, error } = await fetchWithIdx());
-
-        if (error && shouldRetryWithoutIdx(error)) {
-          console.warn("[CreateScheduledSession] idx column missing, retrying without idx", error);
-          const fallback = await fetchWithoutIdx();
-          data = fallback.data;
-          error = fallback.error;
-        }
-      } else {
-        ({ data, error } = await fetchWithoutIdx());
-      }
+      const { data, error } = await supabase
+        .from("scenarios")
+        .select("id, title, summary, level, mode, estimated_minutes")
+        .order("title", { ascending: true });
 
       if (error) throw error;
-      const getOrderIndex = (row) => {
-        const value = Number(row?.idx);
-        return Number.isFinite(value) ? value : null;
-      };
       const sorted = (data || []).slice().sort((a, b) => {
-        const ai = getOrderIndex(a);
-        const bi = getOrderIndex(b);
-        if (ai != null || bi != null) {
-          if (ai != null && bi != null && ai !== bi) return ai - bi;
-          if (ai != null && bi == null) return -1;
-          if (ai == null && bi != null) return 1;
-        }
         const ta = (a.title || "").toLocaleLowerCase("es");
         const tb = (b.title || "").toLocaleLowerCase("es");
         return ta.localeCompare(tb, "es");

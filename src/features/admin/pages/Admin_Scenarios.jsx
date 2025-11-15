@@ -5,7 +5,6 @@ import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
 import AdminNav from "../components/AdminNav.jsx";
 import { formatLevel } from "../../../utils/formatUtils.js";
-import { isColumnMissing, shouldRetryWithoutIdx } from "../../../utils/supabaseHelpers.js";
 import {
   PlusCircleIcon,
   ArrowPathIcon,
@@ -27,44 +26,8 @@ function mapScenarios(rows) {
   });
 }
 
-function resolveOrderIndex(row) {
-  const value = Number(row?.idx);
-  return Number.isFinite(value) ? value : null;
-}
-
-function sortScenarios(rows) {
-  if (!Array.isArray(rows)) return [];
-  return rows.slice().sort((a, b) => {
-    const ai = resolveOrderIndex(a);
-    const bi = resolveOrderIndex(b);
-    if (ai != null || bi != null) {
-      if (ai != null && bi != null && ai !== bi) return ai - bi;
-      if (ai != null && bi == null) return -1;
-      if (ai == null && bi != null) return 1;
-    }
-    const aCreated = a?.created_at ? new Date(a.created_at).getTime() : 0;
-    const bCreated = b?.created_at ? new Date(b.created_at).getTime() : 0;
-    return bCreated - aCreated;
-  });
-}
-
 async function fetchScenarioList() {
-  const baseSelect = `
-      id,
-      idx,
-      title,
-      summary,
-      status,
-      mode,
-      level,
-      difficulty,
-      estimated_minutes,
-      created_at,
-      scenario_steps:scenario_steps(id),
-      scenario_items:scenario_items(id)
-    `;
-
-  const fallbackSelect = `
+  const select = `
       id,
       title,
       summary,
@@ -77,39 +40,14 @@ async function fetchScenarioList() {
       scenario_steps:scenario_steps(id),
       scenario_items:scenario_items(id)
     `;
-
-  let data = null;
-  let error = null;
-
-  const skipIdx = isColumnMissing("scenarios", "idx");
-  if (!skipIdx) {
-    ({ data, error } = await supabase
-      .from("scenarios")
-      .select(baseSelect)
-      .contains("mode", ["online"])
-      .order("idx", { ascending: true, nullsFirst: true })
-      .order("created_at", { ascending: false }));
-
-    if (error && shouldRetryWithoutIdx(error)) {
-      console.warn("[Admin_Scenarios] idx column missing, retrying without idx", error);
-      const fallback = await supabase
-        .from("scenarios")
-        .select(fallbackSelect)
-        .contains("mode", ["online"])
-        .order("created_at", { ascending: false });
-      data = fallback.data;
-      error = fallback.error;
-    }
-  } else {
-    ({ data, error } = await supabase
-      .from("scenarios")
-      .select(fallbackSelect)
-      .contains("mode", ["online"])
-      .order("created_at", { ascending: false }));
-  }
+  const { data, error } = await supabase
+    .from("scenarios")
+    .select(select)
+    .contains("mode", ["online"]) 
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return sortScenarios(mapScenarios(data));
+  return mapScenarios(data);
 }
 
 function statusBadge(status) {

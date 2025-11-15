@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../../../supabaseClient";
 import Navbar from "../../../../components/Navbar.jsx";
-import { isColumnMissing, shouldRetryWithoutIdx } from "../../../../utils/supabaseHelpers.js";
 import {
   AdjustmentsHorizontalIcon,
   MagnifyingGlassIcon,
@@ -101,45 +100,15 @@ export default function Presencial_Listado() {
 
     async function cargarEscenarios() {
       setLoadingEsc(true);
-      let data = null;
-      let error = null;
-
-      const fetchWithIdx = () =>
-        supabase
-          .from("scenarios")
-          .select(`
-            id, idx, title, summary, level, mode, created_at, status,
-            scenario_categories (
-              categories ( name )
-            )
-          `)
-          .order("idx", { ascending: true, nullsFirst: true })
-          .order("title", { ascending: true });
-
-      const fetchWithoutIdx = () =>
-        supabase
-          .from("scenarios")
-          .select(`
-            id, title, summary, level, mode, created_at, status,
-            scenario_categories (
-              categories ( name )
-            )
-          `)
-          .order("title", { ascending: true });
-
-      const skipIdx = isColumnMissing("scenarios", "idx");
-      if (!skipIdx) {
-        ({ data, error } = await fetchWithIdx());
-
-        if (error && shouldRetryWithoutIdx(error)) {
-          console.warn("[PresencialListado] idx column missing, retrying without idx", error);
-          const fallback = await fetchWithoutIdx();
-          data = fallback.data;
-          error = fallback.error;
-        }
-      } else {
-        ({ data, error } = await fetchWithoutIdx());
-      }
+      const { data, error } = await supabase
+        .from("scenarios")
+        .select(`
+          id, title, summary, level, mode, created_at, status,
+          scenario_categories (
+            categories ( name )
+          )
+        `)
+        .order("title", { ascending: true });
 
       if (!mounted) return;
 
@@ -154,18 +123,7 @@ export default function Presencial_Listado() {
           "En construcción: en proceso": 2,
           "En construcción: sin iniciar": 3,
         };
-        const getOrderIndex = (row) => {
-          const value = Number(row?.idx);
-          return Number.isFinite(value) ? value : null;
-        };
         const sorted = (data || []).slice().sort((a, b) => {
-          const ai = getOrderIndex(a);
-          const bi = getOrderIndex(b);
-          if (ai != null || bi != null) {
-            if (ai != null && bi != null && ai !== bi) return ai - bi;
-            if (ai != null && bi == null) return -1;
-            if (ai == null && bi != null) return 1;
-          }
           const pa = statusPriority[a.status] ?? 99;
           const pb = statusPriority[b.status] ?? 99;
           if (pa !== pb) return pa - pb;
