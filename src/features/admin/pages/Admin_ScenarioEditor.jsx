@@ -1918,14 +1918,6 @@ export default function Admin_ScenarioEditor() {
               >
                 <ArrowPathIcon className={`h-4 w-4 ${saving ? "animate-spin" : ""}`} /> Recargar
               </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800 disabled:opacity-60"
-                disabled={saving}
-              >
-                {saving ? "Guardando…" : "Guardar cambios"}
-              </button>
             </div>
           </div>
           {success ? (
@@ -1947,15 +1939,35 @@ export default function Admin_ScenarioEditor() {
                 <h2 className="text-lg font-semibold text-slate-900">Información general</h2>
                 <p className="text-sm text-slate-600">Datos básicos y estado del escenario.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => toggleSection("metadata")}
-                className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-              >
-                <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.metadata ? "-rotate-90" : "rotate-0"}`} />
-                <span className="sr-only">{collapsedSections.metadata ? "Expandir sección" : "Contraer sección"}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {saving ? "Guardando…" : "Guardar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("metadata")}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.metadata ? "-rotate-90" : "rotate-0"}`} />
+                  <span className="sr-only">{collapsedSections.metadata ? "Expandir sección" : "Contraer sección"}</span>
+                </button>
+              </div>
             </div>
+            {success ? (
+              <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                <CheckCircleIcon className="h-4 w-4" /> {success}
+              </div>
+            ) : null}
+            {error ? (
+              <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                <ExclamationCircleIcon className="h-4 w-4" /> {error}
+              </div>
+            ) : null}
             {!collapsedSections.metadata ? (
               <div className="mt-4 grid gap-4">
                 <label className="block text-sm text-slate-600">
