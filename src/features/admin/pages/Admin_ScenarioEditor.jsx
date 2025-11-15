@@ -2454,7 +2454,7 @@ export default function Admin_ScenarioEditor() {
                       />
                     </label>
                     <label className="block text-sm text-slate-600">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Acciones criticas (una por linea)</span>
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso (una por línea)</span>
                       <textarea
                         rows={3}
                         value={briefForm.criticalActionsText}
@@ -2462,6 +2462,9 @@ export default function Admin_ScenarioEditor() {
                         className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
                         placeholder={'Administrar adrenalina IM 0.01 mg/kg inmediatamente'}
                       />
+                      <span className="mt-1 block text-[11px] text-slate-400">
+                        Se mostrarán en el resumen final tras completar las preguntas. Son conceptos clave que no se pueden pasar por alto y que el alumno debe aprender del caso.
+                      </span>
                     </label>
                   </div>
                   <div className="max-w-xs">
