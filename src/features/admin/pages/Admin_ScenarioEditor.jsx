@@ -83,13 +83,11 @@ function serializeModeSelection(selected) {
         .filter(Boolean)
     )
   );
-
-  const hasOnline = cleaned.includes("online");
-  const hasPresencial = cleaned.includes("presencial");
-  if (hasOnline && hasPresencial && cleaned.length === 2) {
-    return ["dual"];
-  }
-  return cleaned;
+  // Persist explicit modes only. If both selected, store both; never store 'dual'.
+  // Filter out legacy 'dual' token if present in the incoming selection.
+  const allowed = ["online", "presencial"]; 
+  const explicit = cleaned.filter((v) => allowed.includes(v));
+  return explicit;
 }
 
 const TRIANGLE_VALUES = ["green", "amber", "red"];
