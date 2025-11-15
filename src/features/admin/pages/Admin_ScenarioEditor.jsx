@@ -106,7 +106,7 @@ function createEmptyBriefForm() {
     quickLabsText: "",
     imagingText: "",
     triangle: { appearance: "", breathing: "", circulation: "" },
-    redFlagsText: "",
+    redFlags: [],
     criticalActions: [],
     learningObjective: "",
     objectivesByRole: {},
@@ -376,7 +376,26 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
       circulation: triangleSource.circulation ? String(triangleSource.circulation).toLowerCase() : "",
     };
   }
-  base.redFlagsText = listToTextarea(safeJsonValue(data.red_flags));
+  const redFlagsSource = safeJsonValue(data.red_flags);
+  if (Array.isArray(redFlagsSource)) {
+    base.redFlags = redFlagsSource
+      .map((item) => {
+        if (item == null) return null;
+        if (typeof item === "string") {
+          const t = item.trim();
+          return t ? { text: t, correct: true } : null;
+        }
+        if (typeof item === "object") {
+          const t = String(item.text ?? "").trim();
+          const c = Boolean(item.correct);
+          return t ? { text: t, correct: c } : null;
+        }
+        return null;
+      })
+      .filter(Boolean);
+  } else {
+    base.redFlags = [];
+  }
   const criticalActionsSource = safeJsonValue(data.critical_actions);
   base.criticalActions = Array.isArray(criticalActionsSource) 
     ? criticalActionsSource.map(action => String(action).trim()).filter(Boolean)
@@ -1114,7 +1133,9 @@ export default function Admin_ScenarioEditor() {
       const quickLabsList = parseQuickLabsInput(briefForm?.quickLabsText);
       const imagingList = parseImagingInput(briefForm?.imagingText);
       const trianglePayload = sanitizeTriangleInput(briefForm?.triangle);
-      const redFlagsList = sanitizeRedFlagsInput(briefForm?.redFlagsText);
+      const redFlagsPayload = (briefForm?.redFlags || [])
+        .map((it) => ({ text: String(it.text || "").trim(), correct: Boolean(it.correct) }))
+        .filter((it) => it.text.length > 0);
       const criticalActionsList = (briefForm?.criticalActions || []).map(a => String(a).trim()).filter(Boolean);
       const explicitMinutes = parseNumberField(briefForm?.estimatedMinutes);
       const scenarioMinutes = parseNumberField(scenario?.estimated_minutes);
@@ -1132,7 +1153,7 @@ export default function Admin_ScenarioEditor() {
         quick_labs: quickLabsList.length > 0 ? quickLabsList : null,
         imaging: imagingList.length > 0 ? imagingList : null,
         triangle: trianglePayload,
-        red_flags: redFlagsList.length > 0 ? redFlagsList : null,
+        red_flags: redFlagsPayload.length > 0 ? redFlagsPayload : null,
         critical_actions: criticalActionsList.length > 0 ? criticalActionsList : null,
         learning_objective: learningObjective,
         objectives: objectivesPayload,
@@ -1177,7 +1198,7 @@ export default function Admin_ScenarioEditor() {
         learning_objective: Boolean(learningObjective),
         roles: Object.keys(objectivesPayload),
         chips: chipsList.length,
-        red_flags: redFlagsList.length,
+        red_flags: redFlagsPayload.length,
         critical_actions: criticalActionsList.length,
       });
       setBriefSuccess("Brief actualizado");
@@ -2657,16 +2678,65 @@ export default function Admin_ScenarioEditor() {
                       </label>
                     </div>
                   </div>
-                  <label className="block text-sm text-slate-600">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">Signos de alarma (uno por línea)</span>
-                    <textarea
-                      rows={3}
-                      value={briefForm.redFlagsText}
-                      onChange={(event) => setBriefForm((prev) => ({ ...prev, redFlagsText: event.target.value }))}
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      placeholder={'Hipotension sostenida\nEstridor con compromiso de via aerea'}
-                    />
-                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Signos de alarma</span>
+                      <button
+                        type="button"
+                        onClick={() => setBriefForm(prev => ({ ...prev, redFlags: [...(prev.redFlags || []), { text: "", correct: true }] }))}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                      >
+                        + Añadir signo
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Los alumnos tendrán que escoger los que procedan. Añade algunos correctos y otros distractores, y marca "Correcto" solo en los que realmente sugieren gravedad.
+                    </p>
+                    <div className="space-y-2">
+                      {(briefForm.redFlags || []).length === 0 ? (
+                        <p className="text-sm text-slate-500 italic py-2">No hay signos añadidos. Haz clic en "+ Añadir signo" para crear uno.</p>
+                      ) : (
+                        (briefForm.redFlags || []).map((item, idx) => (
+                          <div key={idx} className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                            <input
+                              type="text"
+                              value={item?.text || ""}
+                              onChange={(e) => {
+                                const updated = [...(briefForm.redFlags || [])];
+                                updated[idx] = { ...(updated[idx] || {}), text: e.target.value };
+                                setBriefForm(prev => ({ ...prev, redFlags: updated }));
+                              }}
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                              placeholder="Ej: Estridor con compromiso de vía aérea"
+                            />
+                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                className="accent-[#1E6ACB]"
+                                checked={Boolean(item?.correct)}
+                                onChange={(e) => {
+                                  const updated = [...(briefForm.redFlags || [])];
+                                  updated[idx] = { ...(updated[idx] || {}), correct: e.target.checked };
+                                  setBriefForm(prev => ({ ...prev, redFlags: updated }));
+                                }}
+                              />
+                              Correcto
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (briefForm.redFlags || []).filter((_, i) => i !== idx);
+                                setBriefForm(prev => ({ ...prev, redFlags: updated }));
+                              }}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 hover:bg-rose-100"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </>
             ) : null}

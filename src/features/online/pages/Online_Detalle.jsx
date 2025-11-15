@@ -533,23 +533,35 @@ export default function Online_Detalle() {
 
   // Signos de alarma (multi-selección)
   const [selectedRedFlags, setSelectedRedFlags] = useState([]);
-  const redFlagBase = useMemo(() => (Array.isArray(brief?.red_flags) ? brief.red_flags : []), [brief]);
-  const redFlagCandidates = useMemo(() => {
-    const distractors = [
-      "Fiebre aislada sin repercusión",
-      "Erupción leve autolimitada",
-      "Dolor leve bien localizado",
-    ];
-    const set = new Set([...(redFlagBase || []), ...distractors]);
-    return Array.from(set);
-  }, [redFlagBase]);
+  const redFlagItems = useMemo(() => {
+    const src = Array.isArray(brief?.red_flags) ? brief.red_flags : [];
+    return src
+      .map((it) => {
+        if (typeof it === "string") return { text: it, correct: true };
+        if (typeof it === "object" && it) return { text: String(it.text || ""), correct: Boolean(it.correct) };
+        return null;
+      })
+      .filter((x) => x && x.text.trim().length > 0)
+      .map((x) => ({ text: x.text.trim(), correct: x.correct }));
+  }, [brief]);
+  const redFlagCandidates = useMemo(() => redFlagItems.map((x) => x.text), [redFlagItems]);
   const redFlagsCorrect = useMemo(() => {
-    const base = new Set(redFlagBase || []);
-    if (!base.size) return null;
+    if (!redFlagItems.length) return null;
+    const correctSet = new Set(redFlagItems.filter((x) => x.correct).map((x) => x.text));
+    const incorrectSet = new Set(redFlagItems.filter((x) => !x.correct).map((x) => x.text));
     const sel = new Set(selectedRedFlags);
-    if (sel.size !== Array.from(sel).filter((v) => base.has(v)).length) return false; // hay seleccionados que no son correctos
-    return redFlagBase.every((r) => sel.has(r));
-  }, [selectedRedFlags, redFlagBase]);
+    // No debe haber seleccionados incorrectos
+    for (const s of sel) {
+      if (incorrectSet.has(s)) return false;
+    }
+    // Deben estar todos los correctos seleccionados
+    for (const c of correctSet) {
+      if (!sel.has(c)) return false;
+    }
+    // Y no deben sobrar (evita seleccionar extras desconocidos, por si acaso)
+    if (sel.size !== correctSet.size) return false;
+    return true;
+  }, [selectedRedFlags, redFlagItems]);
 
   // Intento actual
   const [attemptId, setAttemptId] = useState(null);
