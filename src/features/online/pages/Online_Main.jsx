@@ -9,7 +9,6 @@ import {
   AdjustmentsHorizontalIcon,
   ClockIcon,
   ArrowRightIcon,
-  AcademicCapIcon,
   CheckCircleIcon,
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
@@ -517,11 +516,13 @@ export default function Online_Main() {
                 <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-br from-[#0A3D91]/8 via-transparent to-transparent" aria-hidden="true" />
                 <div className="relative z-10 flex flex-col h-full gap-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 whitespace-nowrap sm:flex-nowrap flex-wrap">
-                        <span className="inline-flex items-center gap-2 rounded-full bg-[#0A3D91]/10 px-3 py-1 text-xs font-medium text-[#0A3D91]">
-                          <AcademicCapIcon className="h-4 w-4" />
-                          Escenario clínico
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
+                          {esc.title || "Escenario sin título"}
+                        </h3>
+                        <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${estadoStyle.color}`}>
+                          {estadoStyle.label}
                         </span>
                         {isNuevo && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm">
@@ -529,9 +530,6 @@ export default function Online_Main() {
                           </span>
                         )}
                       </div>
-                      <h3 className="mt-3 text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
-                        {esc.title || "Escenario sin título"}
-                      </h3>
                     </div>
                     <div className="flex flex-wrap justify-end gap-1">
                       {modeArr.map((m) => {
@@ -567,11 +565,7 @@ export default function Online_Main() {
                     ))}
                   </div>
 
-                  <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-                    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${estadoStyle.color}`}>
-                      <span className="inline-block h-2 w-2 rounded-full bg-current opacity-70" />
-                      {estadoStyle.label}
-                    </span>
+                  <div className="mt-auto flex items-center justify-end gap-3 pt-2">
                     {isClickable && (
                       <div>
                         <button
