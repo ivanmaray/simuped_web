@@ -1294,12 +1294,79 @@ export default function Online_Detalle() {
             </div>
           </AccordionSection>
 
-          {/* ACCORDION: 2. Triángulo de evaluación pediátrica (interactivo) */}
+          {/* ACCORDION: 2. Constantes y exploración (lectura rápida) */}
           <AccordionSection
-            title="2) Triángulo de evaluación pediátrica (TEP)"
-            subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
+            title="2) Constantes y exploración"
+            subtitle="Repasa constantes y hallazgos al examen físico."
             open={accordionOpen[1]}
             onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 1 ? !v : v)))}
+          >
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-200 p-4">
+                <Row label="FC" value={brief?.vitals?.fc != null ? `${brief.vitals.fc} lpm` : "—"} alert={brief?.vitals?.fc > 170} />
+                <Row label="FR" value={brief?.vitals?.fr != null ? `${brief.vitals.fr} rpm` : "—"} />
+                <Row label="SatO₂" value={brief?.vitals?.sat != null ? `${brief.vitals.sat} %` : "—"} alert={brief?.vitals?.sat < 92} />
+                <Row label="Tª" value={brief?.vitals?.temp != null ? `${brief.vitals.temp} ºC` : "—"} />
+                {Array.isArray(brief?.vitals?.notes) && brief.vitals.notes.length > 0 && (
+                  <ul className="list-disc pl-5 mt-2 text-sm text-slate-700">
+                    {brief.vitals.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-200 p-4">
+                <ul className="list-disc pl-5 text-sm text-slate-700">
+                  {toArray(brief?.exam).map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                  {!brief?.exam?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </AccordionSection>
+
+          {/* ACCORDION: 3. Pruebas complementarias (señala indicadas) */}
+          <AccordionSection
+            title="3) Pruebas complementarias"
+            subtitle="Identifica qué está indicado ahora mismo."
+            open={accordionOpen[2]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 2 ? !v : v)))}
+          >
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-600 mb-2">Analítica rápida</h4>
+                <ul className="text-sm text-slate-700">
+                  {toArray(brief?.quick_labs).map((q, i) => (
+                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
+                      <span>{q.name}</span>
+                      <span className="font-medium">{q.value ?? "—"}</span>
+                    </li>
+                  ))}
+                  {!brief?.quick_labs?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-600 mb-2">Imagen</h4>
+                <ul className="text-sm text-slate-700">
+                  {toArray(brief?.imaging).map((im, i) => (
+                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
+                      <span>{im.name}</span>
+                      <span className="font-medium">{im.status === "ordered" ? "Solicitada" : "Disponible"}</span>
+                    </li>
+                  ))}
+                  {!brief?.imaging?.length && <li className="text-slate-500">—</li>}
+                </ul>
+              </div>
+            </div>
+          </AccordionSection>
+
+          {/* ACCORDION: 4. Triángulo de evaluación pediátrica (interactivo) */}
+          <AccordionSection
+            title="4) Triángulo de evaluación pediátrica (TEP)"
+            subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
+            open={accordionOpen[3]}
+            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
           >
             <div className="grid lg:grid-cols-2 gap-4 items-start">
               <div>
@@ -1375,73 +1442,6 @@ export default function Online_Detalle() {
                     </span>
                   )}
                 </div>
-              </div>
-            </div>
-          </AccordionSection>
-
-          {/* ACCORDION: 3. Constantes y exploración (lectura rápida) */}
-          <AccordionSection
-            title="3) Constantes y exploración"
-            subtitle="Repasa constantes y hallazgos al examen físico."
-            open={accordionOpen[2]}
-            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 2 ? !v : v)))}
-          >
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-200 p-4">
-                <Row label="FC" value={brief?.vitals?.fc != null ? `${brief.vitals.fc} lpm` : "—"} alert={brief?.vitals?.fc > 170} />
-                <Row label="FR" value={brief?.vitals?.fr != null ? `${brief.vitals.fr} rpm` : "—"} />
-                <Row label="SatO₂" value={brief?.vitals?.sat != null ? `${brief.vitals.sat} %` : "—"} alert={brief?.vitals?.sat < 92} />
-                <Row label="Tª" value={brief?.vitals?.temp != null ? `${brief.vitals.temp} ºC` : "—"} />
-                {Array.isArray(brief?.vitals?.notes) && brief.vitals.notes.length > 0 && (
-                  <ul className="list-disc pl-5 mt-2 text-sm text-slate-700">
-                    {brief.vitals.notes.map((n, i) => (
-                      <li key={i}>{n}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="rounded-xl border border-slate-200 p-4">
-                <ul className="list-disc pl-5 text-sm text-slate-700">
-                  {toArray(brief?.exam).map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                  {!brief?.exam?.length && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
-            </div>
-          </AccordionSection>
-
-          {/* ACCORDION: 4. Pruebas complementarias (señala indicadas) */}
-          <AccordionSection
-            title="4) Pruebas complementarias"
-            subtitle="Identifica qué está indicado ahora mismo."
-            open={accordionOpen[3]}
-            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
-          >
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <h4 className="text-sm font-semibold text-slate-600 mb-2">Analítica rápida</h4>
-                <ul className="text-sm text-slate-700">
-                  {toArray(brief?.quick_labs).map((q, i) => (
-                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
-                      <span>{q.name}</span>
-                      <span className="font-medium">{q.value ?? "—"}</span>
-                    </li>
-                  ))}
-                  {!brief?.quick_labs?.length && <li className="text-slate-500">—</li>}
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-sm font-semibold text-slate-600 mb-2">Imagen</h4>
-                <ul className="text-sm text-slate-700">
-                  {toArray(brief?.imaging).map((im, i) => (
-                    <li key={i} className="flex items-center justify-between gap-3 border-b py-1">
-                      <span>{im.name}</span>
-                      <span className="font-medium">{im.status === "ordered" ? "Solicitada" : "Disponible"}</span>
-                    </li>
-                  ))}
-                  {!brief?.imaging?.length && <li className="text-slate-500">—</li>}
-                </ul>
               </div>
             </div>
           </AccordionSection>
