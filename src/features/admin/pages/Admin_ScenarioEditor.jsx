@@ -1884,17 +1884,30 @@ export default function Admin_ScenarioEditor() {
         estimated_minutes: Number.isFinite(estimated) ? estimated : 10,
         max_attempts: Number.isFinite(attempts) ? attempts : 3,
       };
-      const { data, error: updateErr } = await supabase
-        .from("scenarios")
-        .update(payload)
-        .eq("id", scenarioId)
-        .select()
-        .maybeSingle();
+      const attemptUpdate = async (pl) => {
+        return await supabase
+          .from("scenarios")
+          .update(pl)
+          .eq("id", scenarioId)
+          .select()
+          .maybeSingle();
+      };
+      let { data, error: updateErr } = await attemptUpdate(payload);
+      if (updateErr && String(updateErr.message).includes("scenarios_status_check")) {
+        // Fallback si constraint aún no permite el status elegido
+        if (payload.status && !["Disponible","En construcción: en proceso","En construcción: sin iniciar"].includes(payload.status)) {
+          const fallbackPayload = { ...payload, status: "En construcción: en proceso" };
+          ({ data, error: updateErr } = await attemptUpdate(fallbackPayload));
+          if (!updateErr) {
+            payload.status = fallbackPayload.status;
+          }
+        }
+      }
       if (updateErr) throw updateErr;
       if (data) {
         const nextScenario = { ...data, level: normalizeLevelValue(data.level) };
         setScenario(nextScenario);
-        setForm((prev) => (prev ? { ...prev, level: nextScenario.level } : prev));
+        setForm((prev) => (prev ? { ...prev, level: nextScenario.level, status: nextScenario.status, title: nextScenario.title } : prev));
       }
       await registerChange("metadata", "Actualizó la información general del escenario", {
         status: payload.status,
