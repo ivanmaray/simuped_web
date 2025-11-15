@@ -2103,8 +2103,8 @@ export default function Admin_ScenarioEditor() {
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Objetivos y briefing</h2>
-                <p className="text-sm text-slate-600">Define el objetivo general y las metas por rol.</p>
+                <h2 className="text-lg font-semibold text-slate-900">Objetivos de aprendizaje</h2>
+                <p className="text-sm text-slate-600">Define el objetivo general, metas por rol y acciones críticas.</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -2113,7 +2113,136 @@ export default function Admin_ScenarioEditor() {
                   disabled={briefSaving}
                   className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
                 >
-                  {briefSaving ? "Guardando…" : "Guardar objetivos"}
+                  {briefSaving ? "Guardando…" : "Guardar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleSection("objectives")}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                >
+                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedSections.objectives ? "-rotate-90" : "rotate-0"}`} />
+                  <span className="sr-only">{collapsedSections.objectives ? "Expandir sección" : "Contraer sección"}</span>
+                </button>
+              </div>
+            </div>
+            {!collapsedSections.objectives ? (
+              <>
+                {briefError ? (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{briefError}</div>
+                ) : null}
+                {briefSuccess ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{briefSuccess}</div>
+                ) : null}
+                <div className="mt-4 space-y-4">
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
+                    <textarea
+                      rows={3}
+                      value={briefForm.learningObjective}
+                      onChange={(event) => handleBriefLearningObjectiveChange(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="Describe el objetivo principal del escenario"
+                    />
+                  </label>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm font-medium text-slate-700">Objetivos por rol</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newRole}
+                          onChange={(event) => setNewRole(event.target.value)}
+                          placeholder="Añadir rol (p. ej. RES)"
+                          className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddRole}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                        >
+                          Añadir
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      {briefRoles.map((role) => (
+                        <div key={role} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-700">{roleDisplay[role] || role}</span>
+                            {role !== "MED" && role !== "NUR" && role !== "PHARM" ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRole(role)}
+                                className="text-xs text-rose-500 hover:text-rose-600"
+                              >
+                                Quitar
+                              </button>
+                            ) : null}
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={briefForm.objectivesByRole?.[role] || ""}
+                            onChange={(event) =>
+                              setBriefForm((prev) => ({
+                                ...prev,
+                                objectivesByRole: {
+                                  ...prev.objectivesByRole,
+                                  [role]: event.target.value,
+                                },
+                              }))
+                            }
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                            placeholder={`Objetivo específico para ${roleDisplay[role] || role}`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="block text-sm text-slate-600">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso (una por línea)</span>
+                    <textarea
+                      rows={3}
+                      value={briefForm.criticalActionsText}
+                      onChange={(event) => setBriefForm((prev) => ({ ...prev, criticalActionsText: event.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder={'Administrar adrenalina IM 0.01 mg/kg inmediatamente'}
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      Se mostrarán en el resumen final tras completar las preguntas. Son conceptos clave que no se pueden pasar por alto y que el alumno debe aprender del caso.
+                    </span>
+                  </label>
+                  <div className="max-w-xs">
+                    <label className="block text-sm text-slate-600">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (min)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={briefForm.estimatedMinutes}
+                        onChange={(event) => setBriefForm((prev) => ({ ...prev, estimatedMinutes: event.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        placeholder="18"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Briefing / Introducción al caso</h2>
+                <p className="text-sm text-slate-600">Datos del paciente, contexto clínico y presentación inicial.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveBrief}
+                  disabled={briefSaving}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {briefSaving ? "Guardando…" : "Guardar"}
                 </button>
                 <button
                   type="button"
@@ -2442,100 +2571,16 @@ export default function Admin_ScenarioEditor() {
                       </label>
                     </div>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="block text-sm text-slate-600">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Signos de alarma (uno por línea)</span>
-                      <textarea
-                        rows={3}
-                        value={briefForm.redFlagsText}
-                        onChange={(event) => setBriefForm((prev) => ({ ...prev, redFlagsText: event.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        placeholder={'Hipotension sostenida\nEstridor con compromiso de via aerea'}
-                      />
-                    </label>
-                    <label className="block text-sm text-slate-600">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso (una por línea)</span>
-                      <textarea
-                        rows={3}
-                        value={briefForm.criticalActionsText}
-                        onChange={(event) => setBriefForm((prev) => ({ ...prev, criticalActionsText: event.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        placeholder={'Administrar adrenalina IM 0.01 mg/kg inmediatamente'}
-                      />
-                      <span className="mt-1 block text-[11px] text-slate-400">
-                        Se mostrarán en el resumen final tras completar las preguntas. Son conceptos clave que no se pueden pasar por alto y que el alumno debe aprender del caso.
-                      </span>
-                    </label>
-                  </div>
-                  <div className="max-w-xs">
-                    <label className="block text-sm text-slate-600">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Duración estimada (min)</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={briefForm.estimatedMinutes}
-                        onChange={(event) => setBriefForm((prev) => ({ ...prev, estimatedMinutes: event.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        placeholder="18"
-                      />
-                    </label>
-                  </div>
                   <label className="block text-sm text-slate-600">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">Objetivo general</span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Signos de alarma (uno por línea)</span>
                     <textarea
                       rows={3}
-                      value={briefForm.learningObjective}
-                      onChange={(event) => handleBriefLearningObjectiveChange(event.target.value)}
+                      value={briefForm.redFlagsText}
+                      onChange={(event) => setBriefForm((prev) => ({ ...prev, redFlagsText: event.target.value }))}
                       className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      placeholder="Describe el objetivo principal del escenario"
+                      placeholder={'Hipotension sostenida\nEstridor con compromiso de via aerea'}
                     />
                   </label>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-sm font-medium text-slate-700">Objetivos por rol</p>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newRole}
-                          onChange={(event) => setNewRole(event.target.value)}
-                          placeholder="Añadir rol (p. ej. RES)"
-                          className="w-40 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-slate-400 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddRole}
-                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-                        >
-                          Añadir
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-4 space-y-4">
-                      {briefRoles.map((role) => (
-                        <div key={role} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-                          <div className="mb-2 flex items-center justify-between">
-                            <span className="text-sm font-medium text-slate-700">{roleDisplay[role] || role}</span>
-                            {role !== "MED" && role !== "NUR" && role !== "PHARM" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveRole(role)}
-                                className="text-xs text-rose-500 hover:text-rose-600"
-                              >
-                                Quitar
-                              </button>
-                            ) : null}
-                          </div>
-                          <textarea
-                            rows={3}
-                            value={briefForm.objectivesByRole?.[role] || ""}
-                            onChange={(event) => handleBriefObjectiveChange(role, event.target.value)}
-                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                            placeholder="Una línea por objetivo"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </>
             ) : null}
