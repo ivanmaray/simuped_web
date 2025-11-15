@@ -559,9 +559,25 @@ export default function Online_Confirm() {
           <div className="mt-6">
             <h3 className="text-sm font-semibold text-slate-600 mb-2">Competencias del escenario</h3>
             <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-slate-700">
-              {(brief?.competencies || []).map((c, i) => (
-                <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{c}</li>
-              ))}
+              {(brief?.competencies || []).map((c, i) => {
+                if (typeof c === 'string') {
+                  return (
+                    <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="font-medium">{c}</div>
+                    </li>
+                  );
+                }
+                const label = String(c?.label || '').trim();
+                const expected = String(c?.expected || '').trim();
+                const notes = String(c?.notes || '').trim();
+                return (
+                  <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="font-medium">{label || '—'}</div>
+                    <div className="text-xs text-slate-600">Nivel esperado: {expected || '—'}</div>
+                    {notes && <div className="text-xs text-slate-500 mt-1">{notes}</div>}
+                  </li>
+                );
+              })}
               {!brief?.competencies?.length && <li className="text-slate-500">—</li>}
             </ul>
           </div>

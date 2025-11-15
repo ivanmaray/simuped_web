@@ -92,6 +92,20 @@ function serializeModeSelection(selected) {
 
 const TRIANGLE_VALUES = ["green", "amber", "red"];
 
+const COMPETENCY_CATALOG = [
+  { key: "initial_assessment", label: "Valoración inicial" },
+  { key: "airway_breathing", label: "Vía aérea y respiración" },
+  { key: "circulation_shock", label: "Circulación y shock" },
+  { key: "sepsis_recognition", label: "Reconocimiento de sepsis" },
+  { key: "meds_weight_dosing", label: "Fármacos y dosis por peso" },
+  { key: "diagnostic_reasoning", label: "Razonamiento diagnóstico" },
+  { key: "prioritization", label: "Priorización y toma de decisiones" },
+  { key: "team_communication", label: "Comunicación en equipo (SBAR)" },
+  { key: "family_communication", label: "Comunicación con familia" },
+  { key: "patient_safety", label: "Seguridad del paciente" },
+];
+const COMPETENCY_LEVELS = ["Emergente", "Competente", "Avanzado"];
+
 function createEmptyBriefForm() {
   return {
     id: null,
@@ -108,6 +122,7 @@ function createEmptyBriefForm() {
     triangle: { appearance: "", breathing: "", circulation: "" },
     redFlags: [],
     criticalActions: [],
+    competencies: [],
     learningObjective: "",
     objectivesByRole: {},
     estimatedMinutes: "",
@@ -400,6 +415,22 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
   base.criticalActions = Array.isArray(criticalActionsSource) 
     ? criticalActionsSource.map(action => String(action).trim()).filter(Boolean)
     : [];
+  const competenciesSource = safeJsonValue(data.competencies);
+  base.competencies = Array.isArray(competenciesSource)
+    ? competenciesSource
+        .map((c) => {
+          if (!c || typeof c !== "object") return null;
+          const key = c.key ? String(c.key).trim() : "";
+          const label = c.label ? String(c.label).trim() : "";
+          const expected = c.expected ? String(c.expected).trim() : "";
+          const notes = c.notes ? String(c.notes).trim() : "";
+          const weight = typeof c.weight === "number" ? c.weight : null;
+          const item = { key: key || undefined, label, expected, notes };
+          if (weight != null) item.weight = weight;
+          return label ? item : null;
+        })
+        .filter(Boolean)
+    : [];
   base.learningObjective = data.learning_objective ? String(data.learning_objective) : "";
   const objectivesSource = data.objectives && typeof data.objectives === "object" ? data.objectives : {};
   const objectivesByRole = {};
@@ -432,6 +463,7 @@ export default function Admin_ScenarioEditor() {
   const [success, setSuccess] = useState("");
   const [scenario, setScenario] = useState(null);
   const [form, setForm] = useState(null);
+  const [briefSupportsCompetencies, setBriefSupportsCompetencies] = useState(false);
   const [allCategories, setAllCategories] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [initialCategories, setInitialCategories] = useState([]);
@@ -842,7 +874,23 @@ export default function Admin_ScenarioEditor() {
           setCategoryError(catErr?.message || "No se pudieron cargar las categorías");
         }
 
-        const briefData = briefRes?.data ?? null;
+        let briefData = briefRes?.data ?? null;
+        // Intentar cargar competencias si la columna existe (fallback silencioso si no existe)
+        try {
+          const { data: compRow, error: compErr } = await supabase
+            .from("case_briefs")
+            .select("competencies")
+            .eq("scenario_id", data.id)
+            .maybeSingle();
+          if (!compErr) {
+            setBriefSupportsCompetencies(true);
+            if (briefData) briefData = { ...briefData, competencies: compRow?.competencies ?? null };
+          } else {
+            setBriefSupportsCompetencies(false);
+          }
+        } catch (_) {
+          setBriefSupportsCompetencies(false);
+        }
         const roleSet = new Set(["MED", "NUR", "PHARM"]);
         const incomingObjectives = briefData?.objectives && typeof briefData.objectives === "object"
           ? briefData.objectives
@@ -1137,6 +1185,15 @@ export default function Admin_ScenarioEditor() {
         .map((it) => ({ text: String(it.text || "").trim(), correct: Boolean(it.correct) }))
         .filter((it) => it.text.length > 0);
       const criticalActionsList = (briefForm?.criticalActions || []).map(a => String(a).trim()).filter(Boolean);
+      const competenciesPayload = (briefForm?.competencies || [])
+        .map((c) => ({
+          key: c.key ? String(c.key).trim() : undefined,
+          label: String(c.label || "").trim(),
+          expected: String(c.expected || "").trim(),
+          notes: String(c.notes || "").trim() || undefined,
+          weight: typeof c.weight === "number" ? c.weight : undefined,
+        }))
+        .filter((c) => c.label.length > 0);
       const explicitMinutes = parseNumberField(briefForm?.estimatedMinutes);
       const scenarioMinutes = parseNumberField(scenario?.estimated_minutes);
       const finalMinutes = explicitMinutes ?? scenarioMinutes ?? 10;
@@ -1160,6 +1217,9 @@ export default function Admin_ScenarioEditor() {
         estimated_minutes: finalMinutes,
         level: levelValue,
       };
+      if (briefSupportsCompetencies && competenciesPayload.length > 0) {
+        basePayload.competencies = competenciesPayload;
+      }
       if (briefForm?.id) {
         const { data, error: updateErr } = await supabase
           .from("case_briefs")
@@ -1200,6 +1260,7 @@ export default function Admin_ScenarioEditor() {
         chips: chipsList.length,
         red_flags: redFlagsPayload.length,
         critical_actions: criticalActionsList.length,
+        competencies: competenciesPayload.length,
       });
       setBriefSuccess("Brief actualizado");
     } catch (err) {
@@ -2294,6 +2355,128 @@ export default function Admin_ScenarioEditor() {
                         ))
                       )}
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Competencias del escenario</span>
+                      <div className="flex items-center gap-2">
+                        <select
+                          onChange={(e) => {
+                            const key = e.target.value;
+                            if (!key) return;
+                            const found = COMPETENCY_CATALOG.find((c) => c.key === key);
+                            if (!found) return;
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              competencies: [
+                                ...(prev.competencies || []),
+                                { key: found.key, label: found.label, expected: "Competente" },
+                              ],
+                            }));
+                            e.target.value = "";
+                          }}
+                          defaultValue=""
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700"
+                        >
+                          <option value="">+ Añadir desde catálogo…</option>
+                          {COMPETENCY_CATALOG.map((c) => (
+                            <option key={c.key} value={c.key}>{c.label}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setBriefForm((prev) => ({
+                            ...prev,
+                            competencies: [...(prev.competencies || []), { label: "", expected: "Emergente" }],
+                          }))}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                        >
+                          + Añadir personalizada
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Selecciona 3–6 competencias clave que evalúa este caso y define el nivel esperado.
+                    </p>
+                    <div className="space-y-3">
+                      {(briefForm.competencies || []).length === 0 ? (
+                        <p className="text-sm text-slate-500 italic py-2">No hay competencias añadidas.</p>
+                      ) : (
+                        (briefForm.competencies || []).map((c, idx) => (
+                          <div key={idx} className="rounded-xl border border-slate-200 p-3 flex flex-col gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                              <input
+                                type="text"
+                                value={c.label || ""}
+                                onChange={(e) => {
+                                  const updated = [...(briefForm.competencies || [])];
+                                  updated[idx] = { ...(updated[idx] || {}), label: e.target.value };
+                                  setBriefForm((prev) => ({ ...prev, competencies: updated }));
+                                }}
+                                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                                placeholder="Ej: Razonamiento diagnóstico"
+                              />
+                              <select
+                                value={c.expected || "Emergente"}
+                                onChange={(e) => {
+                                  const updated = [...(briefForm.competencies || [])];
+                                  updated[idx] = { ...(updated[idx] || {}), expected: e.target.value };
+                                  setBriefForm((prev) => ({ ...prev, competencies: updated }));
+                                }}
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                              >
+                                {COMPETENCY_LEVELS.map((lvl) => (
+                                  <option key={lvl} value={lvl}>{lvl}</option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = (briefForm.competencies || []).filter((_, i) => i !== idx);
+                                  setBriefForm((prev) => ({ ...prev, competencies: updated }));
+                                }}
+                                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 hover:bg-rose-100"
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                              <input
+                                type="text"
+                                value={c.notes || ""}
+                                onChange={(e) => {
+                                  const updated = [...(briefForm.competencies || [])];
+                                  updated[idx] = { ...(updated[idx] || {}), notes: e.target.value };
+                                  setBriefForm((prev) => ({ ...prev, competencies: updated }));
+                                }}
+                                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                                placeholder="Notas o criterios de evaluación (opcional)"
+                              />
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                min="0"
+                                step="0.1"
+                                value={typeof c.weight === 'number' ? c.weight : ''}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                  const updated = [...(briefForm.competencies || [])];
+                                  updated[idx] = { ...(updated[idx] || {}), weight: Number.isFinite(val) ? val : undefined };
+                                  setBriefForm((prev) => ({ ...prev, competencies: updated }));
+                                }}
+                                className="w-32 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                                placeholder="Peso"
+                              />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {!briefSupportsCompetencies && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                        Nota: estas competencias se guardarán cuando se active la columna en base de datos.
+                      </div>
+                    )}
                   </div>
                   {/* Duración estimada se gestiona en Parámetros de intento */}
                 </div>
