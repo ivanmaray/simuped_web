@@ -2938,6 +2938,7 @@ export default function Admin_ScenarioEditor() {
             ) : null}
           </div>
 
+          {/* Lecturas y recursos movido entre Objetivos y Briefing */}
           <div className="rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -3021,37 +3022,36 @@ export default function Admin_ScenarioEditor() {
                               value={resource.type || ""}
                               onChange={(event) => handleResourceChange(index, "type", event.target.value)}
                               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                              placeholder="Guía, vídeo, etc."
+                              placeholder="Artículo, guía, vídeo…"
                             />
                           </label>
                           <label className="block text-sm text-slate-600">
                             <span className="text-xs uppercase tracking-wide text-slate-400">Año</span>
                             <input
                               type="number"
-                              value={resource.year ?? ""}
+                              value={resource.year || ""}
                               onChange={(event) => handleResourceChange(index, "year", event.target.value)}
                               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                              min="1900"
-                              max="2100"
+                              placeholder="2024"
                             />
                           </label>
                           <label className="block text-sm text-slate-600">
-                            <span className="text-xs uppercase tracking-wide text-slate-400">Peso</span>
+                            <span className="text-xs uppercase tracking-wide text-slate-400">Peso (relevancia)</span>
                             <input
                               type="number"
-                              value={resource.weight ?? ""}
+                              value={typeof resource.weight === 'number' ? resource.weight : ''}
                               onChange={(event) => handleResourceChange(index, "weight", event.target.value)}
                               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                              step="10"
+                              placeholder="1"
                             />
                           </label>
                         </div>
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="mt-3 flex flex-wrap items-center gap-4">
                           <label className="inline-flex items-center gap-2 text-sm text-slate-600">
                             <input
                               type="checkbox"
                               checked={Boolean(resource.free_access)}
-                              onChange={() => toggleResourceFreeAccess(index)}
+                              onChange={(event) => handleResourceChange(index, "free_access", event.target.checked)}
                               className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
                             />
                             Acceso libre
@@ -3059,9 +3059,9 @@ export default function Admin_ScenarioEditor() {
                           <button
                             type="button"
                             onClick={() => removeResource(index)}
-                            className="text-sm text-rose-500 hover:text-rose-600"
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 hover:bg-rose-100"
                           >
-                            Eliminar recurso
+                            Eliminar
                           </button>
                         </div>
                       </div>
@@ -3070,6 +3070,7 @@ export default function Admin_ScenarioEditor() {
                 </div>
               </>
             ) : null}
+          </div>
           </div>
 
           {/* Sección de Parámetros movida hacia arriba */}
