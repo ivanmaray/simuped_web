@@ -113,7 +113,7 @@ export default function Navbar({ variant = "auto" }) {
         </div>
 
         {/* Mobile sheet */}
-        <div className={`md:hidden transition-[max-height,opacity] duration-300 ease-out overflow-hidden border-t border-slate-200 ${open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}>
+        <div className={`md:hidden transition-[max-height,opacity] duration-300 ease-out overflow-y-auto border-t border-slate-200 ${open ? "max-h-[70vh] opacity-100" : "max-h-0 opacity-0"}`}>
           <div className="bg-white">
             <nav className="max-w-6xl mx-auto px-4 py-3 grid gap-2">
               <MobileItem to="/" label="Inicio" onClick={() => setOpen(false)} />
