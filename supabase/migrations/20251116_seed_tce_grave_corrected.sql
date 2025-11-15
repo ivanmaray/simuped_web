@@ -18,29 +18,65 @@ BEGIN
   LIMIT 1;
 
   IF v_scenario_id IS NULL THEN
-    INSERT INTO public.scenarios (title, summary, status, mode, level, difficulty, estimated_minutes, max_attempts)
-    VALUES (
-      'Traumatismo craneoencefálico grave pediátrico',
-      'Niño de 8 años con traumatismo craneal severo tras caída. Llegada reciente a área de reanimación. Requiere valoración ABC rápida y preparación para posibles intervenciones avanzadas.',
-      'Borrador',
-      ARRAY['presencial','online'],
-      'avanzado',
-      'Intermedio',
-      25,
-      3
-    )
-    RETURNING id INTO v_scenario_id;
+    -- Intentar con 'Borrador'; si constraint aún no actualizado, fallback a 'En construcción: en proceso'
+    BEGIN
+      INSERT INTO public.scenarios (title, summary, status, mode, level, difficulty, estimated_minutes, max_attempts)
+      VALUES (
+        'Traumatismo craneoencefálico grave pediátrico',
+        'Niño de 8 años con traumatismo craneal severo tras caída. Llegada reciente a área de reanimación. Requiere valoración ABC rápida y preparación para posibles intervenciones avanzadas.',
+        'Borrador',
+        ARRAY['presencial','online'],
+        'avanzado',
+        'Intermedio',
+        25,
+        3
+      )
+      RETURNING id INTO v_scenario_id;
+    EXCEPTION WHEN check_violation THEN
+      IF SQLERRM LIKE '%scenarios_status_check%' THEN
+        INSERT INTO public.scenarios (title, summary, status, mode, level, difficulty, estimated_minutes, max_attempts)
+        VALUES (
+          'Traumatismo craneoencefálico grave pediátrico',
+          'Niño de 8 años con traumatismo craneal severo tras caída. Llegada reciente a área de reanimación. Requiere valoración ABC rápida y preparación para posibles intervenciones avanzadas.',
+          'En construcción: en proceso',
+          ARRAY['presencial','online'],
+          'avanzado',
+          'Intermedio',
+          25,
+          3
+        )
+        RETURNING id INTO v_scenario_id;
+      ELSE
+        RAISE;
+      END IF;
+    END;
   ELSE
-    -- Actualizar campos clave (no se tocan otros metadatos que puedan haber sido editados en UI)
-    UPDATE public.scenarios
-    SET summary = 'Niño de 8 años con traumatismo craneal severo tras caída. Llegada reciente a área de reanimación. Requiere valoración ABC rápida y preparación para posibles intervenciones avanzadas.',
-        status = 'Borrador',
-        mode = ARRAY['presencial','online'],
-        level = 'avanzado',
-        difficulty = 'Intermedio',
-        estimated_minutes = 25,
-        max_attempts = 3
-    WHERE id = v_scenario_id;
+    -- Actualizar; mismo fallback por si constraint aún no acepta 'Borrador'
+    BEGIN
+      UPDATE public.scenarios
+      SET summary = 'Niño de 8 años con traumatismo craneal severo tras caída. Llegada reciente a área de reanimación. Requiere valoración ABC rápida y preparación para posibles intervenciones avanzadas.',
+          status = 'Borrador',
+          mode = ARRAY['presencial','online'],
+          level = 'avanzado',
+          difficulty = 'Intermedio',
+          estimated_minutes = 25,
+          max_attempts = 3
+      WHERE id = v_scenario_id;
+    EXCEPTION WHEN check_violation THEN
+      IF SQLERRM LIKE '%scenarios_status_check%' THEN
+        UPDATE public.scenarios
+        SET summary = 'Niño de 8 años con traumatismo craneal severo tras caída. Llegada reciente a área de reanimación. Requiere valoración ABC rápida y preparación para posibles intervenciones avanzadas.',
+            status = 'En construcción: en proceso',
+            mode = ARRAY['presencial','online'],
+            level = 'avanzado',
+            difficulty = 'Intermedio',
+            estimated_minutes = 25,
+            max_attempts = 3
+        WHERE id = v_scenario_id;
+      ELSE
+        RAISE;
+      END IF;
+    END;
   END IF;
 
   -- Upsert meta presencial
