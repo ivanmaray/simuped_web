@@ -97,7 +97,7 @@ function createEmptyBriefForm() {
     id: null,
     title: "",
     context: "",
-    chipsText: "",
+    chips: [],
     demographics: { age: "", weightKg: "", sex: "", location: "" },
     chiefComplaint: "",
     historyRaw: "",
@@ -350,7 +350,10 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
   base.title = data.title ? String(data.title) : "";
   base.context = data.context ? String(data.context) : "";
   base.chiefComplaint = data.chief_complaint ? String(data.chief_complaint) : "";
-  base.chipsText = listToTextarea(Array.isArray(data.chips) ? data.chips : safeJsonValue(data.chips));
+  const chipsSource = Array.isArray(data.chips) ? data.chips : safeJsonValue(data.chips);
+  base.chips = Array.isArray(chipsSource)
+    ? chipsSource.map(chip => String(chip).trim()).filter(Boolean)
+    : [];
   const demographicsSource = safeJsonValue(data.demographics);
   if (demographicsSource && typeof demographicsSource === "object") {
     base.demographics = {
@@ -392,10 +395,6 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
     }
   });
   base.objectivesByRole = objectivesByRole;
-  const chipsArray = Array.isArray(data.chips) ? data.chips : safeJsonValue(data.chips);
-  if (!base.chipsText && Array.isArray(chipsArray)) {
-    base.chipsText = chipsArray.map((item) => String(item)).join("\n");
-  }
   if (data.estimated_minutes != null) {
     base.estimatedMinutes = String(data.estimated_minutes);
   }
@@ -1106,7 +1105,7 @@ export default function Admin_ScenarioEditor() {
       const learningObjective = briefForm?.learningObjective?.trim() || null;
       const title = briefForm?.title?.trim() || scenario?.title || "Escenario sin titulo";
       const context = briefForm?.context?.trim() || null;
-      const chipsList = parseChipsInput(briefForm?.chipsText);
+      const chipsList = (briefForm?.chips || []).map(c => String(c).trim()).filter(Boolean);
       const demographicsPayload = sanitizeDemographicsInput(briefForm?.demographics);
       const chiefComplaint = briefForm?.chiefComplaint?.trim() || null;
       const historyPayload = parseHistoryInput(briefForm?.historyRaw);
@@ -2337,17 +2336,52 @@ export default function Admin_ScenarioEditor() {
                       />
                     </label>
                   </div>
-                  <label className="block text-sm text-slate-600">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">Etiquetas (chips)</span>
-                    <textarea
-                      rows={2}
-                      value={briefForm.chipsText}
-                      onChange={(event) => setBriefForm((prev) => ({ ...prev, chipsText: event.target.value }))}
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      placeholder="Una etiqueta por línea o separadas por coma"
-                    />
-                    <span className="mt-1 block text-[11px] text-slate-400">Ejemplo: Anafilaxia, Emergencia farmacologica</span>
-                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Etiquetas (chips)</span>
+                      <button
+                        type="button"
+                        onClick={() => setBriefForm(prev => ({ ...prev, chips: [...(prev.chips || []), ''] }))}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                      >
+                        + Añadir etiqueta
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Palabras clave que resumen el caso. Aparecen como badges en la confirmación y briefing del escenario.
+                    </p>
+                    <div className="space-y-2">
+                      {(briefForm.chips || []).length === 0 ? (
+                        <p className="text-sm text-slate-500 italic py-2">No hay etiquetas. Haz clic en "+ Añadir etiqueta" para crear una.</p>
+                      ) : (
+                        (briefForm.chips || []).map((chip, idx) => (
+                          <div key={idx} className="flex items-start gap-2">
+                            <input
+                              type="text"
+                              value={chip}
+                              onChange={(e) => {
+                                const updated = [...(briefForm.chips || [])];
+                                updated[idx] = e.target.value;
+                                setBriefForm(prev => ({ ...prev, chips: updated }));
+                              }}
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                              placeholder="Ej: Anafilaxia, Shock, Emergencia farmacológica"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (briefForm.chips || []).filter((_, i) => i !== idx);
+                                setBriefForm(prev => ({ ...prev, chips: updated }));
+                              }}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 hover:bg-rose-100"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <p className="text-sm font-medium text-slate-700">Datos del paciente</p>
                     <div className="mt-3 grid gap-3 md:grid-cols-3">
