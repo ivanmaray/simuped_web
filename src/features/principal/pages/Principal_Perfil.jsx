@@ -727,7 +727,9 @@ export default function Principal_Perfil() {
       key: "estado",
       label: "Estado",
       value: statusInfo.approved ? "Aprobado" : "Pendiente",
-      helper: statusInfo.approvedAt ? `Desde ${formatDateShort(statusInfo.approvedAt)}` : "Esperando revisión",
+      helper: statusInfo.approved
+        ? (statusInfo.approvedAt ? `Desde ${formatDateShort(statusInfo.approvedAt)}` : "")
+        : "Esperando revisión",
     },
     {
       key: "verificacion",

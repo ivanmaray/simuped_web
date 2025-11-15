@@ -46,6 +46,8 @@ export default function App() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetMsg, setResetMsg] = useState('')
   const [mountedUI, setMountedUI] = useState(false)
   const [heroVideo, setHeroVideo] = useState('/videohero1.gif')
 
@@ -63,6 +65,7 @@ export default function App() {
   const handleLogin = useCallback(async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setResetMsg('');
     setLoading(true);
 
     const email = e.target.email.value.trim();
@@ -98,6 +101,39 @@ export default function App() {
       setLoading(false);
     }
   }, [navigate]);
+
+  const handleForgotPassword = useCallback(async () => {
+    if (loading || resetLoading) return;
+    setErrorMsg('');
+    setResetMsg('');
+
+    try {
+      const form = document.getElementById('login-form');
+      const emailInput = form?.elements?.namedItem?.('email');
+      const email = (emailInput?.value || '').toString().trim();
+      if (!email) {
+        setResetMsg('Introduce tu email y te enviaremos un enlace.');
+        return;
+      }
+      setResetLoading(true);
+
+      const redirectBase =
+        import.meta.env.VITE_SITE_URL?.trim() ||
+        (typeof window !== 'undefined' ? window.location.origin : '');
+      const redirectTo = redirectBase ? `${redirectBase}/perfil?set_password=1` : undefined;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+      if (error) {
+        setResetMsg(error.message || 'No se pudo enviar el enlace.');
+        return;
+      }
+      setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
+    } finally {
+      setResetLoading(false);
+    }
+  }, [loading, resetLoading]);
 
 useEffect(() => {
   let mounted = true;
@@ -190,7 +226,7 @@ useEffect(() => {
             className={`relative z-[1] bg-white/95 backdrop-blur border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xl ring-1 ring-slate-900/5 md:justify-self-end w-full max-w-[24.5rem] mr-0 xl:mr-2 2xl:mr-4 transition-all duration-700 ease-out ${mountedUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
           >
             <h3 className="text-xl font-semibold mb-3">Iniciar sesión</h3>
-            <form onSubmit={handleLogin} className="flex flex-col gap-3">
+            <form id="login-form" onSubmit={handleLogin} className="flex flex-col gap-3">
               <input
                 name="email"
                 type="email"
@@ -217,6 +253,19 @@ useEffect(() => {
                   </div>
                 )}
               </div>
+              <div className="text-xs text-slate-600">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={loading || resetLoading}
+                  className="underline text-[#0A3D91] hover:text-[#1E6ACB] disabled:opacity-60"
+                >
+                  Olvidé mi contraseña
+                </button>
+              </div>
+              {resetMsg ? (
+                <div className="text-xs text-slate-600">{resetMsg}</div>
+              ) : null}
               <button
                 type="submit"
                 disabled={loading}
