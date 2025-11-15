@@ -107,7 +107,7 @@ function createEmptyBriefForm() {
     imagingText: "",
     triangle: { appearance: "", breathing: "", circulation: "" },
     redFlagsText: "",
-    criticalActionsText: "",
+    criticalActions: [],
     learningObjective: "",
     objectivesByRole: {},
     estimatedMinutes: "",
@@ -374,7 +374,10 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
     };
   }
   base.redFlagsText = listToTextarea(safeJsonValue(data.red_flags));
-  base.criticalActionsText = listToTextarea(safeJsonValue(data.critical_actions));
+  const criticalActionsSource = safeJsonValue(data.critical_actions);
+  base.criticalActions = Array.isArray(criticalActionsSource) 
+    ? criticalActionsSource.map(action => String(action).trim()).filter(Boolean)
+    : [];
   base.learningObjective = data.learning_objective ? String(data.learning_objective) : "";
   const objectivesSource = data.objectives && typeof data.objectives === "object" ? data.objectives : {};
   const objectivesByRole = {};
@@ -1113,7 +1116,7 @@ export default function Admin_ScenarioEditor() {
       const imagingList = parseImagingInput(briefForm?.imagingText);
       const trianglePayload = sanitizeTriangleInput(briefForm?.triangle);
       const redFlagsList = sanitizeRedFlagsInput(briefForm?.redFlagsText);
-      const criticalActionsList = sanitizeCriticalActionsInput(briefForm?.criticalActionsText);
+      const criticalActionsList = (briefForm?.criticalActions || []).map(a => String(a).trim()).filter(Boolean);
       const explicitMinutes = parseNumberField(briefForm?.estimatedMinutes);
       const scenarioMinutes = parseNumberField(scenario?.estimated_minutes);
       const finalMinutes = explicitMinutes ?? scenarioMinutes ?? 10;
@@ -2226,19 +2229,52 @@ export default function Admin_ScenarioEditor() {
                       ))}
                     </div>
                   </div>
-                  <label className="block text-sm text-slate-600">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso</span>
-                    <textarea
-                      rows={5}
-                      value={briefForm.criticalActionsText}
-                      onChange={(event) => setBriefForm((prev) => ({ ...prev, criticalActionsText: event.target.value }))}
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      placeholder={'Administrar adrenalina IM 0.01 mg/kg inmediatamente\nAsegurar vía aérea permeable\nMonitorizar constantes cada 5 minutos'}
-                    />
-                    <span className="mt-1 block text-[11px] text-slate-400">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso</span>
+                      <button
+                        type="button"
+                        onClick={() => setBriefForm(prev => ({ ...prev, criticalActions: [...(prev.criticalActions || []), ''] }))}
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                      >
+                        + Añadir acción
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
                       Se mostrarán en el resumen final tras completar las preguntas. Son conceptos clave que no se pueden pasar por alto y que el alumno debe aprender del caso.
-                    </span>
-                  </label>
+                    </p>
+                    <div className="space-y-2">
+                      {(briefForm.criticalActions || []).length === 0 ? (
+                        <p className="text-sm text-slate-500 italic py-2">No hay acciones críticas. Haz clic en "+ Añadir acción" para crear una.</p>
+                      ) : (
+                        (briefForm.criticalActions || []).map((action, idx) => (
+                          <div key={idx} className="flex items-start gap-2">
+                            <input
+                              type="text"
+                              value={action}
+                              onChange={(e) => {
+                                const updated = [...(briefForm.criticalActions || [])];
+                                updated[idx] = e.target.value;
+                                setBriefForm(prev => ({ ...prev, criticalActions: updated }));
+                              }}
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                              placeholder="Ej: Administrar adrenalina IM 0.01 mg/kg inmediatamente"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (briefForm.criticalActions || []).filter((_, i) => i !== idx);
+                                setBriefForm(prev => ({ ...prev, criticalActions: updated }));
+                              }}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 hover:bg-rose-100"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                   {/* Duración estimada se gestiona en Parámetros de intento */}
                 </div>
               </>
