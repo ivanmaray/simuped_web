@@ -321,6 +321,38 @@ async function handleSubmitAttempt(req, res) {
   }
 }
 
+async function handleGetAttempts(req, res) {
+  try {
+    const client = getServiceClient();
+    const user = await getUserFromRequest(req, client);
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'missing_token' });
+    }
+    const caseId = (req.query.case_id || req.body?.case_id || '').toString();
+    if (!caseId) {
+      return res.status(400).json({ ok: false, error: 'missing_case_id' });
+    }
+    const { data, error } = await client
+      .from('micro_case_attempts')
+      .select('id, score_total, duration_seconds, status, completed_at, attempt_role, created_at')
+      .eq('case_id', caseId)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) {
+      console.error('[micro_cases] get attempts error', error);
+      return res.status(500).json({ ok: false, error: 'supabase_error', detail: error.message });
+    }
+    return res.status(200).json({ ok: true, attempts: data || [] });
+  } catch (err) {
+    if (err.message === 'server_not_configured') {
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+    console.error('[micro_cases] get attempts unexpected', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+}
+
 export default async function handler(req, res) {
   const action = (req.query.action || req.body?.action || 'list').toString();
 
@@ -330,6 +362,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET' && action === 'get') {
     return handleGetCase(req, res);
+  }
+
+  if (req.method === 'GET' && action === 'attempts') {
+    return handleGetAttempts(req, res);
   }
 
   if (action === 'submit') {

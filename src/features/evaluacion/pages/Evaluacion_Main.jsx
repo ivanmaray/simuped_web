@@ -1,5 +1,8 @@
 // src/pages/Evaluacion.jsx
 import { useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
+// Slug del microcaso de status epiléptico
+const STATUS_EPI_SLUG = "status-epileptico-pediatrico-refractario";
 import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
@@ -142,6 +145,11 @@ export default function Evaluacion_Main() {
   const [presLoading, setPresLoading] = useState(false);
   const [presErr, setPresErr] = useState("");
   const [presFeatureAvailable, setPresFeatureAvailable] = useState(true);
+  // --- Microcasos (entrenamiento rápido) ---
+  const [microRows, setMicroRows] = useState([]);           // [{id, case_id, case_title, score_total, duration_seconds, status, completed_at, attempt_role, created_at}]
+  const [microLoading, setMicroLoading] = useState(false);
+  const [microErr, setMicroErr] = useState("");
+  const [microFeatureAvailable, setMicroFeatureAvailable] = useState(true);
 
   const [attemptSearch, setAttemptSearch] = useState("");
   const [scenarioFilter, setScenarioFilter] = useState("");
@@ -463,6 +471,53 @@ export default function Evaluacion_Main() {
       try {
         if (targetUserId) await loadPresencialesFor(targetUserId);
       } catch {}
+      // --- Cargar microcasos del usuario ---
+      async function loadMicroCasesFor(userId) {
+        setMicroLoading(true);
+        setMicroErr("");
+        try {
+          const { data: attempts, error: attErr } = await supabase
+            .from("micro_case_attempts")
+            .select(`
+              id, case_id, score_total, duration_seconds, status, completed_at, attempt_role, created_at,
+              micro_cases ( title, slug )
+            `)
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false });
+          if (attErr) {
+            if (String(attErr?.code) === "42P01") {
+              setMicroFeatureAvailable(false);
+              setMicroRows([]);
+              setMicroLoading(false);
+              return;
+            }
+            throw attErr;
+          }
+          const results = (attempts || []).map((att) => ({
+            id: att.id,
+            case_id: att.case_id,
+            case_title: att.micro_cases?.title || `Microcaso ${att.case_id}`,
+            case_slug: att.micro_cases?.slug || "",
+            score_total: att.score_total || 0,
+            duration_seconds: att.duration_seconds || null,
+            status: att.status || "in_progress",
+            completed_at: att.completed_at || null,
+            attempt_role: att.attempt_role || "",
+            created_at: att.created_at || null
+          }));
+          setMicroRows(results);
+          setMicroFeatureAvailable(true);
+        } catch (e) {
+          console.warn("[Evaluacion] microcasos error:", e);
+          setMicroErr(e?.message || "No se pudieron cargar los microcasos.");
+          setMicroRows([]);
+        } finally {
+          setMicroLoading(false);
+        }
+      }
+      try {
+        if (targetUserId) await loadMicroCasesFor(targetUserId);
+      } catch {}
       setLoading(false);
     })();
 
@@ -572,6 +627,15 @@ export default function Evaluacion_Main() {
     });
   }, [attempts, attemptSearch, scenarioFilter, statusFilter, scoreFilter]);
 
+  // Intentos previos del microcaso de status epiléptico
+  const statusEpiAttempts = useMemo(() => {
+    return attempts.filter((a) => {
+      // Filtra por slug, título o id si lo tienes
+      const title = (a.scenarios?.title || "").toLowerCase();
+      return title.includes("status epiléptico") || title.includes("epileptico pediatrico") || title.includes("epiléptico") || (a.scenarios?.slug === STATUS_EPI_SLUG);
+    });
+  }, [attempts]);
+
   const resetAttemptFilters = () => {
     setAttemptSearch("");
     setScenarioFilter("");
@@ -585,6 +649,13 @@ export default function Evaluacion_Main() {
     const avgScore = total ? Math.round((presRows.reduce((sum, r) => sum + (Number(r.score || 0)), 0) / total)) : null;
     return { total, finalizados, avgScore };
   }, [presRows]);
+
+  const microSummary = useMemo(() => {
+    const total = microRows.length;
+    const completados = microRows.filter((r) => r.status === "completed").length;
+    const avgScore = total ? Math.round((microRows.reduce((sum, r) => sum + (Number(r.score_total || 0)), 0) / total)) : null;
+    return { total, completados, avgScore };
+  }, [microRows]);
 
   function PresEstadoBadge({ endedFlag, started_at }) {
     const estado = endedFlag ? 'Finalizada' : (started_at ? 'En curso' : 'Pendiente');
@@ -652,6 +723,43 @@ export default function Evaluacion_Main() {
       </section>
 
       <main className="max-w-6xl mx-auto px-5 py-8 space-y-8">
+        {/* Menú de navegación interna */}
+        <nav className="flex items-center gap-3 overflow-x-auto pb-2">
+          <a
+            href="#simulacros-online"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            <ChartBarIcon className="h-4 w-4" />
+            Simulacros online
+          </a>
+          <a
+            href="#simulacros-presenciales"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            <ClipboardDocumentListIcon className="h-4 w-4" />
+            Simulacros presenciales
+          </a>
+          {isAdmin && (
+            <a
+              href="#entrenamiento-rapido"
+              className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 whitespace-nowrap"
+            >
+              <SparklesIcon className="h-4 w-4" />
+              Entrenamiento rápido
+              <span className="text-xs uppercase tracking-wide text-amber-600">(Dev)</span>
+            </a>
+          )}
+          <a
+            href="#lecturas-recomendadas"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            Lecturas recomendadas
+          </a>
+        </nav>
+
         <BarChart
           data={summaryByScenario.map(d => ({ label: d.label, value: d.value }))}
           title="Media de puntuación por escenario"
@@ -659,7 +767,7 @@ export default function Evaluacion_Main() {
 
         <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)]">
           <header className="flex flex-col gap-2 px-6 pt-6 md:flex-row md:items-start md:justify-between">
-            <div>
+            <div id="simulacros-online">
               <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                 <ChartBarIcon className="h-5 w-5 text-[#0A3D91]" />
                 {viewUserId && session?.user?.id && viewUserId !== session.user.id
@@ -821,12 +929,6 @@ export default function Evaluacion_Main() {
                               >
                                 Revisar
                               </Link>
-                              <Link
-                                to={a.finished_at ? `/simulacion/${a.scenario_id}/confirm` : `/simulacion/${a.scenario_id}?attempt=${a.id}`}
-                                className="inline-flex items-center gap-1 rounded-lg bg-[#0A3D91] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0A3D91]/90"
-                              >
-                                Practicar
-                              </Link>
                             </div>
                           </div>
                         </div>
@@ -842,7 +944,7 @@ export default function Evaluacion_Main() {
         {presFeatureAvailable && (
           <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)] px-6 py-6">
             <header className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <div>
+              <div id="simulacros-presenciales">
                 <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                   <ClipboardDocumentListIcon className="h-5 w-5 text-[#0A3D91]" />
                   Simulacros presenciales
@@ -938,10 +1040,113 @@ export default function Evaluacion_Main() {
             </p>
           </section>
         )}
+        {/* Entrenamiento Rápido (Microcasos) */}
+        {microFeatureAvailable && isAdmin && (
+          <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)] px-6 py-6">
+            <header className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div id="entrenamiento-rapido">
+                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <SparklesIcon className="h-5 w-5 text-[#0A3D91]" />
+                  Entrenamiento Rápido (Microcasos)
+                </h3>
+                <p className="text-sm text-slate-600">Tus intentos en microcasos interactivos de toma de decisiones clínicas.</p>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-slate-500">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                  Total: {microSummary.total}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1">
+                  Completados: {microSummary.completados}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
+                  Nota media: {microSummary.avgScore != null ? `${microSummary.avgScore} pts` : '—'}
+                </span>
+              </div>
+            </header>
+            {microErr && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{microErr}</div>}
+            {microLoading && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Array.from({ length: 2 }).map((_, idx) => (
+                  <div key={`micro-skeleton-${idx}`} className="h-40 rounded-2xl border border-slate-200 bg-slate-50 animate-pulse" />
+                ))}
+              </div>
+            )}
+            {!microLoading && (!microRows || microRows.length === 0) ? (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-600">
+                {viewUserId && session?.user?.id && viewUserId !== session.user.id
+                  ? "Este usuario no tiene microcasos registrados."
+                  : "Aún no has completado ningún microcaso. Visita Entrenamiento Rápido para empezar."}
+              </div>
+            ) : null}
+
+            {!microLoading && microRows.length > 0 && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+                {microRows.map((r) => {
+                  const dateStr = r.completed_at ? fmtDate(r.completed_at) : (r.created_at ? fmtDate(r.created_at) : '—');
+                  const statusLabel = r.status === "completed" ? "Completado" : "En progreso";
+                  const statusClass = r.status === "completed"
+                    ? "bg-emerald-100 text-emerald-700 ring-emerald-200"
+                    : "bg-amber-100 text-amber-700 ring-amber-200";
+                  return (
+                    <article
+                      key={r.id}
+                      className="relative overflow-hidden rounded-3xl border border-white/80 bg-white px-5 py-5 shadow-[0_18px_42px_-30px_rgba(15,23,42,0.45)]"
+                    >
+                      <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-r from-indigo-500/10 via-transparent to-transparent" aria-hidden="true" />
+                      <div className="relative z-10 flex flex-col gap-4">
+                        <header className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-400">{dateStr}</p>
+                            <h4 className="mt-1 text-lg font-semibold text-slate-900 line-clamp-2">{r.case_title}</h4>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                              <RoleChip role={r.attempt_role} />
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 ${statusClass}`}>
+                                {statusLabel}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs uppercase tracking-wide text-slate-400">Puntuación</p>
+                            <p className="text-2xl font-semibold text-slate-900">{r.score_total}</p>
+                          </div>
+                        </header>
+
+                        <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">
+                          <div>
+                            <p className="font-medium text-slate-500">Duración</p>
+                            <p>{r.duration_seconds ? `${r.duration_seconds}s` : "—"}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-500">Estado</p>
+                            <p>{statusLabel}</p>
+                          </div>
+                        </div>
+
+                        <footer className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-slate-500">{r.status === "completed" ? "Intento finalizado" : "Puedes continuar"}</span>
+                          <Link
+                            to={`/quicktraining?case=${r.case_slug || r.case_id}`}
+                            className="inline-flex items-center gap-1 rounded-lg bg-[#0A3D91] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0A3D91]/90"
+                          >
+                            {r.status === "completed" ? "Reintentar" : "Continuar"}
+                          </Link>
+                        </footer>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            <p className="mt-6 text-xs text-slate-500">
+              Nota: los microcasos son escenarios cortos de toma de decisiones rápida. La puntuación refleja la calidad de tus elecciones clínicas.
+            </p>
+          </section>
+        )}
         {/* Lecturas recomendadas por escenario (a partir de escenarios con intentos) */}
         <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)] px-6 py-6">
           <header className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-            <div>
+            <div id="lecturas-recomendadas">
               <h3 className="text-lg font-semibold text-slate-900">Lecturas recomendadas</h3>
               <p className="text-sm text-slate-600">Refuerza tus decisiones con bibliografía asociada a cada escenario.</p>
             </div>

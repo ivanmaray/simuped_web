@@ -1,4 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
+function usePreviousAttempts(caseId) {
+  const [attempts, setAttempts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!caseId) return;
+    setLoading(true);
+    fetch(`/api/micro_cases?action=attempts&case_id=${caseId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setAttempts(Array.isArray(data.attempts) ? data.attempts : []);
+      })
+      .catch(() => setAttempts([]))
+      .finally(() => setLoading(false));
+  }, [caseId]);
+  return { attempts, loading };
+}
 import ReactMarkdown from "react-markdown";
 
 const ROLE_LABELS = {
@@ -33,6 +50,7 @@ const FEEDBACK_DELAY_MS = 400;
 const INFO_AUTO_ADVANCE_DELAY_MS = 1400;
 
 export default function MicroCasePlayer({ microCase, onSubmitAttempt, participantRole }) {
+  const { attempts: previousAttempts, loading: loadingAttempts } = usePreviousAttempts(microCase?.id);
   const { nodeMap, startId } = useNodeGraph(microCase);
   const [currentNodeId, setCurrentNodeId] = useState(startId);
   const [history, setHistory] = useState([]);
@@ -64,10 +82,21 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
   const currentNode = currentNodeId ? nodeMap.get(currentNodeId) : null;
   const roleLabel = participantRole ? (ROLE_LABELS[participantRole] || participantRole) : null;
-  const totalDecisionNodes = useMemo(() => {
-    return (microCase?.nodes || []).filter((node) => node.kind === "decision").length || 0;
+  // Nuevo: contar todos los nodos relevantes (decision, info, outcome no automáticos)
+  const totalRelevantNodes = useMemo(() => {
+    return (microCase?.nodes || []).filter(
+      (node) => ["decision", "info", "outcome"].includes(node.kind)
+    ).length || 0;
   }, [microCase]);
-  const progressRatio = totalDecisionNodes > 0 ? Math.min(1, history.length / totalDecisionNodes) : 0;
+
+  // Nodos visitados: historial + el nodo actual si no está en historial
+  const visitedNodeIds = useMemo(() => {
+    const ids = new Set(history.map((step) => step.nodeId));
+    if (currentNode && !ids.has(currentNode.id)) ids.add(currentNode.id);
+    return ids;
+  }, [history, currentNode]);
+
+  const progressRatio = totalRelevantNodes > 0 ? Math.min(1, visitedNodeIds.size / totalRelevantNodes) : 0;
   const hasNode = Boolean(currentNode);
   const isTerminalNode = hasNode ? currentNode.is_terminal : false;
 
@@ -169,7 +198,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     );
   }
 
-  const progressPercent = showSummary ? 100 : Math.round(progressRatio * 100);
+  // Solo mostrar 100% si el caso está completado (nodo terminal)
+  const progressPercent = showSummary || isTerminalNode ? 100 : Math.round(progressRatio * 100);
   const progressBarWidth = `${Math.min(100, Math.max(0, progressPercent))}%`;
 
   return (
@@ -362,7 +392,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
         {history.length > 0 && (
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-5">
-            <h4 className="text-sm font-semibold text-slate-800">Historial</h4>
+            <h4 className="text-sm font-semibold text-slate-800">Historial actual</h4>
             <ol className="mt-3 space-y-2 text-xs text-slate-600">
               {history.map((step, index) => (
                 <li key={`${step.nodeId}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
@@ -378,6 +408,31 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             </ol>
           </div>
         )}
+
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-5">
+          <h4 className="text-sm font-semibold text-slate-800">Intentos previos</h4>
+          {loadingAttempts ? (
+            <div className="text-xs text-slate-500">Cargando intentos…</div>
+          ) : previousAttempts.length === 0 ? (
+            <div className="text-xs text-slate-500">No hay intentos previos registrados.</div>
+          ) : (
+            <ol className="mt-3 space-y-2 text-xs text-slate-600">
+              {previousAttempts.map((att) => (
+                <li key={att.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span>{dayjs(att.completed_at || att.created_at).format("DD/MM/YYYY HH:mm")}</span>
+                    <span className="font-semibold text-slate-700">{att.score_total} pts</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span>Rol: {ROLE_LABELS[att.attempt_role] || att.attempt_role || "-"}</span>
+                    <span>{att.duration_seconds ? `${att.duration_seconds}s` : "-"}</span>
+                  </div>
+                  <span className="block mt-1 text-[0.7rem] text-slate-500">{att.status === "completed" ? "Completado" : "En progreso"}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </aside>
     </div>
   );

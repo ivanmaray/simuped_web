@@ -13,6 +13,7 @@
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.55.0",
     "@vercel/analytics": "^1.5.0",
+    "dayjs": "^1.11.19",
     "dom-to-image-more": "^2.16.0",
     "html2canvas": "^1.4.1",
     "react": "^18.3.1",
