@@ -98,7 +98,7 @@ BEGIN
   INSERT INTO public.micro_case_nodes (case_id, kind, body_md, order_index, is_terminal) VALUES (
     v_case_id,
     'decision',
-    'T+40 min. Decisión: INTUBACIÓN para status refractario. SatO2 88%, CO2 56 mmHg, TA 92/58 (PAM 69). SECIP recomienda: inducción secuencia rápida adaptada, evitar propofol si inestabilidad hemodinámica. Opciones inductores: 1) TIOPENTAL 4-5 mg/kg (antiepiléptico potente, riesgo hipotensión moderado), 2) MIDAZOLAM 0.2-0.3 mg/kg (seguro, menos hipotensor), 3) KETAMINA 1-2 mg/kg (estabilidad hemodinámica, efecto antiepiléptico NMDA, puede aumentar secreciones), 4) PROPOFOL 2-3 mg/kg (evitar si PAM límite). Relajante: rocuronio 1 mg/kg. ¿Qué inductor seleccionas considerando PAM 69 y objetivo antiepiléptico?',
+    'T+40 min. Decisión: INTUBACIÓN para status refractario. SatO2 88%, CO2 56 mmHg, TA 92/58 (PAM 69). SECIP recomienda: inducción secuencia rápida adaptada, evitar propofol si inestabilidad hemodinámica. Opciones inductores: 1) TIOPENTAL 4-5 mg/kg (antiepiléptico potente, riesgo hipotensión moderado), 2) MIDAZOLAM 0.2-0.3 mg/kg (seguro, menos hipotensor), 3) PROPOFOL 2-3 mg/kg (evitar si PAM límite). Relajante: rocuronio 1 mg/kg + fentanilo 1 mcg/kg. ¿Qué inductor seleccionas considerando PAM 69 y objetivo antiepiléptico?',
     4,
     false
   ) RETURNING id INTO v_refractario_pre_intub_node;
@@ -107,7 +107,7 @@ BEGIN
   INSERT INTO public.micro_case_nodes (case_id, kind, body_md, order_index, is_terminal, metadata) VALUES (
     v_case_id,
     'info',
-    'Se realiza intubación con protección cervical ligera y preoxigenación. Inducción: MIDAZOLAM 0.2 mg/kg + FENTANILO 1 mcg/kg + ROCURONIO 1.2 mg/kg. Se coloca capnografía, se inicia ventilación controlada y monitoreo continuo. EEG continuo en preparación.',
+    'Se realiza intubación con protección cervical ligera y preoxigenación. Inducción según inductor seleccionado + FENTANILO 1 mcg/kg + ROCURONIO 1.2 mg/kg. Laringoscopia directa, tubo 6.0 mm con balón, confirmación capnografía (curva normal), auscultación bilateral simétrica. Se inicia ventilación controlada: VC 180 mL (7.5 mL/kg), FR 20, PEEP 5, FiO2 0.6. Monitoreo continuo. EEG continuo en preparación.',
     5,
     false,
     '{"airway":"secured"}'::jsonb
@@ -272,11 +272,9 @@ BEGIN
   -- Opciones preparación intubación (T+40 min: elección inductor)
   -----------------------------------------------------------------
   INSERT INTO public.micro_case_options (node_id,label,next_node_id,feedback_md,score_delta,is_critical,target_roles) VALUES
-    (v_refractario_pre_intub_node,'TIOPENTAL 4-5 mg/kg (100-120 mg) inducción + rocuronio 1 mg/kg',v_intubacion_node,'Opción gold standard SECIP: tiopental es antiepiléptico potente (depresión cortical directa), inducción rápida. Con PAM 69 hay riesgo hipotensión moderado (preparar vasopresores), pero beneficio anticonvulsivo supera riesgo.',4,true,ARRAY['medico']),
-    (v_refractario_pre_intub_node,'MIDAZOLAM 0.2-0.3 mg/kg (5-7 mg) inducción + rocuronio 1 mg/kg',v_intubacion_node,'Opción segura SECIP: midazolam menos hipotensor que tiopental/propofol, efecto antiepiléptico GABA, permite continuar infusión post-IOT. Ideal si inestabilidad hemodinámica. PAM 69 tolera bien.',4,true,ARRAY['medico']),
-    (v_refractario_pre_intub_node,'KETAMINA 1-2 mg/kg (24-48 mg) inducción + rocuronio 1 mg/kg',v_intubacion_node,'Opción válida: ketamina mantiene/aumenta TA (ventaja con PAM 69), efecto antiepiléptico NMDA. Precaución: aumenta secreciones (ya abundantes). SECIP la considera alternativa aceptable.',3,false,ARRAY['medico']),
-    (v_refractario_pre_intub_node,'PROPOFOL 2-3 mg/kg (48-72 mg) inducción + rocuronio 1 mg/kg',v_complicacion_hipotension_node,'Error: SECIP desaconseja propofol si PAM límite (<75-80 mmHg pediátrico). Con PAM 69 puede causar colapso cardiovascular (PAM <50). Tiopental/midazolam/ketamina son más seguros.',-3,false,ARRAY['medico']),
-    (v_refractario_pre_intub_node,'ETOMIDATO 0.3 mg/kg (7 mg) inducción + rocuronio 1 mg/kg',v_intubacion_node,'Opción hemodinámicamente neutra: etomidato no baja TA (ventaja con PAM 69). Sin embargo, NO es antiepiléptico y puede causar mioclonías. SECIP lo menciona solo si contraindicación a otros. Suboptimal.',1,false,ARRAY['medico']),
+    (v_refractario_pre_intub_node,'TIOPENTAL 4-5 mg/kg (100-120 mg) + fentanilo 1 mcg/kg + rocuronio 1 mg/kg',v_intubacion_node,'Opción gold standard SECIP: tiopental es antiepiléptico potente (depresión cortical directa), inducción rápida. Con PAM 69 hay riesgo hipotensión moderado (preparar vasopresores), pero beneficio anticonvulsivo supera riesgo.',4,true,ARRAY['medico']),
+    (v_refractario_pre_intub_node,'MIDAZOLAM 0.2-0.3 mg/kg (5-7 mg) + fentanilo 1 mcg/kg + rocuronio 1 mg/kg',v_intubacion_node,'Opción segura SECIP: midazolam menos hipotensor que tiopental/propofol, efecto antiepiléptico GABA, permite continuar infusión post-IOT. Ideal si inestabilidad hemodinámica. PAM 69 tolera bien.',4,true,ARRAY['medico']),
+    (v_refractario_pre_intub_node,'PROPOFOL 2-3 mg/kg (48-72 mg) + fentanilo 1 mcg/kg + rocuronio 1 mg/kg',v_complicacion_hipotension_node,'Error: SECIP desaconseja propofol si PAM límite (<75-80 mmHg pediátrico). Con PAM 69 puede causar colapso cardiovascular (PAM <50). Tiopental/midazolam son más seguros.',-3,false,ARRAY['medico']),
     (v_refractario_pre_intub_node,'Enfermería: preoxigenación FiO2 1.0, aspiración, atropina 0.02 mg/kg IV lista, vasopresores conectados',v_intubacion_node,'Excelente: preoxigenación crítica (SatO2 88%), atropina previene bradicardia vagal, vasopresores listos para hipotensión post-inducción (probable con tiopental).',4,false,ARRAY['enfermeria']);
 
   -----------------------------------------------------------------
