@@ -122,11 +122,11 @@ BEGIN
     false
   ) RETURNING id INTO v_midazolam_inf_node;
 
-  -- Nodo EEG continuo y monitorización correcta
+  -- Nodo EEG continuo y monitorización correcta (decision para estrategia destete)
   INSERT INTO public.micro_case_nodes (case_id, kind, body_md, order_index, is_terminal) VALUES (
     v_case_id,
-    'info',
-    'EEG continuo instalado. Se observa patrón evolutivo hacia supresión intermitente tras titulación de midazolam. Lactato 2.1 mmol/L, glucemia 86 mg/dL, Na 136 mEq/L.',
+    'decision',
+    'EEG continuo instalado. Se observa patrón evolutivo hacia supresión intermitente (burst-suppression) tras titulación de midazolam. Lactato 2.1 mmol/L, glucemia 86 mg/dL, Na 136 mEq/L. Paciente sedado profundamente, sin crisis clínicas aparentes. Ahora requiere estrategia de mantenimiento y destete: ¿Cómo manejas los próximos 24-48h para consolidar control sin recurrencia?',
     7,
     false
   ) RETURNING id INTO v_eeg_continuo_node;
