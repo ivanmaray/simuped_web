@@ -191,11 +191,11 @@ BEGIN
     '{"is_correct":true}'::jsonb
   ) RETURNING id INTO v_control_final_node;
 
-  -- Nodo ketamina añadido en refractario
+  -- Nodo ketamina añadido en refractario (info que conecta a EEG continuo)
   INSERT INTO public.micro_case_nodes (case_id, kind, body_md, order_index, is_terminal) VALUES (
     v_case_id,
     'info',
-    'Añadida KETAMINA: bolo 1.5 mg/kg seguido de 2 mg/kg/h complementando midazolam. EEG mejora hacia patrón de supresión mayor. Se evita hipotensión significativa.',
+    'Añadida KETAMINA: bolo 1.5 mg/kg seguido de 2 mg/kg/h complementando midazolam. A los 10 min: movimientos sutiles disminuyen, PAM estable 68 mmHg (mejor que con midazolam solo), FC 136. EEG continuo llega y muestra patrón evolutivo hacia supresión mayor. Estrategia combinada GABA+NMDA permite control sin colapso hemodinámico.',
     14,
     false
   ) RETURNING id INTO v_refractario_ketamina_node;
@@ -284,6 +284,12 @@ BEGIN
     (v_intubacion_node,'Bolo midazolam 0.2 mg/kg + iniciar 0.1 mg/kg/h y titulación EEG',v_midazolam_inf_node,'Estandar: titulación por EEG reduce actividad eléctrica residual.',3,true,ARRAY['medico']),
     (v_intubacion_node,'Añadir inmediatamente ketamina sin valorar respuesta inicial a midazolam',v_refractario_ketamina_node,'Puede ser útil pero se recomienda valorar efecto inicial del midazolam; aun así opción aceptable en refractario severo.',1,false,ARRAY['medico']),
     (v_intubacion_node,'Iniciar propofol a dosis alta >6 mg/kg/h prolongada',v_propofol_error_node,'Riesgo síndrome de infusión si dosis alta prolongada sin vigilancia.',-3,false,ARRAY['medico']);
+
+  -----------------------------------------------------------------
+  -- Opciones desde nodo ketamina (conectar a EEG continuo)
+  -----------------------------------------------------------------
+  INSERT INTO public.micro_case_options (node_id,label,next_node_id,feedback_md,score_delta,is_critical,target_roles) VALUES
+    (v_refractario_ketamina_node,'Continuar con estrategia combinada midazolam-ketamina, monitoreo EEG continuo',v_eeg_continuo_node,'Decisión muy razonada: status >40 min, hemodinamia límite (PAM 62 post-fluidos), movimientos sutiles persistentes. Ketamina aporta: mecanismo distinto (NMDA vs GABA), neuroprotección, soporte hemodinámico, efecto rápido. Sinergia midazolam-ketamina documentada en refractarios.',4,true,ARRAY['medico']);
 
   -----------------------------------------------------------------
   -- Opciones infusión anestésicos (T+50 min: status superrefractario)
