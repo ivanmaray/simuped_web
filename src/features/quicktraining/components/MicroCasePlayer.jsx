@@ -211,7 +211,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               <p className="text-xs uppercase tracking-[0.28em] text-white/60">Microcaso activo</p>
               <h3 className="mt-1 text-lg font-semibold text-white">{microCase.title}</h3>
               <p className="mt-1 text-xs text-white/65">
-                {showSummary ? 'Resumen final' : `Paso ${history.length + 1} de ${Math.max(totalDecisionNodes, history.length + 1)}`}
+                {showSummary ? 'Resumen final' : `Paso ${history.length + 1} de ${Math.max(totalRelevantNodes, history.length + 1)}`}
                 {` • ${elapsedSeconds}s`}
               </p>
             </div>
