@@ -27,7 +27,7 @@ function mapScenarios(rows) {
 }
 
 async function fetchScenarioList() {
-  const select = `
+    const select = `
       id,
       title,
       summary,
@@ -40,11 +40,36 @@ async function fetchScenarioList() {
       scenario_steps:scenario_steps(id),
       scenario_items:scenario_items(id)
     `;
-  const { data, error } = await supabase
+  // Try the extended select first; fallback if the DB doesn't have the new column.
+  let data, error;
+  ({ data, error } = await supabase
     .from("scenarios")
     .select(select)
     .contains("mode", ["online"]) 
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false }));
+  if (error) {
+    const m = String(error?.message || "").toLowerCase();
+    if (m.includes("time_limit_minutes") || m.includes("column")) {
+      const fallback = `
+      id,
+      title,
+      summary,
+      status,
+      mode,
+      level,
+      difficulty,
+      estimated_minutes,
+      created_at,
+      scenario_steps:scenario_steps(id),
+      scenario_items:scenario_items(id)
+      `;
+      ({ data, error } = await supabase
+        .from("scenarios")
+        .select(fallback)
+        .contains("mode", ["online"]) 
+        .order("created_at", { ascending: false }));
+    }
+  }
 
   if (error) throw error;
   return mapScenarios(data);
@@ -84,7 +109,7 @@ function ScenarioRow({ scenario, onOpen }) {
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span className="inline-flex items-center gap-1"><FunnelIcon className="h-4 w-4" />Nivel {levelLabel}</span>
             <span className="inline-flex items-center gap-1"><CalendarIcon className="h-4 w-4" />{createdLabel}</span>
-            <span className="inline-flex items-center gap-1"><ClockIcon className="h-4 w-4" />{scenario.estimated_minutes || "—"} min</span>
+            <span className="inline-flex items-center gap-1"><ClockIcon className="h-4 w-4" />{`${scenario.estimated_minutes || "—"} min`}</span>
             <span className="inline-flex items-center gap-1">Modo: {modes}</span>
             {scenario.step_count != null ? (
               <span className="inline-flex items-center gap-1">{scenario.step_count} paso{scenario.step_count === 1 ? "" : "s"}</span>

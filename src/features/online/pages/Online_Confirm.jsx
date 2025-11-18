@@ -66,11 +66,29 @@ export default function Online_Confirm() {
   const [scenario, setScenario] = useState(null);
   const [attemptsCount, setAttemptsCount] = useState(0);
   const [openAttemptId, setOpenAttemptId] = useState(null);
-  const customMinutes = 15; // minutos configurables para admins (placeholder)
+  const [customMinutes, setCustomMinutes] = useState("");
 
   const [brief, setBrief] = useState(null);
   const [resources, setResources] = useState([]);
   const [loadingResources, setLoadingResources] = useState(true);
+  function checkBriefReady(brief) {
+    const missing = [];
+    if (!brief) {
+      missing.push('brief');
+      return { ready: false, missing };
+    }
+    const tri = brief.triangle || {};
+    if (!tri.appearance || !tri.breathing || !tri.circulation) {
+      missing.push('triangle');
+    }
+    const hasRedFlags = Array.isArray(brief.red_flags) && brief.red_flags.length > 0;
+    const hasCriticalActions = Array.isArray(brief.critical_actions) && brief.critical_actions.length > 0;
+    if (!hasRedFlags && !hasCriticalActions) {
+      missing.push('alarm_signs');
+    }
+    return { ready: missing.length === 0, missing };
+  }
+  const briefCheck = checkBriefReady(brief);
 
   useEffect(() => {
     let mounted = true;
@@ -117,6 +135,7 @@ export default function Online_Confirm() {
       }
 
       // 3) Cargar escenario
+      // Cargar escenario (no solicitar `time_limit_minutes` porque puede no existir en algunas migraciones)
       const { data: esc, error: eErr } = await supabase
         .from("scenarios")
         .select("id, title, summary, level, mode, status, estimated_minutes")
@@ -280,6 +299,7 @@ export default function Online_Confirm() {
 
   // Tiempo estimado del escenario (prioridad: scenario.estimated_minutes > brief.estimated_minutes > 15)
   const estimatedMinutes = (() => {
+    // Use the scenario's estimated_minutes value as the canonical timer limit
     const a = Number(scenario?.estimated_minutes);
     if (Number.isFinite(a) && a > 0) return a;
     const b = Number(brief?.estimated_minutes);
@@ -318,7 +338,13 @@ export default function Online_Confirm() {
     } catch { /* noop */ }
     try {
       // 0) Parámetros de tiempo
-      const baseMinutes = (esAdmin && Number(customMinutes)) ? Math.max(1, Number(customMinutes)) : estimatedMinutes;
+      let baseMinutes = estimatedMinutes;
+      if (esAdmin) {
+        const nCustom = Number(customMinutes);
+        if (Number.isFinite(nCustom) && nCustom > 0) {
+          baseMinutes = Math.max(1, nCustom);
+        }
+      }
       const limitSecs = Math.max(60, Math.floor(baseMinutes * 60));
 
       // 1) Revalidar en servidor si hay un intento abierto (por seguridad frente a estados desfasados)
@@ -646,7 +672,7 @@ export default function Online_Confirm() {
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
           <h2 className="text-xl font-semibold mb-2">Antes de comenzar</h2>
           <p className="text-slate-700">
-            Al iniciar este escenario se consumirá <b>1 intento</b> (el <b>tiempo comienza en el briefing</b> del caso). Dispones de un máximo de <b>{MAX_ATTEMPTS}</b> intentos por escenario. Primero realizarás la <b>evaluación inicial del paciente</b> en el briefing y, a continuación, responderás a <b>preguntas por pasos</b>. Tus respuestas quedarán registradas para consultar tu desempeño posteriormente.
+            Al iniciar este escenario se consumirá <b>1 intento</b> (el <b>tiempo comienza al pulsar “Comenzar ahora”</b>, no solamente al ver el briefing). Dispones de un máximo de <b>{MAX_ATTEMPTS}</b> intentos por escenario. Primero realizarás la <b>evaluación inicial del paciente</b> en el briefing y, a continuación, responderás a <b>preguntas por pasos</b>. Tus respuestas quedarán registradas para consultar tu desempeño posteriormente.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
@@ -675,9 +701,29 @@ export default function Online_Confirm() {
             </div>
           )}
 
-          <div className="mt-6 flex items-center gap-3">
+            <div className="mt-6 flex items-center gap-3">
+            {/* Si el briefing no está listo, enviamos al usuario a la pantalla de detalle (briefing).
+                Si está listo, ejecutamos la creación/reanudación del intento. */}
             <button
-              onClick={handleStart}
+              onClick={() => {
+                if (!briefCheck.ready) {
+                  try {
+                        console.debug('[Confirm] brief incomplete - navigating to detalle', { scenarioId });
+                        navigate(`/simulacion/${scenarioId}?view=briefing`);
+                  } catch (e) {
+                        console.warn('[Confirm] navigate failed, fallback to location.href', e);
+                        window.location.href = `/simulacion/${scenarioId}?view=briefing`;
+                  }
+                  // fallback shortly after in case navigate didn't update (helps in some edge cases)
+                  setTimeout(() => {
+                        if (window.location.pathname + window.location.search !== `/simulacion/${scenarioId}?view=briefing`) {
+                          window.location.href = `/simulacion/${scenarioId}?view=briefing`;
+                    }
+                  }, 80);
+                  return;
+                }
+                handleStart();
+              }}
               disabled={creating || alreadyMaxed || isBlockedByStatus}
               className={`px-4 py-2 rounded-lg transition ${
   creating || alreadyMaxed || isBlockedByStatus
@@ -685,7 +731,11 @@ export default function Online_Confirm() {
     : "bg-[#4FA3E3] hover:bg-[#1E6ACB] text-slate-900 font-semibold hover:translate-y-px focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E6ACB]"
 }`}
             >
-              {creating ? "Creando intento…" : (openAttemptId ? "Reanudar intento" : "Comenzar ahora")}
+              {creating
+                ? "Creando intento…"
+                : openAttemptId
+                  ? "Reanudar intento"
+                  : (!briefCheck.ready ? "Ver briefing" : "Comenzar ahora")}
             </button>
 
             <Link

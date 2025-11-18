@@ -177,22 +177,32 @@ function ScoreDonut({ score = 0, size = 84 }) {
   );
 }
 
-// Donut timer for time remaining (compact visual)
-function TimeDonut({ totalSecs = 0, remainSecs = 0, size = 72, title = "Tiempo restante" }) {
+// Donut timer for time remaining (modern SimuPed blue gradient style)
+function TimeDonut({ totalSecs = 0, remainSecs = 0, size = 96, title = "Tiempo restante" }) {
   const total = Math.max(1, Number(totalSecs) || 0);
   const remain = Math.max(0, Math.min(total, Number(remainSecs) || 0));
   const pct = Math.round((remain / total) * 100);
   const angle = pct * 3.6;
+
+  // Color dinámico según porcentaje de tiempo restante
+  let accent = "#22c55e"; // verde
+  if (pct <= 50) accent = "#fbbf24";     // amarillo cuando queda la mitad
+  if (pct <= 25) accent = "#f97373";     // rojo cuando queda poco
+  // Mantener el texto en un tamaño similar al actual aunque el círculo crezca
+  const fontPx = Math.min(13, Math.max(10, Math.floor(size / 5)));
+
   const ringStyle = {
-    width: `${size}px`,
-    height: `${size}px`,
-    background: `conic-gradient(#1E6ACB ${angle}deg, #e2e8f0 0)`, // brand blue + softer track
+    width: `${size - 4}px`,
+    height: `${size - 4}px`,
+    background: `conic-gradient(${accent} ${angle}deg, rgba(148,163,184,0.25) 0)`,
     borderRadius: "9999px",
-    transition: "background 0.4s ease",
-    boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.7), 0 1px 2px rgba(0,0,0,0.06)",
-    border: "1px solid rgba(15, 23, 42, 0.06)",
+    transition: "background 0.35s ease-out, box-shadow 0.35s ease-out",
+    boxShadow: "0 6px 18px rgba(15,23,42,0.16)",
+    border: "1px solid rgba(15,23,42,0.06)",
+    padding: 3,
   };
-  const innerSize = size - 12;
+
+  const innerSize = size - 20;
 
   function mmss(s) {
     s = Math.max(0, Math.floor(s));
@@ -202,13 +212,26 @@ function TimeDonut({ totalSecs = 0, remainSecs = 0, size = 72, title = "Tiempo r
   }
 
   return (
-    <div className="relative inline-grid place-items-center" style={{ width: size, height: size }} title={title}>
-      <div style={ringStyle} aria-hidden="true" />
-      <div
-        className="absolute rounded-full bg-white grid place-items-center text-slate-900 font-mono tabular-nums shadow-sm"
-        style={{ width: innerSize, height: innerSize, fontSize: Math.max(11, Math.floor(size / 4.6)) }}
-      >
-        {mmss(remain)}
+    <div
+      className="relative inline-flex items-center justify-center rounded-full bg-white/5 backdrop-blur-sm"
+      style={{ width: size, height: size }}
+      title={title}
+    >
+      <div style={ringStyle} aria-hidden="true" className="grid place-items-center">
+        <div
+          className="rounded-full bg-white text-slate-900 font-mono tabular-nums flex flex-col items-center justify-center shadow-sm"
+          style={{ width: innerSize, height: innerSize }}
+        >
+          <span
+            style={{ fontSize: fontPx }}
+            className="leading-none"
+          >
+            {mmss(remain)}
+          </span>
+          <span className="text-[10px] uppercase tracking-[0.09em] text-slate-400 mt-0.5">
+            tiempo
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -225,7 +248,7 @@ function CaseCard({ title, children }) {
 }
 
 // AccordionSection: reusable accordion for interactive briefing
-function AccordionSection({ title, subtitle, open, onToggle, children }) {
+function AccordionSection({ title, subtitle, open, onToggle, children, briefCheck }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white mb-4 overflow-hidden">
       <button
@@ -235,7 +258,10 @@ function AccordionSection({ title, subtitle, open, onToggle, children }) {
       >
         <div>
           <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
-          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+          {/* NOTE: moved the brief-completion notice to the Confirm screen because it should
+              only be shown at the final validation step before starting the simulation. */}
+
+          {/* ACCORDION: 1) Datos del paciente */}
         </div>
         <span className={`text-slate-100/90 text-sm inline-flex items-center gap-1`}>
           <span className={`transition-transform ${open ? "rotate-180" : ""}`}>⌄</span>
@@ -470,6 +496,36 @@ export default function Online_Detalle() {
   const [resources, setResources] = useState([]);
   const [, setLoadingResources] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
+  function checkBriefReady(brief) {
+    const missing = [];
+    if (!brief) {
+      missing.push('brief');
+      return { ready: false, missing };
+    }
+    const tri = brief.triangle || {};
+    if (!tri.appearance || !tri.breathing || !tri.circulation) {
+      missing.push('triangle');
+    }
+    const hasRedFlags = Array.isArray(brief.red_flags) && brief.red_flags.length > 0;
+    const hasCriticalActions = Array.isArray(brief.critical_actions) && brief.critical_actions.length > 0;
+    if (!hasRedFlags && !hasCriticalActions) {
+      missing.push('alarm_signs');
+    }
+    return { ready: missing.length === 0, missing };
+  }
+  const briefCheck = checkBriefReady(brief);
+  const briefMissingShort = useMemo(() => {
+    if (!briefCheck || briefCheck.ready) return "";
+    const map = {
+      triangle: 'Triángulo (Apariencia, Respiración, Circulación)',
+      alarm_signs: 'Signos de alarma',
+      brief: 'Datos del paciente',
+    };
+    const labels = (briefCheck.missing || []).map((m) => map[m] || String(m));
+    if (labels.length === 1) return labels[0];
+    if (labels.length === 2) return `${labels[0]} y ${labels[1]}`;
+    return labels.slice(0, -1).join(', ') + ' y ' + labels.slice(-1);
+  }, [briefCheck]);
   const [steps, setSteps] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [rol, setRol] = useState("");
@@ -530,6 +586,7 @@ export default function Online_Detalle() {
     circulation: normBrief(brief?.triangle?.circulation),
   }), [brief]);
   const tepComplete = !!(tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation);
+  const tepCorrect = tepAnswer.appearance === correctTep.appearance && tepAnswer.breathing === correctTep.breathing && tepAnswer.circulation === correctTep.circulation;
 
   // Signos de alarma (multi-selección)
   const [selectedRedFlags, setSelectedRedFlags] = useState([]);
@@ -632,24 +689,10 @@ export default function Online_Detalle() {
     }
   }, [loading, showSummary, showBriefing, attemptId, initialExpiresAt, attemptTimeLimit, expiresAt, startAttemptCountdown]);
 
-  // ⏱️ Nuevo: si el briefing está visible, cuenta como parte de la simulación.
-  // Arrancamos el contador al entrar al briefing si hay límite y aún no existe expires_at.
-  useEffect(() => {
-    if (loading) return;
-    if (showSummary) return;
-    if (!showBriefing) return;         // solo cuando se muestra el briefing
-    if (!attemptId) return;
-    if (expiresAt) return;             // ya había contador arrancado en memoria
-
-    const hasServerExpiry = !!initialExpiresAt;
-    const hasTimeLimit = Number(attemptTimeLimit) > 0;
-    if (!hasServerExpiry && !hasTimeLimit) return;
-
-    startAttemptCountdown();
-    if (!hasServerExpiry && hasTimeLimit) {
-      setRemainingSecs((prev) => (prev == null ? Number(attemptTimeLimit) : prev));
-    }
-  }, [loading, showSummary, showBriefing, attemptId, attemptTimeLimit, expiresAt, initialExpiresAt, startAttemptCountdown]);
+  // NOTE: The timer should not be auto-started just by *showing* the briefing.
+  // The countdown should be started when the user actively begins the attempt
+  // (see Online_Confirm.handleStart which creates an attempt and navigates to this page)
+  // Therefore the auto-start effect for briefing has been removed.
 
   const currentStep = steps[currentIdx] || null;
 
@@ -737,27 +780,35 @@ export default function Online_Detalle() {
         return;
       }
 
-      // Validar attempt en query; si falta, ir a confirm
-      if (!initialAttemptId) {
+      // Validar attempt en query; si falta, ir a confirm, salvo cuando venimos solo a ver el briefing
+      const viewMode = query.get("view");
+      if (!initialAttemptId && viewMode !== "briefing") {
         navigate(`/simulacion/${id}/confirm`, { replace: true });
         return;
       }
-      // Comprobar que el attempt existe y pertenece al usuario y al escenario
-      const { data: att, error: attErr } = await supabase
-        .from("attempts")
-        .select("id, user_id, scenario_id, status, started_at, finished_at, expires_at, time_limit")
-        .eq("id", initialAttemptId)
-        .maybeSingle();
 
-      const sameScenario = String(att?.scenario_id ?? "") === scenarioIdParam;
-      const shouldRedirectToConfirm =
-        !forceSummaryRoute && (attErr || !att || att.user_id !== sess.user.id || !sameScenario);
-      if (shouldRedirectToConfirm) {
-        console.debug("[Detalle] Redirijo a confirm por validación:", {
-          attErr: !!attErr, hasAtt: !!att, sameUser: att?.user_id === sess.user.id, sameScenario, forceSummaryRoute
-        });
-        navigate(`/simulacion/${id}/confirm`, { replace: true });
-        return;
+      // Si tenemos attemptId, comprobamos que el intento exista y pertenezca al usuario
+      let att = null;
+      let attErr = null;
+      if (initialAttemptId) {
+        const res = await supabase
+          .from("attempts")
+          .select("id, user_id, scenario_id, status, started_at, finished_at, expires_at, time_limit")
+          .eq("id", initialAttemptId)
+          .maybeSingle();
+        att = res.data;
+        attErr = res.error;
+
+        const sameScenario = String(att?.scenario_id ?? "") === scenarioIdParam;
+        const shouldRedirectToConfirm =
+          !forceSummaryRoute && (attErr || !att || att.user_id !== sess.user.id || !sameScenario);
+        if (shouldRedirectToConfirm) {
+          console.debug("[Detalle] Redirijo a confirm por validación:", {
+            attErr: !!attErr, hasAtt: !!att, sameUser: att?.user_id === sess.user.id, sameScenario, forceSummaryRoute
+          });
+          navigate(`/simulacion/${id}/confirm`, { replace: true });
+          return;
+        }
       }
       // --- comprobación de expiración o estado cerrado ---
       // Preferimos hora del servidor para evitar desajustes de reloj del cliente
@@ -767,31 +818,59 @@ export default function Online_Detalle() {
         nowServer = nowData ? new Date(nowData) : null;
       } catch {}
       const nowRef = nowServer || new Date();
-      const expiresAtRef = att.expires_at ? new Date(att.expires_at) : null;
+      const expiresAtRef = att?.expires_at ? new Date(att.expires_at) : null;
       const isExpiredByTime = !!(expiresAtRef && nowRef >= expiresAtRef);
-      const statusStr = String(att.status || '').toLowerCase();
-      const isClosedStatus = statusStr === 'finalizado' || !!att.finished_at;
+      const statusStr = String(att?.status || '').toLowerCase();
+      const isClosedStatus = statusStr === 'finalizado' || !!att?.finished_at;
 
       // Si está expirado por tiempo y aún aparece como abierto, cerrarlo de forma idempotente
-      if (isExpiredByTime && !isClosedStatus) {
-        try {
-          await supabase
-            .from("attempts")
-            .update({
-              status: "finalizado",
-              finished_at: new Date().toISOString()
-            })
-            .eq("id", att.id)
-            .is("finished_at", null);
-        } catch { /* noop */ }
+      if (att) {
+        if (isExpiredByTime && !isClosedStatus) {
+          try {
+            await supabase
+              .from("attempts")
+              .update({
+                status: "finalizado",
+                finished_at: new Date().toISOString()
+              })
+              .eq("id", att.id)
+              .is("finished_at", null);
+          } catch { /* noop */ }
+        }
       }
+
       // si está expirado o ya cerrado, prepara vista de resumen (sin montar simulación)
       const shouldShowSummary = isExpiredByTime || isClosedStatus;
 
-      setAttemptId(att.id);
+      setAttemptId(att?.id ?? null);
       // Guardamos info pero NO arrancamos el contador hasta que el usuario pulse "Comenzar simulación"
-      setAttemptTimeLimit(typeof att.time_limit === "number" ? att.time_limit : null);
-      if (att.expires_at) {
+      // Preferimos el time_limit específico del intento (segundos) si existe. Si no, más adelante
+      // haremos fallback a los minutos estimados del escenario cuando ya esté cargado.
+      let attemptLimitFromDb = null;
+      if (att?.time_limit != null) {
+        const v = Number(att.time_limit);
+        attemptLimitFromDb = Number.isFinite(v) && v > 0 ? Math.floor(v) : null;
+      }
+      setAttemptTimeLimit(attemptLimitFromDb);
+      // Decide whether the attempt was already started before we loaded the page.
+      // If it was just created in this exact moment (e.g. we just created it in Confirm),
+      // don't auto-show a started timer while in the briefing.
+      let wasStartedBeforeLoad = false;
+      try {
+        const nowRef = nowServer || new Date();
+        if (att?.started_at) {
+          const startedAt = new Date(att.started_at);
+          const createdAt = att?.created_at ? new Date(att.created_at) : startedAt;
+          // If the attempt was started well before loading (more than 3s), treat it as started.
+          if (nowRef.getTime() - startedAt.getTime() > 3000) wasStartedBeforeLoad = true;
+          // If the start timestamp is later than the create timestamp (explicit start), also treat as started.
+          if (startedAt.getTime() > createdAt.getTime()) wasStartedBeforeLoad = true;
+        }
+      } catch (e) {
+        wasStartedBeforeLoad = false;
+      }
+
+      if (att?.expires_at && wasStartedBeforeLoad) {
         const exp = new Date(att.expires_at);
         setInitialExpiresAt(exp.toISOString());
       } else {
@@ -823,12 +902,24 @@ export default function Online_Detalle() {
         return;
       }
       setScenario(esc);
+      // Si todavía no tenemos un límite de tiempo válido desde el intento,
+      // usamos los minutos estimados del escenario como fallback.
+      setAttemptTimeLimit((prev) => {
+        if (prev && Number(prev) > 0) return prev;
+        const scenarioMinutes = esc?.estimated_minutes != null ? Number(esc.estimated_minutes) : null;
+        if (Number.isFinite(scenarioMinutes) && scenarioMinutes > 0) {
+          return Math.max(60, Math.floor(scenarioMinutes * 60));
+        }
+        return prev;
+      });
       // Cargar briefing del caso (Pantalla 0)
       try {
         const b = await getCaseBriefCached(supabase, esc.id);
         if (b) {
           setBrief(b);
-          setShowBriefing(true);
+          // Mostrar el briefing solo si el intento aún NO se había iniciado
+          // y no estamos en modo resumen ni en la ruta de resumen forzado.
+          setShowBriefing(!shouldShowSummary && !wasStartedBeforeLoad && !forceSummaryRoute);
         } else {
           setBrief(null);
           setShowBriefing(false);
@@ -1231,20 +1322,21 @@ export default function Online_Detalle() {
                     <span key={i} className="inline-flex items-center rounded-full bg-white/20 ring-1 ring-white/50 px-2 py-0.5 text-[11px] tracking-wide">{c}</span>
                   ))}
                 </div>
+                  {/* NOTE: small briefing alert has been moved to the sticky action bar (compact inline message). */}
               </div>
               <div className="shrink-0 text-right">
                 <div className="text-xs opacity-90">Modo · Duración</div>
                 <div className="text-sm font-medium">
                   {formatMode(scenario?.mode || "online")} · ~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min
                 </div>
-                {/* Cronómetro visible (cuenta durante briefing) */}
-                {Number(attemptTimeLimit) > 0 && (
+                {/* Cronómetro visible únicamente si existe un contador activo (expires_at o remainingSecs). */}
+                {Number(attemptTimeLimit) > 0 && (remainingSecs !== null || expiresAt) && (
                   <div className="mt-3 flex items-center justify-end">
                     <div className="text-right">
                       <TimeDonut
                         totalSecs={Number(attemptTimeLimit)}
                         remainSecs={remainingSecs != null ? remainingSecs : Number(attemptTimeLimit)}
-                        size={64}
+                        size={96}
                         title="Tiempo restante"
                       />
                       <div className="mt-1 text-[11px] opacity-90">Tiempo restante</div>
@@ -1261,6 +1353,7 @@ export default function Online_Detalle() {
             subtitle="Lee con atención los datos clínicos iniciales."
             open={accordionOpen[0]}
             onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 0 ? !v : v)))}
+            briefCheck={briefCheck}
           >
             {/* Si demographics es texto plano */}
             {typeof brief?.demographics === "string" && brief.demographics && (
@@ -1312,12 +1405,14 @@ export default function Online_Detalle() {
             subtitle="Repasa constantes y hallazgos al examen físico."
             open={accordionOpen[1]}
             onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 1 ? !v : v)))}
+            briefCheck={briefCheck}
           >
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="rounded-xl border border-slate-200 p-4">
                 <Row label="FC" value={brief?.vitals?.fc != null ? `${brief.vitals.fc} lpm` : "—"} alert={brief?.vitals?.fc > 170} />
                 <Row label="FR" value={brief?.vitals?.fr != null ? `${brief.vitals.fr} rpm` : "—"} />
                 <Row label="SatO₂" value={brief?.vitals?.sat != null ? `${brief.vitals.sat} %` : "—"} alert={brief?.vitals?.sat < 92} />
+                <Row label="TA" value={brief?.vitals?.ta && brief.vitals.ta.systolic != null && brief.vitals.ta.diastolic != null ? `${brief.vitals.ta.systolic}/${brief.vitals.ta.diastolic} mmHg` : "—"} />
                 <Row label="Tª" value={brief?.vitals?.temp != null ? `${brief.vitals.temp} ºC` : "—"} />
                 {Array.isArray(brief?.vitals?.notes) && brief.vitals.notes.length > 0 && (
                   <ul className="list-disc pl-5 mt-2 text-sm text-slate-700">
@@ -1344,6 +1439,7 @@ export default function Online_Detalle() {
             subtitle="Identifica qué está indicado ahora mismo."
             open={accordionOpen[2]}
             onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 2 ? !v : v)))}
+            briefCheck={briefCheck}
           >
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
@@ -1379,6 +1475,7 @@ export default function Online_Detalle() {
             subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
             open={accordionOpen[3]}
             onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
+            briefCheck={briefCheck}
           >
             <div className="grid lg:grid-cols-2 gap-4 items-start">
               <div>
@@ -1403,7 +1500,11 @@ export default function Online_Detalle() {
                 </div>
                 <div className="mb-3 flex items-center gap-2">
                   {tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation ? (
-                    <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">TEP completo ✅</span>
+                    tepCorrect ? (
+                      <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">TEP correcto ✅</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-amber-200 bg-amber-50 text-amber-800">TEP completo</span>
+                    )
                   ) : (
                     <span className="text-xs text-slate-500">Pulsa en cada vértice o usa los botones.</span>
                   )}
@@ -1464,6 +1565,7 @@ export default function Online_Detalle() {
             subtitle="Selecciona los signos que realmente sugieren gravedad."
             open={accordionOpen[4]}
             onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 4 ? !v : v)))}
+            briefCheck={briefCheck}
           >
             <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
               {redFlagCandidates.map((rf) => {
@@ -1499,19 +1601,67 @@ export default function Online_Detalle() {
               <span className="mx-2">·</span>
               <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
-            <button
-              onClick={() => {
-                setShowBriefing(false);
-                try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
-              }}
-              disabled={showSummary || !tepComplete}
-              className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 disabled:opacity-50"
-              title={!tepComplete ? "Completa el TEP para continuar" : (showSummary ? "El intento ya está finalizado o expirado" : "Continuar a preguntas")}
-            >
-              Continuar
-            </button>
+            {(() => {
+              const hasRedFlags = redFlagCandidates.length > 0;
+              const mustPassRedFlags = hasRedFlags && redFlagsCorrect !== true;
+              const readyToContinue = tepComplete && tepCorrect && !mustPassRedFlags;
+              let title = "Continuar a preguntas";
+              if (!tepComplete) title = "Completa el TEP para continuar";
+              else if (!tepCorrect) title = "El TEP no es correcto: corrige el Triángulo para continuar";
+              else if (hasRedFlags && redFlagsCorrect !== true) title = "Selecciona correctamente los signos de alarma para continuar";
+              else if (showSummary) title = "El intento ya está finalizado o expirado";
+              return (
+                <div className="flex flex-col items-end">
+                  <button
+                    onClick={async () => {
+                      // guard: don't allow continuing if not ready
+                      if (!readyToContinue) {
+                        // show correctness check feedback if TEP not correct
+                        setTepChecked(true);
+                        return;
+                      }
+                      // If there's no attemptId, redirect to confirm to create one
+                      if (!attemptId) {
+                        try { navigate(`/simulacion/${scenarioIdNumeric ?? scenarioIdParam}/confirm`); } catch { window.location.href = `/simulacion/${scenarioIdNumeric ?? scenarioIdParam}/confirm`; }
+                        return;
+                      }
+                      // Ensure the countdown starts immediately if needed
+                      try { await startAttemptCountdown(); } catch (e) { /* noop */ }
+                      setShowBriefing(false);
+                      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+                    }}
+                    disabled={showSummary || !readyToContinue}
+                    className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:opacity-90 disabled:opacity-50"
+                    title={title}
+                  >
+                    Continuar
+                  </button>
+                  {!briefCheck?.ready && (
+                    <div className="mt-2 text-xs text-amber-800">Faltan datos: {briefMissingShort}</div>
+                  )}
+                  {tepComplete && !tepCorrect && (
+                    <div className="mt-2 text-xs text-amber-800">TEP incorrecto: corrige el Triángulo (Apariencia, Respiración, Circulación)</div>
+                  )}
+                </div>
+              );
+            })()}
             <p className="ml-3 text-xs text-slate-500">
-              ⏱️ El tiempo corre durante el briefing interactivo.
+              { (remainingSecs === null && !expiresAt) ? (
+                <>⏱️ El tiempo comienza cuando pulses <b>Continuar</b>.</>
+              ) : (
+                <>⏱️ Intento en curso — tiempo restante: <span className="font-medium">{formatMMSS(remainingSecs)}</span></>
+              ) }
+            </p>
+            <p className="ml-3 text-xs text-rose-700 font-medium">
+              {(() => {
+                const msgs = [];
+                if (!tepComplete) msgs.push("Falta completar el TEP");
+                else if (!tepCorrect) msgs.push("El TEP no es correcto");
+                const hasRedFlags = redFlagCandidates.length > 0;
+                if (hasRedFlags && redFlagsCorrect !== true) msgs.push("Selecciona correctamente los signos de alarma");
+                if (!msgs.length) return null;
+                return msgs.join(" · ");
+              })()}
             </p>
           </div>
         </main>

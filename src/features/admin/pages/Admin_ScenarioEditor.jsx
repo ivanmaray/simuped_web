@@ -115,7 +115,7 @@ function createEmptyBriefForm() {
     demographics: { age: "", weightKg: "", sex: "", location: "" },
     chiefComplaint: "",
     historyRaw: "",
-    vitals: { fc: "", fr: "", sat: "", temp: "", notesText: "" },
+    vitals: { fc: "", fr: "", sat: "", temp: "", notesText: "", taSystolic: "", taDiastolic: "" },
     examText: "",
     quickLabsText: "",
     imagingText: "",
@@ -140,6 +140,28 @@ function safeJsonValue(value) {
   } catch {
     return value;
   }
+}
+
+// Compute a shallow-to-moderate diff between two objects for logging changes.
+function computeDiff(oldObj = {}, newObj = {}) {
+  const changes = {};
+  const keys = new Set([...(oldObj && typeof oldObj === 'object' ? Object.keys(oldObj) : []), ...(newObj && typeof newObj === 'object' ? Object.keys(newObj) : [])]);
+  for (const key of keys) {
+    const a = oldObj ? oldObj[key] : undefined;
+    const b = newObj ? newObj[key] : undefined;
+    if (a === undefined && b === undefined) continue;
+    if (typeof a === 'object' && typeof b === 'object' && a != null && b != null && !Array.isArray(a) && !Array.isArray(b)) {
+      const sub = computeDiff(a, b);
+      if (Object.keys(sub).length > 0) changes[key] = sub;
+    } else if (Array.isArray(a) || Array.isArray(b)) {
+      const sa = JSON.stringify(a || []);
+      const sb = JSON.stringify(b || []);
+      if (sa !== sb) changes[key] = { before: a, after: b };
+    } else {
+      if (a !== b) changes[key] = { before: a, after: b };
+    }
+  }
+  return changes;
 }
 
 function listToTextarea(value) {
@@ -175,7 +197,7 @@ function formatHistoryTextarea(value) {
 }
 
 function formatVitalsForForm(value) {
-  const next = { fc: "", fr: "", sat: "", temp: "", notesText: "" };
+  const next = { fc: "", fr: "", sat: "", temp: "", notesText: "", taSystolic: "", taDiastolic: "" };
   if (!value || typeof value !== "object") return next;
   if (value.fc != null) next.fc = String(value.fc);
   if (value.fr != null) next.fr = String(value.fr);
@@ -185,6 +207,11 @@ function formatVitalsForForm(value) {
     next.notesText = value.notes.map((item) => String(item)).join("\n");
   } else if (typeof value.notes === "string") {
     next.notesText = value.notes;
+  }
+  // Support TA as object {systolic, diastolic}
+  if (value.ta && typeof value.ta === 'object') {
+    if (value.ta.systolic != null) next.taSystolic = String(value.ta.systolic);
+    if (value.ta.diastolic != null) next.taDiastolic = String(value.ta.diastolic);
   }
   return next;
 }
@@ -301,12 +328,19 @@ function sanitizeVitalsInput(vitals) {
   const sat = parseNumberField(vitals.sat);
   const temp = parseNumberField(vitals.temp);
   const notes = parseListInput(vitals.notesText);
+  const taSys = parseNumberField(vitals.taSystolic);
+  const taDia = parseNumberField(vitals.taDiastolic);
   const next = {};
   if (fc != null) next.fc = fc;
   if (fr != null) next.fr = fr;
   if (sat != null) next.sat = sat;
   if (temp != null) next.temp = temp;
   if (notes.length > 0) next.notes = notes;
+  if (taSys != null || taDia != null) {
+    next.ta = {};
+    if (taSys != null) next.ta.systolic = taSys;
+    if (taDia != null) next.ta.diastolic = taDia;
+  }
   return Object.keys(next).length > 0 ? next : null;
 }
 
@@ -448,6 +482,7 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
   if (data.estimated_minutes != null) {
     base.estimatedMinutes = String(data.estimated_minutes);
   }
+  // NOTE: time_limit_minutes is deprecated and no longer used.
   if (data.level) {
     base.level = String(data.level);
   }
@@ -471,6 +506,7 @@ export default function Admin_ScenarioEditor() {
   const [categoryError, setCategoryError] = useState("");
   const [categorySuccess, setCategorySuccess] = useState("");
   const [briefForm, setBriefForm] = useState(() => createEmptyBriefForm());
+  const [initialBriefForm, setInitialBriefForm] = useState(() => createEmptyBriefForm());
   const [briefRoles, setBriefRoles] = useState(["MED", "NUR", "PHARM"]);
   const [newRole, setNewRole] = useState("");
   const [briefSaving, setBriefSaving] = useState(false);
@@ -908,6 +944,7 @@ export default function Admin_ScenarioEditor() {
           hydratedBrief.estimatedMinutes = String(data.estimated_minutes);
         }
         setBriefForm(hydratedBrief);
+        setInitialBriefForm(hydratedBrief);
         setBriefRoles(roleList);
 
         const resourceRows = (resourcesRes.data || []).map((row) => ({ ...row }));
@@ -1084,6 +1121,8 @@ export default function Admin_ScenarioEditor() {
         throw new Error(message);
       }
 
+      const added = (selectedCategories || []).filter((id) => !(initialCategories || []).includes(id));
+      const removed = (initialCategories || []).filter((id) => !(selectedCategories || []).includes(id));
       setInitialCategories(selectedCategories);
       const selectedLabels = allCategories
         .filter((category) => selectedCategories.includes(category.id))
@@ -1091,6 +1130,8 @@ export default function Admin_ScenarioEditor() {
       await registerChange("categorias", "Actualizó las categorías del escenario", {
         category_ids: selectedCategories,
         category_labels: selectedLabels,
+        added,
+        removed,
       });
       setCategorySuccess("Categorías actualizadas");
     } catch (err) {
@@ -1224,6 +1265,7 @@ export default function Admin_ScenarioEditor() {
       if (briefSupportsCompetencies && competenciesPayload.length > 0) {
         basePayload.competencies = competenciesPayload;
       }
+      let hydrated;
       if (briefForm?.id) {
         const { data, error: updateErr } = await supabase
           .from("case_briefs")
@@ -1236,7 +1278,7 @@ export default function Admin_ScenarioEditor() {
         Object.keys(data?.objectives || {}).forEach((roleKey) => {
           if (roleKey) updatedRoles.add(roleKey);
         });
-        const hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
+        hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
         setBriefForm(hydrated);
         setBriefRoles(Array.from(updatedRoles));
       } else {
@@ -1254,18 +1296,17 @@ export default function Admin_ScenarioEditor() {
         Object.keys(data?.objectives || {}).forEach((roleKey) => {
           if (roleKey) updatedRoles.add(roleKey);
         });
-        const hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
+        hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
         setBriefForm(hydrated);
         setBriefRoles(Array.from(updatedRoles));
       }
+      const oldBrief = initialBriefForm || {};
+      const diff = computeDiff(oldBrief, basePayload);
       await registerChange("brief", "Actualizó el brief y los objetivos del caso", {
-        learning_objective: Boolean(learningObjective),
-        roles: Object.keys(objectivesPayload),
-        chips: chipsList.length,
-        red_flags: redFlagsPayload.length,
-        critical_actions: criticalActionsList.length,
-        competencies: competenciesPayload.length,
+        diff,
+        fields: Object.keys(diff || {}),
       });
+      if (hydrated) setInitialBriefForm(hydrated);
       setBriefSuccess("Brief actualizado");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] brief", err);
@@ -1401,8 +1442,23 @@ export default function Admin_ScenarioEditor() {
       const next = (refreshed || []).map((row) => ({ ...row }));
       setResources(next);
       setInitialResources(next);
+      // Compute detailed change summary for resources
+      const deletedResources = (initialResources || [])
+        .filter((item) => item.id && !sanitized.some((current) => current.id === item.id))
+        .map((r) => ({ id: r.id, title: r.title }));
+      const insertedResources = (toInsert || []).map((r) => ({ title: r.title }));
+      const updatedResources = (toUpdate || [])
+        .map((item) => {
+          const before = (initialResources || []).find((ir) => ir.id === item.id) || null;
+          const diff = before ? computeDiff(before, item) : {};
+          return Object.keys(diff).length > 0 ? { id: item.id, title: item.title, diff } : null;
+        })
+        .filter(Boolean);
       await registerChange("recursos", "Actualizó las lecturas y materiales del caso", {
         total_resources: next.length,
+        inserted: insertedResources,
+        deleted: deletedResources,
+        updated: updatedResources,
       });
       setResourcesSuccess("Lecturas actualizadas");
     } catch (err) {
@@ -1719,7 +1775,11 @@ export default function Admin_ScenarioEditor() {
       };
 
       let savedId = question.id;
+      let oldQuestion = null;
       if (question.id) {
+        // Fetch existing persisted row to compute diff
+        const { data: existingQ, error: existingQErr } = await supabase.from("questions").select("id,question_text,options,correct_option,explanation,roles,is_critical,hints,time_limit,critical_rationale").eq("id", question.id).maybeSingle();
+        if (!existingQErr) oldQuestion = existingQ;
         const { error } = await supabase.from("questions").update(payload).eq("id", question.id);
         if (error) throw error;
       } else {
@@ -1736,13 +1796,18 @@ export default function Admin_ScenarioEditor() {
         savedId = inserted?.id || null;
       }
 
+      const meta = { step_id: stepKey, question_id: savedId || question.id || null };
+      if (oldQuestion) {
+        const diff = computeDiff(oldQuestion, payload);
+        meta.diff = diff;
+        meta.fields = Object.keys(diff || {});
+      } else if (!question.id) {
+        meta.new = payload;
+      }
       await registerChange(
         "preguntas",
         question.id ? "Actualizó una pregunta" : "Añadió una nueva pregunta",
-        {
-          step_id: stepKey,
-          question_id: savedId || question.id || null,
-        }
+        meta
       );
 
       await loadQuestionsForStepIds([stepKey]);
@@ -1784,6 +1849,7 @@ export default function Admin_ScenarioEditor() {
       await registerChange("preguntas", "Eliminó una pregunta", {
         step_id: stepKey,
         question_id: question.id,
+        before: { id: question.id, text: question.text, options: question.options },
       });
       await loadQuestionsForStepIds([stepKey]);
       setQuestionsSuccess("Pregunta eliminada");
@@ -1847,11 +1913,25 @@ export default function Admin_ScenarioEditor() {
           }))
         : [];
 
+      const oldSteps = initialSteps || [];
+      const deletedSteps = oldSteps.filter((s) => s.id && !normalized.some((n) => n.id === s.id)).map(s => ({ id: s.id, description: s.description }));
+      const insertedSteps = normalized.filter((s) => !s.id).map(s => ({ description: s.description, step_order: s.step_order }));
+      const updatedSteps = normalized
+        .filter((s) => s.id)
+        .map((s) => {
+          const before = oldSteps.find((o) => o.id === s.id);
+          const diff = before ? computeDiff(before, s) : {};
+          return Object.keys(diff).length > 0 ? { id: s.id, diff } : null;
+        })
+        .filter(Boolean);
       setSteps(normalized);
       setInitialSteps(normalized);
       await loadQuestionsForStepIds(normalized.map((row) => row.id).filter(Boolean));
       await registerChange("pasos", "Actualizó la secuencia de pasos del escenario", {
         total_steps: normalized.length,
+        inserted: insertedSteps,
+        deleted: deletedSteps,
+        updated: updatedSteps,
       });
       setStepsSuccess("Pasos actualizados");
     } catch (err) {
@@ -1876,8 +1956,11 @@ export default function Admin_ScenarioEditor() {
     }
     setSaving(true);
     try {
+      const oldScenarioState = scenario ? { title: scenario.title, summary: scenario.summary, status: scenario.status, mode: scenario.mode, level: scenario.level, estimated_minutes: scenario.estimated_minutes, max_attempts: scenario.max_attempts } : {};
       const estimated = Number.parseInt(form.estimated_minutes, 10);
       const attempts = Number.parseInt(form.max_attempts, 10);
+      // time_limit_minutes no longer used; use estimated_minutes only
+      // const tl = Number.parseInt(form.time_limit_minutes, 10);
       const levelValue = normalizeLevelValue(form.level || "basico");
       const payload = {
         title: form.title.trim(),
@@ -1887,7 +1970,19 @@ export default function Admin_ScenarioEditor() {
         level: levelValue || null,
         estimated_minutes: Number.isFinite(estimated) ? estimated : 10,
         max_attempts: Number.isFinite(attempts) ? attempts : 3,
+        // time_limit_minutes: Number.isFinite(tl) ? tl : null,
       };
+      // If saving as published and scenario includes online, require brief triangle and alarm signs
+      if (Array.isArray(payload.mode) && payload.mode.includes('online') && (payload.status === 'Publicado' || payload.status === 'Disponible')) {
+        const tri = briefForm?.triangle || {};
+        const hasTri = tri.appearance && tri.breathing && tri.circulation;
+        const hasAlarm = (briefForm?.redFlags && briefForm.redFlags.length > 0) || (briefForm?.criticalActions && briefForm.criticalActions.length > 0);
+        if (!hasTri || !hasAlarm) {
+          setError('No se puede publicar el escenario online: completa el Triángulo (Apariencia/Respiración/Circulación) y al menos un signo de alarma / acciones críticas en el Brief.');
+          setSaving(false);
+          return;
+        }
+      }
       const attemptUpdate = async (pl) => {
         return await supabase
           .from("scenarios")
@@ -1907,18 +2002,23 @@ export default function Admin_ScenarioEditor() {
           }
         }
       }
+      // If the DB lacks the new column, retry update without `time_limit_minutes`.
+      if (updateErr && String(updateErr.message).toLowerCase().includes("time_limit_minutes") || String(updateErr.message).toLowerCase().includes("column")) {
+        // No fallback needed since we don't send time_limit_minutes anymore
+        const payloadNoTL = { ...payload };
+        delete payloadNoTL.time_limit_minutes; // no-op if not present
+        ({ data, error: updateErr } = await attemptUpdate(payloadNoTL));
+      }
       if (updateErr) throw updateErr;
       if (data) {
         const nextScenario = { ...data, level: normalizeLevelValue(data.level) };
         setScenario(nextScenario);
         setForm((prev) => (prev ? { ...prev, level: nextScenario.level, status: nextScenario.status, title: nextScenario.title } : prev));
       }
+      const diff = computeDiff(oldScenarioState, payload);
       await registerChange("metadata", "Actualizó la información general del escenario", {
-        status: payload.status,
-        level: payload.level,
-        mode: payload.mode,
-        estimated_minutes: payload.estimated_minutes,
-        max_attempts: payload.max_attempts,
+        diff,
+        fields: Object.keys(diff || {}),
       });
       setSuccess("Escenario actualizado correctamente");
     } catch (err) {
@@ -2241,6 +2341,7 @@ export default function Admin_ScenarioEditor() {
                   />
                   <span className="mt-1 block text-[11px] text-slate-400">Limita el temporizador global del intento.</span>
                 </label>
+                {/* time_limit_minutes deprecated: field removed */}
                 <label className="block text-sm text-slate-600">
                   <span className="text-xs uppercase tracking-wide text-slate-400">Intentos máximos</span>
                   <input
@@ -2696,7 +2797,7 @@ export default function Admin_ScenarioEditor() {
                   </label>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <p className="text-sm font-medium text-slate-700">Constantes y observaciones</p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-4">
+                    <div className="mt-3 grid gap-3 md:grid-cols-6">
                       <label className="block text-xs uppercase tracking-wide text-slate-400">
                         FC
                         <input
@@ -2767,6 +2868,42 @@ export default function Admin_ScenarioEditor() {
                           }
                           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
                           placeholder="36.2"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        TA sistólica (mmHg)
+                        <input
+                          type="text"
+                          value={briefForm.vitals.taSystolic}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              vitals: {
+                                ...prev.vitals,
+                                taSystolic: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="78"
+                        />
+                      </label>
+                      <label className="block text-xs uppercase tracking-wide text-slate-400">
+                        TA diastólica (mmHg)
+                        <input
+                          type="text"
+                          value={briefForm.vitals.taDiastolic}
+                          onChange={(event) =>
+                            setBriefForm((prev) => ({
+                              ...prev,
+                              vitals: {
+                                ...prev.vitals,
+                                taDiastolic: event.target.value,
+                              },
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
+                          placeholder="42"
                         />
                       </label>
                     </div>
@@ -3553,6 +3690,43 @@ export default function Admin_ScenarioEditor() {
                         ? createdAt.toLocaleString()
                         : "Fecha desconocida";
                       const changeLabel = changeTypeLabels[log?.change_type] || log?.change_type || "Actualización";
+                      function renderMeta(meta) {
+                        if (!meta) return null;
+                        if (meta.diff && typeof meta.diff === 'object' && Object.keys(meta.diff).length > 0) {
+                          return (
+                            <div className="mt-2">
+                              <h5 className="text-xs text-slate-500 mb-1">Cambios</h5>
+                              <ul className="text-xs text-slate-700 list-disc pl-5">
+                                {Object.entries(meta.diff).map(([k, v]) => {
+                                  if (v && v.before !== undefined && v.after !== undefined) {
+                                    return <li key={k}>{k}: <span className="font-mono">{String(v.before)}</span> → <span className="font-mono">{String(v.after)}</span></li>;
+                                  }
+                                  // nested diff
+                                  if (v && typeof v === 'object') {
+                                    return (
+                                      <li key={k}>{k}:
+                                        <ul className="list-decimal pl-5">
+                                          {Object.entries(v).map(([k2, v2]) => (
+                                            <li key={k2}>{k2}: {v2 && v2.before !== undefined ? (<><span className="font-mono">{String(v2.before)}</span> → <span className="font-mono">{String(v2.after)}</span></>) : JSON.stringify(v2)}</li>
+                                          ))}
+                                        </ul>
+                                      </li>
+                                    );
+                                  }
+                                  return <li key={k}>{k}: {String(v)}</li>;
+                                })}
+                              </ul>
+                            </div>
+                          );
+                        }
+                        // general meta object fallback
+                        return (
+                          <div className="mt-2 text-xs text-slate-700">
+                            <pre className="whitespace-pre-wrap text-[11px] bg-slate-50 border border-slate-100 p-2 rounded">{JSON.stringify(meta, null, 2)}</pre>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div key={log.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                           <div className="flex flex-col gap-1">
@@ -3568,6 +3742,7 @@ export default function Admin_ScenarioEditor() {
                               ) : null}
                             </div>
                             {log?.description ? <p className="text-sm text-slate-700">{log.description}</p> : null}
+                            {log?.meta ? renderMeta(log.meta) : null}
                           </div>
                         </div>
                       );

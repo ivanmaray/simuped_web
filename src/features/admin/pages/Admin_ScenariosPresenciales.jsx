@@ -52,7 +52,7 @@ function ScenarioRow({ scenario, onOpenEquip, onOpenEditor }) {
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span className="inline-flex items-center gap-1"><FunnelIcon className="h-4 w-4" />Nivel {levelLabel}</span>
             <span className="inline-flex items-center gap-1"><CalendarIcon className="h-4 w-4" />{createdLabel}</span>
-            <span className="inline-flex items-center gap-1"><ClockIcon className="h-4 w-4" />{scenario.estimated_minutes || "—"} min</span>
+            <span className="inline-flex items-center gap-1"><ClockIcon className="h-4 w-4" />{`${scenario.estimated_minutes || "—"} min`}</span>
             <span className="inline-flex items-center gap-1">Modo: {modes}</span>
             {steps != null ? (
               <span className="inline-flex items-center gap-1">{steps} paso{steps === 1 ? "" : "s"}</span>
@@ -125,13 +125,29 @@ export default function Admin_ScenariosPresenciales() {
         if (!me?.is_admin) throw new Error("Acceso restringido");
         setProfile(me || null);
 
-        const { data, error: listErr } = await supabase
-          .from("scenarios")
-          .select(
-            "id,title,summary,status,mode,created_at,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode,instructor_brief,student_brief,room_layout,roles_required,checklist_template,triggers)"
-          )
-          .contains("mode", ["presencial"])
-          .order("created_at", { ascending: false });
+        let data, listErr;
+        try {
+          ({ data, error: listErr } = await supabase
+            .from("scenarios")
+            .select(
+              "id,title,summary,status,mode,created_at,estimated_minutes,time_limit_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode,instructor_brief,student_brief,room_layout,roles_required,checklist_template,triggers)"
+            )
+            .contains("mode", ["presencial"])
+            .order("created_at", { ascending: false }));
+        } catch (err) {
+          const m = String(err?.message || "").toLowerCase();
+          if (m.includes("time_limit_minutes") || m.includes("column")) {
+            ({ data, listErr } = await supabase
+              .from("scenarios")
+              .select(
+                "id,title,summary,status,mode,created_at,estimated_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode,instructor_brief,student_brief,room_layout,roles_required,checklist_template,triggers)"
+              )
+              .contains("mode", ["presencial"])
+              .order("created_at", { ascending: false }));
+          } else {
+            throw err;
+          }
+        }
 
         if (listErr) throw listErr;
         if (!active) return;
@@ -171,11 +187,25 @@ export default function Admin_ScenariosPresenciales() {
     setRefreshing(true);
     setError("");
     try {
-      const { data, error: listErr } = await supabase
-        .from("scenarios")
-        .select("id,title,summary,status,mode,created_at,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode)")
-        .contains("mode", ["presencial"])
-        .order("created_at", { ascending: false });
+      let data, listErr;
+      try {
+        ({ data, listErr } = await supabase
+          .from("scenarios")
+          .select("id,title,summary,status,mode,created_at,estimated_minutes,time_limit_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode)")
+          .contains("mode", ["presencial"])
+          .order("created_at", { ascending: false }));
+      } catch (err) {
+        const m = String(err?.message || "").toLowerCase();
+        if (m.includes("time_limit_minutes") || m.includes("column")) {
+          ({ data, listErr } = await supabase
+            .from("scenarios")
+            .select("id,title,summary,status,mode,created_at,estimated_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode)")
+            .contains("mode", ["presencial"])
+            .order("created_at", { ascending: false }));
+        } else {
+          throw err;
+        }
+      }
       if (listErr) throw listErr;
       setScenarios(data || []);
     } catch (err) {

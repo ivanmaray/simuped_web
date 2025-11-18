@@ -17,7 +17,7 @@ BEGIN
     VALUES (
       v_scenario_id,
       -- student_brief: lo que ven los alumnos
-      $$Constantes y observaciones
+      $student$Constantes y observaciones
       FC: 156
       FR: 34
       SatO2 (%): 86
@@ -42,10 +42,10 @@ BEGIN
       Circulación cutánea: Sin definir
 
       Signos de alarma: selecciona los que procedan (algunos son distractores)
-      $$,
+      $student$,
 
       -- instructor_brief: claves y respuestas (qué indica gravedad)
-      $$Claves instructores:
+      $instructor$Claves instructores:
       - Hipotensión (TA 78/42) => Signo grave (indica shock mixto/hipo-perfusión)
       - Taquicardia 156 => Contribuye a inestabilidad hemodinámica
       - FR 34 y SatO2 86% => Insuficiencia respiratoria parcial/hipoxemia
@@ -55,7 +55,7 @@ BEGIN
       - Temperatura 36.2 ºC => normal (distractor)
 
       Signos que deben marcarse como CORRECTOS en la actividad: Hipotensión, Taquicardia marcada, SatO2 baja, FR elevada, Edema facial marcado, Lactato elevado, Alteración del estado mental (si aparece)
-      $$,
+      $instructor$,
 
       -- checklist_template: estructura con signos de alarma (correctos y distractores)
       '[{"group":"Signos de alarma","items":[
