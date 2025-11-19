@@ -66,6 +66,7 @@ export default function Online_Confirm() {
   const [scenario, setScenario] = useState(null);
   const [attemptsCount, setAttemptsCount] = useState(0);
   const [openAttemptId, setOpenAttemptId] = useState(null);
+  const [openAttemptLimitSecs, setOpenAttemptLimitSecs] = useState(null);
   const [customMinutes, setCustomMinutes] = useState("");
 
   const [brief, setBrief] = useState(null);
@@ -232,7 +233,7 @@ export default function Online_Confirm() {
       // 5) Intento abierto (para reanudar) — solo si está realmente en curso y no expirado
       const { data: openAttempt, error: oaErr } = await supabase
         .from("attempts")
-        .select("id, status, started_at, expires_at, finished_at")
+        .select("id, status, started_at, expires_at, finished_at, time_limit")
         .eq("user_id", sess.user.id)
         .eq("scenario_id", scenarioId)
         .in("status", ["en_curso", "en curso"])
@@ -244,6 +245,7 @@ export default function Online_Confirm() {
       if (oaErr) {
         console.warn("[Confirm] open attempt check error:", oaErr);
         setOpenAttemptId(null);
+        setOpenAttemptLimitSecs(null);
       } else if (openAttempt && openAttempt.id) {
         // validar expiración con hora del servidor (si está disponible)
         let nowRef = new Date();
@@ -258,16 +260,21 @@ export default function Online_Confirm() {
           id: openAttempt.id,
           exp: openAttempt.expires_at,
           now: nowRef.toISOString(),
-          notExpired
+          notExpired,
+          time_limit: openAttempt.time_limit,
         });
 
         if (notExpired) {
           setOpenAttemptId(openAttempt.id);   // reanudar solo si ya corría el tiempo
+          const tl = Number(openAttempt.time_limit);
+          setOpenAttemptLimitSecs(Number.isFinite(tl) && tl > 0 ? Math.floor(tl) : null);
         } else {
           setOpenAttemptId(null);             // si expires_at es null o pasado, no mostrar reanudar
+          setOpenAttemptLimitSecs(null);
         }
       } else {
         setOpenAttemptId(null);
+        setOpenAttemptLimitSecs(null);
       }
 
       setLoading(false);
@@ -297,14 +304,23 @@ export default function Online_Confirm() {
   const status = scenario?.status || "";
   const badge = statusBadge(status);
 
-  // Tiempo estimado del escenario (prioridad: scenario.estimated_minutes > brief.estimated_minutes > 15)
-  const estimatedMinutes = (() => {
-    // Use the scenario's estimated_minutes value as the canonical timer limit
+  // Tiempo estimado base del escenario (prioridad: scenario.estimated_minutes > brief.estimated_minutes > 15)
+  const baseEstimatedMinutes = (() => {
     const a = Number(scenario?.estimated_minutes);
     if (Number.isFinite(a) && a > 0) return a;
     const b = Number(brief?.estimated_minutes);
     if (Number.isFinite(b) && b > 0) return b;
     return 15;
+  })();
+
+  // Minutos efectivos que se mostrarán: si hay intento abierto con time_limit, usamos ese;
+  // en caso contrario usamos la estimación base.
+  const effectiveMinutes = (() => {
+    const tl = Number(openAttemptLimitSecs);
+    if (Number.isFinite(tl) && tl > 0) {
+      return Math.max(1, Math.round(tl / 60));
+    }
+    return baseEstimatedMinutes;
   })();
 
   const isBlockedByStatus =
@@ -338,7 +354,7 @@ export default function Online_Confirm() {
     } catch { /* noop */ }
     try {
       // 0) Parámetros de tiempo
-      let baseMinutes = estimatedMinutes;
+      let baseMinutes = baseEstimatedMinutes;
       if (esAdmin) {
         const nCustom = Number(customMinutes);
         if (Number.isFinite(nCustom) && nCustom > 0) {
@@ -446,7 +462,7 @@ export default function Online_Confirm() {
       {/* Hero */}
       <section className="bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3] text-white">
         <div className="max-w-6xl mx-auto px-5 py-10">
-          <p className="opacity-95">{formatMode(scenario.mode)} • {formatLevel(scenario.level)} • ~{estimatedMinutes} min</p>
+          <p className="opacity-95">{formatMode(scenario.mode)} • {formatLevel(scenario.level)} • ~{effectiveMinutes} min</p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl md:text-4xl font-semibold">{scenario.title}</h1>
             {perfil.rol ? (
@@ -680,7 +696,7 @@ export default function Online_Confirm() {
               Intentos usados: {attemptsCount}/{MAX_ATTEMPTS}{openAttemptId ? " · intento activo" : ""}
             </span>
             <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
-              Tiempo estimado: ~{estimatedMinutes} min
+              Tiempo estimado: ~{effectiveMinutes} min
             </span>
             {badge.text && (
               <span className={`inline-flex items-center px-2.5 py-1 rounded-full ring-1 text-sm ${badge.className}`}>
