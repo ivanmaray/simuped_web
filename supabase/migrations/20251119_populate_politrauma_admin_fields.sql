@@ -31,7 +31,7 @@ BEGIN
 - Manejo de HTIC: elevar cabecera, mantener normotermia, considerar osmoterapia (suero hipertónico o manitol) según protocolo y monitorizar sodio y diuresis.
 - Documentación forense y protección infantil: fotografiar lesiones con timestamp, registrar hallazgos objetivos y notificar a trabajo social/protección infantil.
 - Comunicación y coordinación: preparar traslado a UCI/neurocirugía si indica, coordinar sangre y equipo quirúrgico cuando exista lesión operable.$instructor$,
-      $$
+      $room$
       {
         "patient": {
           "age_years": 8,
@@ -100,8 +100,8 @@ BEGIN
           }
         }
       }
-      $$::jsonb,
-      $$
+      $room$::jsonb,
+      $checklist$
       [
         {
           "group": "Acciones críticas",
@@ -114,21 +114,21 @@ BEGIN
           ]
         }
       ]
-      $$::jsonb,
-      $$
+      $checklist$::jsonb,
+      $roles_json$
       [
         { "role": "medico", "min": 1, "max": 2 },
         { "role": "enfermeria", "min": 1, "max": 2 },
         { "role": "farmacia", "min": 0, "max": 1 },
         { "role": "anestesia", "min": 0, "max": 1 }
       ]
-      $$::jsonb,
-      $$
+      $roles_json$::jsonb,
+      $triggers_json$
       [
         { "event": "vital_threshold", "variable": "ta_systolic", "condition": "<age_adjusted_hypotension", "action": "flag_hemodynamic_instability" },
         { "event": "neurologic_deterioration", "variable": "gcs", "condition": "<=8", "action": "flag_airway_and_neurosurgery" }
       ]
-      $$::jsonb
+      $triggers_json$::jsonb
     )
     ON CONFLICT (scenario_id) DO UPDATE
     SET
