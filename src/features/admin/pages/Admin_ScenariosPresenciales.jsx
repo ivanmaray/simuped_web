@@ -126,28 +126,13 @@ export default function Admin_ScenariosPresenciales() {
         setProfile(me || null);
 
         let data, listErr;
-        try {
-          ({ data, error: listErr } = await supabase
-            .from("scenarios")
-            .select(
-              "id,title,summary,status,mode,created_at,estimated_minutes,time_limit_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode,instructor_brief,student_brief,room_layout,roles_required,checklist_template,triggers)"
-            )
-            .contains("mode", ["presencial"])
-            .order("created_at", { ascending: false }));
-        } catch (err) {
-          const m = String(err?.message || "").toLowerCase();
-          if (m.includes("time_limit_minutes") || m.includes("column")) {
-            ({ data, listErr } = await supabase
-              .from("scenarios")
-              .select(
-                "id,title,summary,status,mode,created_at,estimated_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode,instructor_brief,student_brief,room_layout,roles_required,checklist_template,triggers)"
-              )
-              .contains("mode", ["presencial"])
-              .order("created_at", { ascending: false }));
-          } else {
-            throw err;
-          }
-        }
+        ({ data, error: listErr } = await supabase
+          .from("scenarios")
+          .select(
+            "id,title,summary,status,mode,created_at,estimated_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode,instructor_brief,student_brief,room_layout,roles_required,checklist_template,triggers)"
+          )
+          .contains("mode", ["presencial"])
+          .order("created_at", { ascending: false }));
 
         if (listErr) throw listErr;
         if (!active) return;
@@ -188,24 +173,11 @@ export default function Admin_ScenariosPresenciales() {
     setError("");
     try {
       let data, listErr;
-      try {
-        ({ data, listErr } = await supabase
-          .from("scenarios")
-          .select("id,title,summary,status,mode,created_at,estimated_minutes,time_limit_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode)")
-          .contains("mode", ["presencial"])
-          .order("created_at", { ascending: false }));
-      } catch (err) {
-        const m = String(err?.message || "").toLowerCase();
-        if (m.includes("time_limit_minutes") || m.includes("column")) {
-          ({ data, listErr } = await supabase
-            .from("scenarios")
-            .select("id,title,summary,status,mode,created_at,estimated_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode)")
-            .contains("mode", ["presencial"])
-            .order("created_at", { ascending: false }));
-        } else {
-          throw err;
-        }
-      }
+      ({ data, listErr } = await supabase
+        .from("scenarios")
+        .select("id,title,summary,status,mode,created_at,estimated_minutes,scenario_steps:scenario_steps(id),presencial_meta:scenario_presencial_meta(dual_mode)")
+        .contains("mode", ["presencial"])
+        .order("created_at", { ascending: false }));
       if (listErr) throw listErr;
       setScenarios(data || []);
     } catch (err) {
