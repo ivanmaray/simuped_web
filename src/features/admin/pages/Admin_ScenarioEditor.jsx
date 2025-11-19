@@ -1778,10 +1778,21 @@ export default function Admin_ScenarioEditor() {
       let oldQuestion = null;
       if (question.id) {
         // Fetch existing persisted row to compute diff
-        const { data: existingQ, error: existingQErr } = await supabase.from("questions").select("id,question_text,options,correct_option,explanation,roles,is_critical,hints,time_limit,critical_rationale").eq("id", question.id).maybeSingle();
+        const { data: existingQ, error: existingQErr } = await supabase
+          .from("questions")
+          .select("id,question_text,options,correct_option,explanation,roles,is_critical,hints,time_limit,critical_rationale")
+          .eq("id", question.id)
+          .maybeSingle();
         if (!existingQErr) oldQuestion = existingQ;
-        const { error } = await supabase.from("questions").update(payload).eq("id", question.id);
-        if (error) throw error;
+        // Use returning select to obtain the updated row and detect if update actually persisted
+        const { data: updatedRow, error: updateErr } = await supabase
+          .from("questions")
+          .update(payload)
+          .eq("id", question.id)
+          .select()
+          .maybeSingle();
+        if (updateErr) throw updateErr;
+        if (updatedRow) savedId = updatedRow.id;
       } else {
         const insertPayload = {
           ...payload,
