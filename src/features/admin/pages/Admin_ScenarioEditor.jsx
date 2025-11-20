@@ -1760,7 +1760,8 @@ export default function Admin_ScenarioEditor() {
       return;
     }
 
-    setQuestionOperation(localId, "saving");
+    const operationKey = question.id || localId;
+    setQuestionOperation(operationKey, "saving");
     try {
       const payload = {
         question_text: text,
@@ -1793,6 +1794,81 @@ export default function Admin_ScenarioEditor() {
           .maybeSingle();
         if (updateErr) throw updateErr;
         if (updatedRow) savedId = updatedRow.id;
+
+      if (question.id && updatedRow) {
+        setQuestionsByStep((prev) => {
+          const stepQuestions = prev?.[stepKey] || [];
+          const index = stepQuestions.findIndex((q) => q.id === question.id);
+          if (index >= 0) {
+            const parseJsonArray = (value) => {
+              if (!value) return [];
+              if (Array.isArray(value)) return value.filter(Boolean);
+              if (typeof value === "string") {
+                try {
+                  const parsed = JSON.parse(value);
+                  if (Array.isArray(parsed)) return parsed.filter((item) => item !== null && item !== undefined && item !== "");
+                  return parsed ? [parsed].filter(Boolean) : [];
+                } catch (err) {
+                  return [value].filter(Boolean);
+                }
+              }
+              return [];
+            };
+            const optionsArray = parseJsonArray(updatedRow.options).map((item) => {
+              if (item == null) return "";
+              if (typeof item === "string") return item;
+              return String(item);
+            });
+            const rolesArray = (() => {
+              const collected = new Set();
+              if (Array.isArray(updatedRow.roles)) {
+                updatedRow.roles.forEach((role) => {
+                  const normalized = normalizeRoleCode(role);
+                  if (normalized) collected.add(normalized);
+                });
+              } else if (typeof updatedRow.roles === "string" && updatedRow.roles.trim()) {
+                const normalized = normalizeRoleCode(updatedRow.roles);
+                if (normalized) collected.add(normalized);
+              }
+              return Array.from(collected);
+            })();
+            const hintsArray = parseJsonArray(updatedRow.hints).map((item) => {
+              if (item == null) return "";
+              if (typeof item === "string") return item;
+              return String(item);
+            });
+            const correctIndex = (() => {
+              if (typeof updatedRow.correct_option === "number") return updatedRow.correct_option;
+              if (typeof updatedRow.correct_option === "string") {
+                const parsed = Number.parseInt(updatedRow.correct_option, 10);
+                if (Number.isFinite(parsed)) return parsed;
+              }
+              return 0;
+            })();
+            const updatedQ = {
+              ...stepQuestions[index],
+              text: updatedRow.question_text || "",
+              options: optionsArray,
+              correctIndex,
+              explanation: updatedRow.explanation || "",
+              roles: rolesArray,
+              isCritical: Boolean(updatedRow.is_critical),
+              hints: hintsArray,
+              timeLimit: updatedRow.time_limit != null ? Number(updatedRow.time_limit) : null,
+              timeLimitInput: updatedRow.time_limit != null ? String(updatedRow.time_limit) : "",
+
+criticalRationale: updatedRow.critical_rationale || "",
+            };
+            const newStepQuestions = [...stepQuestions];
+            newStepQuestions[index] = updatedQ;
+            return {
+              ...prev,
+              [stepKey]: newStepQuestions,
+            };
+          }
+          return prev;
+        });
+      }
       } else {
         const insertPayload = {
           ...payload,
@@ -1827,7 +1903,7 @@ export default function Admin_ScenarioEditor() {
       console.error("[Admin_ScenarioEditor] save question", err);
       setQuestionsError(err?.message || "No se pudo guardar la pregunta");
     } finally {
-      setQuestionOperation(localId, null);
+      setQuestionOperation(operationKey, null);
     }
   }
 
@@ -1840,6 +1916,7 @@ export default function Admin_ScenarioEditor() {
     setQuestionsError("");
     setQuestionsSuccess("");
     const localId = question.localId || generateTempQuestionId(stepKey);
+    const operationKey = question.id || localId;
 
     if (!question.id) {
       setQuestionsByStep((prev) => {
@@ -1853,7 +1930,7 @@ export default function Admin_ScenarioEditor() {
       return;
     }
 
-    setQuestionOperation(localId, "deleting");
+    setQuestionOperation(operationKey, "deleting");
     try {
       const { error } = await supabase.from("questions").delete().eq("id", question.id);
       if (error) throw error;
@@ -1868,7 +1945,7 @@ export default function Admin_ScenarioEditor() {
       console.error("[Admin_ScenarioEditor] delete question", err);
       setQuestionsError(err?.message || "No se pudo eliminar la pregunta");
     } finally {
-      setQuestionOperation(localId, null);
+      setQuestionOperation(operationKey, null);
     }
   }
 
@@ -3409,7 +3486,7 @@ export default function Admin_ScenarioEditor() {
                               <div className="mt-3 space-y-3">
                                 {stepQuestions.map((question, questionIndex) => {
                                   const displayIndex = questionIndex + 1;
-                                  const questionKey = question.localId || `question-${question.id ?? questionIndex}`;
+                                  const questionKey = question.id || question.localId;
                                   const operation = questionOperationState?.[questionKey];
                                   const isSaving = operation === "saving";
                                   const isDeleting = operation === "deleting";

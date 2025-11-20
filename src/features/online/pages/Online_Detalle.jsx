@@ -1896,7 +1896,7 @@ export default function Online_Detalle() {
                     <TimeDonut
                       totalSecs={Number(attemptTimeLimit)}
                       remainSecs={remainingSecs}
-                      size={48}
+                      size={64}
                       title="Tiempo restante"
                     />
                   </div>
@@ -1998,7 +1998,7 @@ export default function Online_Detalle() {
                         {isTimedStep(currentStep) && q.time_limit ? (
                           <div className="mt-2">
                             <div
-                              className={`inline-flex items-center gap-2 text-xs px-2 py-1 rounded border ${
+                              className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded border ${
                                 qTimers[q.id]?.expired
                                   ? "bg-rose-100 text-rose-800 border-rose-200"
                                   : (qTimers[q.id]?.remaining ?? q.time_limit) <= 10
@@ -2008,9 +2008,9 @@ export default function Online_Detalle() {
                             >
                               ⏱️ {formatMMSS(qTimers[q.id]?.remaining ?? q.time_limit)}
                             </div>
-                            <div className="h-1 bg-slate-200 rounded mt-1 overflow-hidden">
+                            <div className="h-2 bg-slate-200 rounded mt-1 overflow-hidden">
                               <div
-                                className="h-1 bg-amber-500"
+                                className="h-2 bg-amber-500"
                                 style={{ width: `${Math.max(0, Math.min(100, ((qTimers[q.id]?.remaining ?? q.time_limit) / q.time_limit) * 100))}%` }}
                               />
                             </div>
