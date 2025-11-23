@@ -1373,24 +1373,18 @@ export default function Admin_ScenarioEditor() {
   async function handleSaveResources() {
     console.log("[DEBUG] handleSaveResources: Starting save");
     
-    // Wait for auth to be ready
-    console.log("[DEBUG] handleSaveResources: Waiting for auth...");
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    console.log("[DEBUG] handleSaveResources: Auth result - user:", userData?.user, "error:", userError);
-    
-    if (userError) {
-      console.error("[DEBUG] handleSaveResources: Auth error", userError);
-      setResourcesError("Error de autenticación: " + userError.message);
-      return;
+    // Try to refresh session first
+    console.log("[DEBUG] handleSaveResources: Refreshing session...");
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.refreshSession();
+      console.log("[DEBUG] handleSaveResources: Session refresh result:", sessionData, "error:", sessionError);
+    } catch (refreshErr) {
+      console.error("[DEBUG] handleSaveResources: Session refresh failed:", refreshErr);
     }
     
-    if (!userData?.user) {
-      console.error("[DEBUG] handleSaveResources: No authenticated user");
-      setResourcesError("Usuario no autenticado");
-      return;
-    }
-    
-    console.log("[DEBUG] handleSaveResources: Auth successful, proceeding...");
+    // Simple approach: try the database operation directly
+    // If it fails due to auth, we'll catch it
+    console.log("[DEBUG] handleSaveResources: Proceeding with database operation...");
     
     if (!scenarioNumericId) {
       console.log("[DEBUG] handleSaveResources: No scenario ID, returning");
