@@ -1371,7 +1371,11 @@ export default function Admin_ScenarioEditor() {
   }
 
   async function handleSaveResources() {
-    if (!scenarioNumericId) return;
+    console.log("[DEBUG] handleSaveResources: Starting save");
+    if (!scenarioNumericId) {
+      console.log("[DEBUG] handleSaveResources: No scenario ID, returning");
+      return;
+    }
     setResourcesError("");
     setResourcesSuccess("");
     const sanitized = resources.map((item) => ({
@@ -1384,24 +1388,33 @@ export default function Admin_ScenarioEditor() {
       free_access: Boolean(item?.free_access),
       weight: Number.isFinite(Number(item?.weight)) ? Number(item.weight) : 0,
     }));
+    console.log("[DEBUG] handleSaveResources: Sanitized resources", sanitized);
     if (sanitized.some((item) => !item.title || !item.url)) {
+      console.log("[DEBUG] handleSaveResources: Validation failed");
       setResourcesError("Cada recurso necesita título y URL");
       return;
     }
     setResourcesSaving(true);
+    console.log("[DEBUG] handleSaveResources: Set saving to true");
     try {
       const toDelete = initialResources.filter((item) => item.id && !sanitized.some((current) => current.id === item.id));
+      console.log("[DEBUG] handleSaveResources: To delete", toDelete);
       if (toDelete.length > 0) {
+        console.log("[DEBUG] handleSaveResources: Deleting resources");
         const { error: deleteErr } = await supabase
           .from("case_resources")
           .delete()
           .in("id", toDelete.map((item) => item.id));
         if (deleteErr) throw deleteErr;
+        console.log("[DEBUG] handleSaveResources: Delete completed");
       }
       const toUpdate = sanitized.filter((item) => item.id);
+      console.log("[DEBUG] handleSaveResources: To update", toUpdate);
       if (toUpdate.length > 0) {
+        console.log("[DEBUG] handleSaveResources: Updating resources");
         await Promise.all(
           toUpdate.map(async (item) => {
+            console.log("[DEBUG] handleSaveResources: Updating item", item.id);
             const { error } = await supabase
               .from("case_resources")
               .update({
@@ -1415,11 +1428,15 @@ export default function Admin_ScenarioEditor() {
               })
               .eq("id", item.id);
             if (error) throw error;
+            console.log("[DEBUG] handleSaveResources: Update completed for", item.id);
           })
         );
+        console.log("[DEBUG] handleSaveResources: All updates completed");
       }
       const toInsert = sanitized.filter((item) => !item.id);
+      console.log("[DEBUG] handleSaveResources: To insert", toInsert);
       if (toInsert.length > 0) {
+        console.log("[DEBUG] handleSaveResources: Inserting resources");
         const insertPayload = toInsert.map((item) => ({
           scenario_id: scenarioNumericId,
           title: item.title,
@@ -1432,7 +1449,9 @@ export default function Admin_ScenarioEditor() {
         }));
         const { error: insertErr } = await supabase.from("case_resources").insert(insertPayload);
         if (insertErr) throw insertErr;
+        console.log("[DEBUG] handleSaveResources: Insert completed");
       }
+      console.log("[DEBUG] handleSaveResources: Refreshing data");
       const { data: refreshed, error: refreshErr } = await supabase
         .from("case_resources")
         .select("id,title,url,source,type,year,free_access,weight")
@@ -1440,9 +1459,11 @@ export default function Admin_ScenarioEditor() {
         .order("weight", { ascending: false })
         .order("title", { ascending: true });
       if (refreshErr) throw refreshErr;
+      console.log("[DEBUG] handleSaveResources: Refresh completed, data:", refreshed);
       const next = (refreshed || []).map((row) => ({ ...row }));
       setResources(next);
       setInitialResources(next);
+      console.log("[DEBUG] handleSaveResources: State updated");
       // Compute detailed change summary for resources
       const deletedResources = (initialResources || [])
         .filter((item) => item.id && !sanitized.some((current) => current.id === item.id))
@@ -1455,19 +1476,24 @@ export default function Admin_ScenarioEditor() {
           return Object.keys(diff).length > 0 ? { id: item.id, title: item.title, diff } : null;
         })
         .filter(Boolean);
+      console.log("[DEBUG] handleSaveResources: Registering change");
       await registerChange("recursos", "Actualizó las lecturas y materiales del caso", {
         total_resources: next.length,
         inserted: insertedResources,
         deleted: deletedResources,
         updated: updatedResources,
       });
+      console.log("[DEBUG] handleSaveResources: Change registered");
       setResourcesSuccess("Lecturas actualizadas");
+      console.log("[DEBUG] handleSaveResources: Success set");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] save resources", err);
       const errorMessage = (err && typeof err === 'object' && err.message) ? err.message : (typeof err === 'string' ? err : "No se pudieron guardar las lecturas");
       setResourcesError(errorMessage);
+      console.log("[DEBUG] handleSaveResources: Error caught", err);
     } finally {
       setResourcesSaving(false);
+      console.log("[DEBUG] handleSaveResources: Finally block executed");
     }
   }
 
