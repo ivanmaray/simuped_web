@@ -1434,15 +1434,31 @@ export default function Admin_ScenarioEditor() {
     setResourcesSaving(true);
     console.log("[DEBUG] handleSaveResources: Set saving to true");
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error("[DEBUG] handleSaveResources: No session", sessionError);
+        throw new Error("No session available");
+      }
+      console.log("[DEBUG] handleSaveResources: Session obtained for operations");
       const toDelete = initialResources.filter((item) => item.id && !sanitized.some((current) => current.id === item.id));
       console.log("[DEBUG] handleSaveResources: To delete", toDelete);
       if (toDelete.length > 0) {
         console.log("[DEBUG] handleSaveResources: Deleting resources");
-        const { error: deleteErr } = await supabase
-          .from("case_resources")
-          .delete()
-          .in("id", toDelete.map((item) => item.id));
-        if (deleteErr) throw deleteErr;
+        const deleteIds = toDelete.map((item) => item.id).join(',');
+        const deleteResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?id=in.(${deleteIds})`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        console.log("[DEBUG] handleSaveResources: Delete response status:", deleteResponse.status);
+        if (!deleteResponse.ok) {
+          const errorText = await deleteResponse.text();
+          console.error("[DEBUG] handleSaveResources: Delete failed", deleteResponse.status, errorText);
+          throw new Error(`Delete failed: ${deleteResponse.status} ${errorText}`);
+        }
         console.log("[DEBUG] handleSaveResources: Delete completed");
       }
       const toUpdate = sanitized.filter((item) => item.id);
@@ -1452,19 +1468,31 @@ export default function Admin_ScenarioEditor() {
         await Promise.all(
           toUpdate.map(async (item) => {
             console.log("[DEBUG] handleSaveResources: Updating item", item.id);
-            const { error } = await supabase
-              .from("case_resources")
-              .update({
-                title: item.title,
-                url: item.url,
-                source: item.source || null,
-                type: item.type || null,
-                year: item.year,
-                free_access: item.free_access,
-                weight: item.weight,
-              })
-              .eq("id", item.id);
-            if (error) throw error;
+            const updatePayload = {
+              title: item.title,
+              url: item.url,
+              source: item.source || null,
+              type: item.type || null,
+              year: item.year,
+              free_access: item.free_access,
+              weight: item.weight,
+            };
+            const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?id=eq.${item.id}`, {
+              method: 'PATCH',
+              headers: {
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation',
+              },
+              body: JSON.stringify(updatePayload),
+            });
+            console.log("[DEBUG] handleSaveResources: Update response status for", item.id, ":", updateResponse.status);
+            if (!updateResponse.ok) {
+              const errorText = await updateResponse.text();
+              console.error("[DEBUG] handleSaveResources: Update failed for", item.id, updateResponse.status, errorText);
+              throw new Error(`Update failed for ${item.id}: ${updateResponse.status} ${errorText}`);
+            }
             console.log("[DEBUG] handleSaveResources: Update completed for", item.id);
           })
         );
@@ -1490,7 +1518,7 @@ export default function Admin_ScenarioEditor() {
           method: 'POST',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation',
           },
@@ -1507,13 +1535,21 @@ export default function Admin_ScenarioEditor() {
         console.log("[DEBUG] handleSaveResources: Insert completed successfully");
       }
       console.log("[DEBUG] handleSaveResources: Refreshing data");
-      const { data: refreshed, error: refreshErr } = await supabase
-        .from("case_resources")
-        .select("id,title,url,source,type,year,free_access,weight")
-        .eq("scenario_id", scenarioNumericId)
-        .order("weight", { ascending: false })
-        .order("title", { ascending: true });
-      if (refreshErr) throw refreshErr;
+      const refreshResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?scenario_id=eq.${scenarioNumericId}&select=id,title,url,source,type,year,free_access,weight&order=weight.desc,title.asc`, {
+        method: 'GET',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      console.log("[DEBUG] handleSaveResources: Refresh response status:", refreshResponse.status);
+      if (!refreshResponse.ok) {
+        const errorText = await refreshResponse.text();
+        console.error("[DEBUG] handleSaveResources: Refresh failed", refreshResponse.status, errorText);
+        throw new Error(`Refresh failed: ${refreshResponse.status} ${errorText}`);
+      }
+      const refreshed = await refreshResponse.json();
       console.log("[DEBUG] handleSaveResources: Refresh completed, data:", refreshed);
       const next = (refreshed || []).map((row) => ({ ...row }));
       setResources(next);
