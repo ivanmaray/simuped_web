@@ -1859,6 +1859,7 @@ export default function Admin_ScenarioEditor() {
   }
 
   async function handleSaveQuestion(stepId, questionIndex) {
+    console.log("[DEBUG] handleSaveQuestion: Starting save for step", stepId, "question", questionIndex);
     if (!stepId && stepId !== 0) return;
     const stepKey = Number.isFinite(Number(stepId)) ? Number(stepId) : stepId;
     const stepQuestions = questionsByStep?.[stepKey] || [];
@@ -1938,6 +1939,7 @@ export default function Admin_ScenarioEditor() {
           throw new Error("No access token available");
         }
         // Direct fetch update
+        console.log("[DEBUG] handleSaveQuestion: About to update question", question.id, "with correct_option", correctIndex, "payload", payload);
         const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}`, {
           method: 'PATCH',
           headers: {
@@ -1948,11 +1950,14 @@ export default function Admin_ScenarioEditor() {
           },
           body: JSON.stringify(payload),
         });
+        console.log("[DEBUG] handleSaveQuestion: Update response status", updateResponse.status);
         if (!updateResponse.ok) {
           const errorText = await updateResponse.text();
+          console.error("[DEBUG] handleSaveQuestion: Update failed", errorText);
           throw new Error(`Update question failed: ${updateResponse.status} ${errorText}`);
         }
         const updatedRow = await updateResponse.json();
+        console.log("[DEBUG] handleSaveQuestion: Updated row raw", updatedRow);
         let updatedRowObj = updatedRow;
         if (Array.isArray(updatedRow) && updatedRow.length > 0) {
           updatedRowObj = updatedRow[0];
@@ -1960,6 +1965,7 @@ export default function Admin_ScenarioEditor() {
         } else if (updatedRow) {
           savedId = updatedRow.id;
         }
+        console.log("[DEBUG] handleSaveQuestion: Updated row obj", updatedRowObj, "correct_option", updatedRowObj?.correct_option);
 
       if (question.id && updatedRowObj) {
         setQuestionsByStep((prev) => {
@@ -2025,6 +2031,7 @@ export default function Admin_ScenarioEditor() {
 
 criticalRationale: updatedRowObj.critical_rationale || "",
             };
+            console.log("[DEBUG] handleSaveQuestion: Updating local state with correctIndex", correctIndex, "for question", question.id);
             const newStepQuestions = [...stepQuestions];
             newStepQuestions[index] = updatedQ;
             return {
