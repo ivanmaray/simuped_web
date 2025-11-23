@@ -1373,27 +1373,41 @@ export default function Admin_ScenarioEditor() {
   async function handleSaveResources() {
     console.log("[DEBUG] handleSaveResources: Starting save");
     
-    // Test basic connectivity first
-    console.log("[DEBUG] handleSaveResources: Testing basic connectivity...");
+    // Test with direct fetch to Supabase REST API
+    console.log("[DEBUG] handleSaveResources: Testing direct fetch to Supabase...");
     try {
-      const { data: testData, error: testError } = await supabase
-        .from("scenarios")
-        .select("id")
-        .limit(1);
-      console.log("[DEBUG] handleSaveResources: Connectivity test - data:", testData, "error:", testError);
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
-      if (testError) {
-        console.error("[DEBUG] handleSaveResources: Connectivity test failed", testError);
-        setResourcesError("Error de conectividad: " + testError.message);
+      console.log("[DEBUG] handleSaveResources: URL:", supabaseUrl, "Key present:", !!supabaseKey);
+      
+      const response = await fetch(`${supabaseUrl}/rest/v1/scenarios?select=id&limit=1`, {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      console.log("[DEBUG] handleSaveResources: Direct fetch response status:", response.status);
+      
+      if (!response.ok) {
+        console.error("[DEBUG] handleSaveResources: Direct fetch failed with status", response.status);
+        setResourcesError(`Error HTTP ${response.status}`);
         return;
       }
-    } catch (connErr) {
-      console.error("[DEBUG] handleSaveResources: Connectivity test exception", connErr);
-      setResourcesError("Error de conexión con la base de datos");
+      
+      const data = await response.json();
+      console.log("[DEBUG] handleSaveResources: Direct fetch successful, data:", data);
+      
+    } catch (fetchErr) {
+      console.error("[DEBUG] handleSaveResources: Direct fetch exception", fetchErr);
+      setResourcesError("Error de conexión directa: " + fetchErr.message);
       return;
     }
     
-    console.log("[DEBUG] handleSaveResources: Connectivity OK, proceeding...");
+    console.log("[DEBUG] handleSaveResources: Direct connectivity OK, proceeding...");
     
     if (!scenarioNumericId) {
       console.log("[DEBUG] handleSaveResources: No scenario ID, returning");
