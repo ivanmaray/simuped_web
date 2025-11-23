@@ -1372,8 +1372,26 @@ export default function Admin_ScenarioEditor() {
 
   async function handleSaveResources() {
     console.log("[DEBUG] handleSaveResources: Starting save");
-    console.log("[DEBUG] handleSaveResources: Current user:", supabase.auth.getUser());
-    console.log("[DEBUG] handleSaveResources: Session:", supabase.auth.getSession());
+    
+    // Wait for auth to be ready
+    console.log("[DEBUG] handleSaveResources: Waiting for auth...");
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    console.log("[DEBUG] handleSaveResources: Auth result - user:", userData?.user, "error:", userError);
+    
+    if (userError) {
+      console.error("[DEBUG] handleSaveResources: Auth error", userError);
+      setResourcesError("Error de autenticación: " + userError.message);
+      return;
+    }
+    
+    if (!userData?.user) {
+      console.error("[DEBUG] handleSaveResources: No authenticated user");
+      setResourcesError("Usuario no autenticado");
+      return;
+    }
+    
+    console.log("[DEBUG] handleSaveResources: Auth successful, proceeding...");
+    
     if (!scenarioNumericId) {
       console.log("[DEBUG] handleSaveResources: No scenario ID, returning");
       return;
