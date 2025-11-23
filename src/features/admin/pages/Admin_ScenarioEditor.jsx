@@ -1372,6 +1372,8 @@ export default function Admin_ScenarioEditor() {
 
   async function handleSaveResources() {
     console.log("[DEBUG] handleSaveResources: Starting save");
+    console.log("[DEBUG] handleSaveResources: Current user:", supabase.auth.getUser());
+    console.log("[DEBUG] handleSaveResources: Session:", supabase.auth.getSession());
     if (!scenarioNumericId) {
       console.log("[DEBUG] handleSaveResources: No scenario ID, returning");
       return;
