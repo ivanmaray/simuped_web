@@ -1373,18 +1373,27 @@ export default function Admin_ScenarioEditor() {
   async function handleSaveResources() {
     console.log("[DEBUG] handleSaveResources: Starting save");
     
-    // Try to refresh session first
-    console.log("[DEBUG] handleSaveResources: Refreshing session...");
+    // Test basic connectivity first
+    console.log("[DEBUG] handleSaveResources: Testing basic connectivity...");
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.refreshSession();
-      console.log("[DEBUG] handleSaveResources: Session refresh result:", sessionData, "error:", sessionError);
-    } catch (refreshErr) {
-      console.error("[DEBUG] handleSaveResources: Session refresh failed:", refreshErr);
+      const { data: testData, error: testError } = await supabase
+        .from("scenarios")
+        .select("id")
+        .limit(1);
+      console.log("[DEBUG] handleSaveResources: Connectivity test - data:", testData, "error:", testError);
+      
+      if (testError) {
+        console.error("[DEBUG] handleSaveResources: Connectivity test failed", testError);
+        setResourcesError("Error de conectividad: " + testError.message);
+        return;
+      }
+    } catch (connErr) {
+      console.error("[DEBUG] handleSaveResources: Connectivity test exception", connErr);
+      setResourcesError("Error de conexión con la base de datos");
+      return;
     }
     
-    // Simple approach: try the database operation directly
-    // If it fails due to auth, we'll catch it
-    console.log("[DEBUG] handleSaveResources: Proceeding with database operation...");
+    console.log("[DEBUG] handleSaveResources: Connectivity OK, proceeding...");
     
     if (!scenarioNumericId) {
       console.log("[DEBUG] handleSaveResources: No scenario ID, returning");
