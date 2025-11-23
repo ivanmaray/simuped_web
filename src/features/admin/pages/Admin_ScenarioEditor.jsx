@@ -789,8 +789,29 @@ export default function Admin_ScenarioEditor() {
       payload.meta = meta;
     }
     try {
-      const { error } = await supabase.from("scenario_change_logs").insert(payload);
-      if (error) throw error;
+      // Get access token from localStorage
+      const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
+      const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
+      const accessToken = authData?.access_token;
+      if (!accessToken) {
+        console.error("[DEBUG] registerChange: No access token");
+        return;
+      }
+      const insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/scenario_change_logs`, {
+        method: 'POST',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!insertResponse.ok) {
+        const errorText = await insertResponse.text();
+        console.error("[DEBUG] registerChange: Insert failed", insertResponse.status, errorText);
+        throw new Error(`Insert change log failed: ${insertResponse.status}`);
+      }
       await fetchChangeLogs(resolvedId);
     } catch (err) {
       console.error("[Admin_ScenarioEditor] registerChange", err);
