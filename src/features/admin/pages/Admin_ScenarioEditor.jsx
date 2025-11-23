@@ -1956,16 +1956,28 @@ export default function Admin_ScenarioEditor() {
           console.error("[DEBUG] handleSaveQuestion: Update failed", errorText);
           throw new Error(`Update question failed: ${updateResponse.status} ${errorText}`);
         }
-        const updatedRow = await updateResponse.json();
-        console.log("[DEBUG] handleSaveQuestion: Updated row raw", updatedRow);
-        let updatedRowObj = updatedRow;
-        if (Array.isArray(updatedRow) && updatedRow.length > 0) {
-          updatedRowObj = updatedRow[0];
-          savedId = updatedRowObj.id;
-        } else if (updatedRow) {
-          savedId = updatedRow.id;
+        // Since return=representation may not work, fetch the updated row
+        const fetchResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}&select=*`, {
+          method: 'GET',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        console.log("[DEBUG] handleSaveQuestion: Fetch response status", fetchResponse.status);
+        if (!fetchResponse.ok) {
+          const errorText = await fetchResponse.text();
+          console.error("[DEBUG] handleSaveQuestion: Fetch failed", errorText);
+          throw new Error(`Fetch question failed: ${fetchResponse.status} ${errorText}`);
         }
-        console.log("[DEBUG] handleSaveQuestion: Updated row obj", updatedRowObj, "correct_option", updatedRowObj?.correct_option);
+        const fetchedData = await fetchResponse.json();
+        console.log("[DEBUG] handleSaveQuestion: Fetched data", fetchedData);
+        let updatedRowObj = null;
+        if (Array.isArray(fetchedData) && fetchedData.length > 0) {
+          updatedRowObj = fetchedData[0];
+          savedId = updatedRowObj.id;
+        }
 
       if (question.id && updatedRowObj) {
         setQuestionsByStep((prev) => {
