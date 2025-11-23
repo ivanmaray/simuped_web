@@ -1953,12 +1953,15 @@ export default function Admin_ScenarioEditor() {
           throw new Error(`Update question failed: ${updateResponse.status} ${errorText}`);
         }
         const updatedRow = await updateResponse.json();
+        let updatedRowObj = updatedRow;
         if (Array.isArray(updatedRow) && updatedRow.length > 0) {
-          savedId = updatedRow[0].id;
+          updatedRowObj = updatedRow[0];
+          savedId = updatedRowObj.id;
+        } else if (updatedRow) {
+          savedId = updatedRow.id;
         }
-        if (updatedRow) savedId = updatedRow.id;
 
-      if (question.id && updatedRow) {
+      if (question.id && updatedRowObj) {
         setQuestionsByStep((prev) => {
           const stepQuestions = prev?.[stepKey] || [];
           const index = stepQuestions.findIndex((q) => q.id === question.id);
@@ -1977,50 +1980,50 @@ export default function Admin_ScenarioEditor() {
               }
               return [];
             };
-            const optionsArray = parseJsonArray(updatedRow.options).map((item) => {
+            const optionsArray = parseJsonArray(updatedRowObj.options).map((item) => {
               if (item == null) return "";
               if (typeof item === "string") return item;
               return String(item);
             });
             const rolesArray = (() => {
               const collected = new Set();
-              if (Array.isArray(updatedRow.roles)) {
+              if (Array.isArray(updatedRowObj.roles)) {
                 updatedRow.roles.forEach((role) => {
                   const normalized = normalizeRoleCode(role);
                   if (normalized) collected.add(normalized);
                 });
-              } else if (typeof updatedRow.roles === "string" && updatedRow.roles.trim()) {
+              } else if (typeof updatedRowObj.roles === "string" && updatedRowObj.roles.trim()) {
                 const normalized = normalizeRoleCode(updatedRow.roles);
                 if (normalized) collected.add(normalized);
               }
               return Array.from(collected);
             })();
-            const hintsArray = parseJsonArray(updatedRow.hints).map((item) => {
+            const hintsArray = parseJsonArray(updatedRowObj.hints).map((item) => {
               if (item == null) return "";
               if (typeof item === "string") return item;
               return String(item);
             });
             const correctIndex = (() => {
-              if (typeof updatedRow.correct_option === "number") return updatedRow.correct_option;
-              if (typeof updatedRow.correct_option === "string") {
-                const parsed = Number.parseInt(updatedRow.correct_option, 10);
+              if (typeof updatedRowObj.correct_option === "number") return updatedRowObj.correct_option;
+              if (typeof updatedRowObj.correct_option === "string") {
+                const parsed = Number.parseInt(updatedRowObj.correct_option, 10);
                 if (Number.isFinite(parsed)) return parsed;
               }
               return 0;
             })();
             const updatedQ = {
               ...stepQuestions[index],
-              text: updatedRow.question_text || "",
+              text: updatedRowObj.question_text || "",
               options: optionsArray,
               correctIndex,
-              explanation: updatedRow.explanation || "",
+              explanation: updatedRowObj.explanation || "",
               roles: rolesArray,
-              isCritical: Boolean(updatedRow.is_critical),
+              isCritical: Boolean(updatedRowObj.is_critical),
               hints: hintsArray,
-              timeLimit: updatedRow.time_limit != null ? Number(updatedRow.time_limit) : null,
-              timeLimitInput: updatedRow.time_limit != null ? String(updatedRow.time_limit) : "",
+              timeLimit: updatedRowObj.time_limit != null ? Number(updatedRowObj.time_limit) : null,
+              timeLimitInput: updatedRowObj.time_limit != null ? String(updatedRowObj.time_limit) : "",
 
-criticalRationale: updatedRow.critical_rationale || "",
+criticalRationale: updatedRowObj.critical_rationale || "",
             };
             const newStepQuestions = [...stepQuestions];
             newStepQuestions[index] = updatedQ;
