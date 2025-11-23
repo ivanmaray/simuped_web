@@ -1401,8 +1401,8 @@ export default function Admin_ScenarioEditor() {
       const toUpdate = sanitized.filter((item) => item.id);
       if (toUpdate.length > 0) {
         await Promise.all(
-          toUpdate.map((item) =>
-            supabase
+          toUpdate.map(async (item) => {
+            const { error } = await supabase
               .from("case_resources")
               .update({
                 title: item.title,
@@ -1413,8 +1413,9 @@ export default function Admin_ScenarioEditor() {
                 free_access: item.free_access,
                 weight: item.weight,
               })
-              .eq("id", item.id)
-          )
+              .eq("id", item.id);
+            if (error) throw error;
+          })
         );
       }
       const toInsert = sanitized.filter((item) => !item.id);
@@ -1462,8 +1463,9 @@ export default function Admin_ScenarioEditor() {
       });
       setResourcesSuccess("Lecturas actualizadas");
     } catch (err) {
-      console.error("[Admin_ScenarioEditor] resources", err);
-      setResourcesError(err?.message || "No se pudieron actualizar las lecturas");
+      console.error("[Admin_ScenarioEditor] save resources", err);
+      const errorMessage = (err && typeof err === 'object' && err.message) ? err.message : (typeof err === 'string' ? err : "No se pudieron guardar las lecturas");
+      setResourcesError(errorMessage);
     } finally {
       setResourcesSaving(false);
     }
@@ -1901,7 +1903,8 @@ criticalRationale: updatedRow.critical_rationale || "",
       setQuestionsSuccess(question.id ? "Pregunta actualizada" : "Pregunta creada");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] save question", err);
-      setQuestionsError(err?.message || "No se pudo guardar la pregunta");
+      const errorMessage = (err && typeof err === 'object' && err.message) ? err.message : (typeof err === 'string' ? err : "No se pudo guardar la pregunta");
+      setQuestionsError(errorMessage);
     } finally {
       setQuestionOperation(operationKey, null);
     }
