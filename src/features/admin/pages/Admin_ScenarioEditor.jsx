@@ -1485,10 +1485,25 @@ export default function Admin_ScenarioEditor() {
           weight: item.weight,
         }));
         console.log("[DEBUG] handleSaveResources: Insert payload", insertPayload);
-        console.log("[DEBUG] handleSaveResources: About to call supabase insert");
-        const { data: insertData, error: insertErr } = await supabase.from("case_resources").insert(insertPayload);
-        console.log("[DEBUG] handleSaveResources: Insert result - data:", insertData, "error:", insertErr);
-        if (insertErr) throw insertErr;
+        console.log("[DEBUG] handleSaveResources: About to call direct fetch insert");
+        const insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources`, {
+          method: 'POST',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify(insertPayload),
+        });
+        console.log("[DEBUG] handleSaveResources: Direct insert response status:", insertResponse.status);
+        if (!insertResponse.ok) {
+          const errorText = await insertResponse.text();
+          console.error("[DEBUG] handleSaveResources: Direct insert failed", insertResponse.status, errorText);
+          throw new Error(`Insert failed: ${insertResponse.status} ${errorText}`);
+        }
+        const insertData = await insertResponse.json();
+        console.log("[DEBUG] handleSaveResources: Insert result - data:", insertData);
         console.log("[DEBUG] handleSaveResources: Insert completed successfully");
       }
       console.log("[DEBUG] handleSaveResources: Refreshing data");
