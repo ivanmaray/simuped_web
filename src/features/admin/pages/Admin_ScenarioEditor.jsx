@@ -1980,6 +1980,7 @@ export default function Admin_ScenarioEditor() {
         }
 
       if (question.id && updatedRowObj) {
+        console.log("[DEBUG] handleSaveQuestion: Updating local state with updatedRowObj", updatedRowObj);
         setQuestionsByStep((prev) => {
           const stepQuestions = prev?.[stepKey] || [];
           const index = stepQuestions.findIndex((q) => q.id === question.id);
@@ -2006,12 +2007,12 @@ export default function Admin_ScenarioEditor() {
             const rolesArray = (() => {
               const collected = new Set();
               if (Array.isArray(updatedRowObj.roles)) {
-                updatedRow.roles.forEach((role) => {
+                updatedRowObj.roles.forEach((role) => {
                   const normalized = normalizeRoleCode(role);
                   if (normalized) collected.add(normalized);
                 });
               } else if (typeof updatedRowObj.roles === "string" && updatedRowObj.roles.trim()) {
-                const normalized = normalizeRoleCode(updatedRow.roles);
+                const normalized = normalizeRoleCode(updatedRowObj.roles);
                 if (normalized) collected.add(normalized);
               }
               return Array.from(collected);
