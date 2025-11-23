@@ -1930,13 +1930,32 @@ export default function Admin_ScenarioEditor() {
           .maybeSingle();
         if (!existingQErr) oldQuestion = existingQ;
         // Use returning select to obtain the updated row and detect if update actually persisted
-        const { data: updatedRow, error: updateErr } = await supabase
-          .from("questions")
-          .update(payload)
-          .eq("id", question.id)
-          .select()
-          .maybeSingle();
-        if (updateErr) throw updateErr;
+        // Get access token
+        const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
+        const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
+        const accessToken = authData?.access_token;
+        if (!accessToken) {
+          throw new Error("No access token available");
+        }
+        // Direct fetch update
+        const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+          throw new Error(`Update question failed: ${updateResponse.status} ${errorText}`);
+        }
+        const updatedRow = await updateResponse.json();
+        if (Array.isArray(updatedRow) && updatedRow.length > 0) {
+          savedId = updatedRow[0].id;
+        }
         if (updatedRow) savedId = updatedRow.id;
 
       if (question.id && updatedRow) {
@@ -2018,13 +2037,24 @@ criticalRationale: updatedRow.critical_rationale || "",
           ...payload,
           step_id: stepKey,
         };
-        const { data: inserted, error: insertErr } = await supabase
-          .from("questions")
-          .insert(insertPayload)
-          .select("id")
-          .maybeSingle();
-        if (insertErr) throw insertErr;
-        savedId = inserted?.id || null;
+        const insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions`, {
+          method: 'POST',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify(insertPayload),
+        });
+        if (!insertResponse.ok) {
+          const errorText = await insertResponse.text();
+          throw new Error(`Insert question failed: ${insertResponse.status} ${errorText}`);
+        }
+        const inserted = await insertResponse.json();
+        if (Array.isArray(inserted) && inserted.length > 0) {
+          savedId = inserted[0].id;
+        }
       }
 
       const meta = { step_id: stepKey, question_id: savedId || question.id || null };
