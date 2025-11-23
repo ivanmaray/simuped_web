@@ -1431,15 +1431,19 @@ export default function Admin_ScenarioEditor() {
       setResourcesError("Cada recurso necesita título y URL");
       return;
     }
+    // Get session token from localStorage to avoid hanging Supabase client
+    const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
+    const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
+    const accessToken = authData?.access_token;
+    if (!accessToken) {
+      console.error("[DEBUG] handleSaveResources: No access token in localStorage");
+      setResourcesError("Sesión expirada, por favor recarga la página");
+      return;
+    }
+    console.log("[DEBUG] handleSaveResources: Access token obtained from localStorage");
     setResourcesSaving(true);
     console.log("[DEBUG] handleSaveResources: Set saving to true");
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        console.error("[DEBUG] handleSaveResources: No session", sessionError);
-        throw new Error("No session available");
-      }
-      console.log("[DEBUG] handleSaveResources: Session obtained for operations");
       const toDelete = initialResources.filter((item) => item.id && !sanitized.some((current) => current.id === item.id));
       console.log("[DEBUG] handleSaveResources: To delete", toDelete);
       if (toDelete.length > 0) {
@@ -1449,7 +1453,7 @@ export default function Admin_ScenarioEditor() {
           method: 'DELETE',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
         });
@@ -1481,7 +1485,7 @@ export default function Admin_ScenarioEditor() {
               method: 'PATCH',
               headers: {
                 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${session.access_token}`,
+                'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json',
                 'Prefer': 'return=representation',
               },
@@ -1518,7 +1522,7 @@ export default function Admin_ScenarioEditor() {
           method: 'POST',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${session.access_token}`,
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation',
           },
@@ -1539,7 +1543,7 @@ export default function Admin_ScenarioEditor() {
         method: 'GET',
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
       });
