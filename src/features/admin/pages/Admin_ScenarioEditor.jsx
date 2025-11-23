@@ -1942,7 +1942,7 @@ export default function Admin_ScenarioEditor() {
         }
         // Direct fetch update
         console.log("[DEBUG] handleSaveQuestion: About to update question", question.id, "with correct_option", correctIndex, "payload", payload);
-        const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}`, {
+        const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.'${question.id}'`, {
           method: 'PATCH',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1959,7 +1959,7 @@ export default function Admin_ScenarioEditor() {
           throw new Error(`Update question failed: ${updateResponse.status} ${errorText}`);
         }
         // Since return=representation may not work, fetch the updated row
-        const fetchResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}&select=*`, {
+        const fetchResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.'${question.id}'&select=*`, {
           method: 'GET',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
