@@ -1911,7 +1911,7 @@ export default function Admin_ScenarioEditor() {
       const payload = {
         question_text: text,
         options: sanitizedOptions,
-        correct_option: correctIndex,
+        correct_option: String(correctIndex),
         explanation,
         roles: rolesList.length > 0 ? rolesList : null,
         is_critical: Boolean(question.isCritical),
