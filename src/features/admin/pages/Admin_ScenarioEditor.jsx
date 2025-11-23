@@ -1935,7 +1935,9 @@ export default function Admin_ScenarioEditor() {
         const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
         const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
         const accessToken = authData?.access_token;
+        console.log("[DEBUG] handleSaveQuestion: Auth key", authKey, "Auth data keys", Object.keys(authData), "Access token present", !!accessToken);
         if (!accessToken) {
+          console.error("[DEBUG] handleSaveQuestion: No access token");
           throw new Error("No access token available");
         }
         // Direct fetch update
