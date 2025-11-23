@@ -1447,9 +1447,12 @@ export default function Admin_ScenarioEditor() {
           free_access: item.free_access,
           weight: item.weight,
         }));
-        const { error: insertErr } = await supabase.from("case_resources").insert(insertPayload);
+        console.log("[DEBUG] handleSaveResources: Insert payload", insertPayload);
+        console.log("[DEBUG] handleSaveResources: About to call supabase insert");
+        const { data: insertData, error: insertErr } = await supabase.from("case_resources").insert(insertPayload);
+        console.log("[DEBUG] handleSaveResources: Insert result - data:", insertData, "error:", insertErr);
         if (insertErr) throw insertErr;
-        console.log("[DEBUG] handleSaveResources: Insert completed");
+        console.log("[DEBUG] handleSaveResources: Insert completed successfully");
       }
       console.log("[DEBUG] handleSaveResources: Refreshing data");
       const { data: refreshed, error: refreshErr } = await supabase
