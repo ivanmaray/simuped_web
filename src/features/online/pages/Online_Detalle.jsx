@@ -103,7 +103,7 @@ function normalizeOptions(opts) {
       return opts.map((label, i) => ({ key: String(i), label }));
     }
     // si ya son objetos
-    return opts.map((o, i) => ({ key: String(o.key ?? i), label: o.label ?? String(o) }));
+    return opts.map((o, i) => ({ key: String(o.value ?? o.key ?? i), label: o.text ?? o.label ?? String(o) }));
   }
   return [];
 }
