@@ -1604,7 +1604,7 @@ export default function Online_Detalle() {
             {(() => {
               const hasRedFlags = redFlagCandidates.length > 0;
               const mustPassRedFlags = hasRedFlags && redFlagsCorrect !== true;
-              const readyToContinue = tepComplete && tepCorrect && !mustPassRedFlags;
+              const readyToContinue = (brief?.triangle ? tepComplete && tepCorrect : true) && !mustPassRedFlags;
               let title = "Continuar a preguntas";
               if (brief?.triangle && !tepComplete) title = "Completa el TEP para continuar";
               else if (brief?.triangle && !tepCorrect) title = "El TEP no es correcto: corrige el Triángulo para continuar";
