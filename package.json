@@ -16,6 +16,7 @@
     "dayjs": "^1.11.19",
     "dom-to-image-more": "^2.16.0",
     "html2canvas": "^1.4.1",
+    "pg": "^8.16.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.1.0",

@@ -1469,95 +1469,99 @@ export default function Online_Detalle() {
             </div>
           </AccordionSection>
 
-          {/* ACCORDION: 4. Triángulo de evaluación pediátrica (interactivo) */}
-          <AccordionSection
-            title="4) Triángulo de evaluación pediátrica (TEP)"
-            subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
-            open={accordionOpen[3]}
-            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
-            briefCheck={briefCheck}
-          >
-            <div className="grid lg:grid-cols-2 gap-4 items-start">
-              <div>
-                <TEPTriangle
-                  appearance={tepAnswer.appearance}
-                  breathing={tepAnswer.breathing}
-                  circulation={tepAnswer.circulation}
-                  onToggle={(k) => {
-                    setTepAnswer((t) => {
-                      const current = t[k];
-                      const next = current === null ? 'green' : current === 'green' ? 'amber' : current === 'amber' ? 'red' : null;
-                      return { ...t, [k]: next };
-                    });
-                    setTepChecked(false);
-                  }}
-                />
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-                <div className="font-semibold text-slate-700 mb-2">Selecciona tu valoración</div>
-                <div className="text-xs text-slate-500 mb-2">
-                  El triángulo se muestra en gris hasta que elijas una opción. Marca cada vértice (Apariencia, Respiración, Circulación) y luego pulsa <strong>Comprobar</strong>.
-                </div>
-                <div className="mb-3 flex items-center gap-2">
-                  {tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation ? (
-                    tepCorrect ? (
-                      <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">TEP correcto ✅</span>
-                    ) : (
-                      <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-amber-200 bg-amber-50 text-amber-800">TEP completo</span>
-                    )
-                  ) : (
-                    <span className="text-xs text-slate-500">Pulsa en cada vértice o usa los botones.</span>
-                  )}
-                  <button
-                    type="button"
-                    className="ml-auto text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
-                    onClick={() => { setTepAnswer({ appearance: null, breathing: null, circulation: null }); setTepChecked(false); }}
-                  >
-                    Reset TEP
-                  </button>
-                </div>
-                {(["appearance", "breathing", "circulation"]).map((k) => (
-                  <div key={k} className="mb-3">
-                    <div className="text-xs text-slate-500 mb-1">
-                      {k === "appearance" ? "Apariencia" : k === "breathing" ? "Respiración / Trabajo resp." : "Circulación cutánea"}
-                    </div>
-                    <div>
-                      {tepOptions.map((op) => (
-                        <ChipButton key={op.k} active={tepAnswer[k] === op.k} onClick={() => { setTepAnswer((t) => ({ ...t, [k]: op.k })); setTepChecked(false); }}>
-                          {op.label}
-                        </ChipButton>
-                      ))}
-                    </div>
-                    {tepChecked && tepAnswer[k] && (
-                      <div className={`inline-flex items-center text-xs px-2 py-0.5 rounded border mt-2 ${
-                        tepAnswer[k] === correctTep[k]
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                          : "border-rose-200 bg-rose-50 text-rose-800"
-                      }`}>
-                        {tepAnswer[k] === correctTep[k] ? "Correcto" : "Incorrecto"}
-                      </div>
-                    )}
+          {brief?.triangle?.appearance && brief?.triangle?.breathing && brief?.triangle?.circulation && (
+            <>
+              {/* ACCORDION: 4. Triángulo de evaluación pediátrica (interactivo) */}
+              <AccordionSection
+                title="4) Triángulo de evaluación pediátrica (TEP)"
+                subtitle="Marca tu impresión inicial; esta fase ya cuenta tiempo."
+                open={accordionOpen[3]}
+                onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 3 ? !v : v)))}
+                briefCheck={briefCheck}
+              >
+                <div className="grid lg:grid-cols-2 gap-4 items-start">
+                  <div>
+                    <TEPTriangle
+                      appearance={tepAnswer.appearance}
+                      breathing={tepAnswer.breathing}
+                      circulation={tepAnswer.circulation}
+                      onToggle={(k) => {
+                        setTepAnswer((t) => {
+                          const current = t[k];
+                          const next = current === null ? 'green' : current === 'green' ? 'amber' : current === 'amber' ? 'red' : null;
+                          return { ...t, [k]: next };
+                        });
+                        setTepChecked(false);
+                      }}
+                    />
                   </div>
-                ))}
-                <div className="mt-2 flex items-center gap-2">
-                  <button
-                    onClick={() => setTepChecked(true)}
-                    disabled={!tepComplete}
-                    className="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40"
-                  >
-                    Comprobar
-                  </button>
-                  {tepChecked && (
-                    <span className="text-xs text-slate-600">
-                      {tepAnswer.appearance === correctTep.appearance && tepAnswer.breathing === correctTep.breathing && tepAnswer.circulation === correctTep.circulation
-                        ? "Todas correctas"
-                        : "Revisa los apartados en rojo"}
-                    </span>
-                  )}
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                    <div className="font-semibold text-slate-700 mb-2">Selecciona tu valoración</div>
+                    <div className="text-xs text-slate-500 mb-2">
+                      El triángulo se muestra en gris hasta que elijas una opción. Marca cada vértice (Apariencia, Respiración, Circulación) y luego pulsa <strong>Comprobar</strong>.
+                    </div>
+                    <div className="mb-3 flex items-center gap-2">
+                      {tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation ? (
+                        tepCorrect ? (
+                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">TEP correcto ✅</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-amber-200 bg-amber-50 text-amber-800">TEP completo</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-slate-500">Pulsa en cada vértice o usa los botones.</span>
+                      )}
+                      <button
+                        type="button"
+                        className="ml-auto text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
+                        onClick={() => { setTepAnswer({ appearance: null, breathing: null, circulation: null }); setTepChecked(false); }}
+                      >
+                        Reset TEP
+                      </button>
+                    </div>
+                    {(["appearance", "breathing", "circulation"]).map((k) => (
+                      <div key={k} className="mb-3">
+                        <div className="text-xs text-slate-500 mb-1">
+                          {k === "appearance" ? "Apariencia" : k === "breathing" ? "Respiración / Trabajo resp." : "Circulación cutánea"}
+                        </div>
+                        <div>
+                          {tepOptions.map((op) => (
+                            <ChipButton key={op.k} active={tepAnswer[k] === op.k} onClick={() => { setTepAnswer((t) => ({ ...t, [k]: op.k })); setTepChecked(false); }}>
+                              {op.label}
+                            </ChipButton>
+                          ))}
+                        </div>
+                        {tepChecked && tepAnswer[k] && (
+                          <div className={`inline-flex items-center text-xs px-2 py-0.5 rounded border mt-2 ${
+                            tepAnswer[k] === correctTep[k]
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                              : "border-rose-200 bg-rose-50 text-rose-800"
+                          }`}>
+                            {tepAnswer[k] === correctTep[k] ? "Correcto" : "Incorrecto"}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={() => setTepChecked(true)}
+                        disabled={!tepComplete}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40"
+                      >
+                        Comprobar
+                      </button>
+                      {tepChecked && (
+                        <span className="text-xs text-slate-600">
+                          {tepAnswer.appearance === correctTep.appearance && tepAnswer.breathing === correctTep.breathing && tepAnswer.circulation === correctTep.circulation
+                            ? "Todas correctas"
+                            : "Revisa los apartados en rojo"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </AccordionSection>
+              </AccordionSection>
+            </>
+          )}
 
           {/* ACCORDION: 5. Signos de alarma (elige los preocupantes) */}
           <AccordionSection
