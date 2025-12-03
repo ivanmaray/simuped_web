@@ -502,10 +502,7 @@ export default function Online_Detalle() {
       missing.push('brief');
       return { ready: false, missing };
     }
-    const tri = brief.triangle || {};
-    if (!tri.appearance || !tri.breathing || !tri.circulation) {
-      missing.push('triangle');
-    }
+    // No incluir triangle en missing, se maneja por separado en mensajes de TEP
     const hasRedFlags = Array.isArray(brief.red_flags) && brief.red_flags.length > 0;
     const hasCriticalActions = Array.isArray(brief.critical_actions) && brief.critical_actions.length > 0;
     if (!hasRedFlags && !hasCriticalActions) {
@@ -517,7 +514,6 @@ export default function Online_Detalle() {
   const briefMissingShort = useMemo(() => {
     if (!briefCheck || briefCheck.ready) return "";
     const map = {
-      triangle: 'Triángulo (Apariencia, Respiración, Circulación)',
       alarm_signs: 'Signos de alarma',
       brief: 'Datos del paciente',
     };
@@ -1610,8 +1606,8 @@ export default function Online_Detalle() {
               const mustPassRedFlags = hasRedFlags && redFlagsCorrect !== true;
               const readyToContinue = tepComplete && tepCorrect && !mustPassRedFlags;
               let title = "Continuar a preguntas";
-              if (!tepComplete) title = "Completa el TEP para continuar";
-              else if (!tepCorrect) title = "El TEP no es correcto: corrige el Triángulo para continuar";
+              if (brief?.triangle && !tepComplete) title = "Completa el TEP para continuar";
+              else if (brief?.triangle && !tepCorrect) title = "El TEP no es correcto: corrige el Triángulo para continuar";
               else if (hasRedFlags && redFlagsCorrect !== true) title = "Selecciona correctamente los signos de alarma para continuar";
               else if (showSummary) title = "El intento ya está finalizado o expirado";
               return (
@@ -1659,8 +1655,9 @@ export default function Online_Detalle() {
             <p className="ml-3 text-xs text-rose-700 font-medium">
               {(() => {
                 const msgs = [];
-                if (!tepComplete) msgs.push("Falta completar el TEP");
-                else if (!tepCorrect) msgs.push("El TEP no es correcto");
+                // Solo mostrar mensaje de TEP si está configurado en el brief
+                if (brief?.triangle && !tepComplete) msgs.push("Falta completar el TEP");
+                else if (brief?.triangle && !tepCorrect) msgs.push("El TEP no es correcto");
                 const hasRedFlags = redFlagCandidates.length > 0;
                 if (hasRedFlags && redFlagsCorrect !== true) msgs.push("Selecciona correctamente los signos de alarma");
                 if (!msgs.length) return null;
