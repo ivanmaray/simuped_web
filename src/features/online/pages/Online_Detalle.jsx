@@ -915,7 +915,7 @@ export default function Online_Detalle() {
           setBrief(b);
           // Mostrar el briefing solo si el intento aún NO se había iniciado
           // y no estamos en modo resumen ni en la ruta de resumen forzado.
-          setShowBriefing(!shouldShowSummary && !wasStartedBeforeLoad && !forceSummaryRoute);
+          setShowBriefing(!shouldShowSummary && !wasStartedBeforeLoad && !forceSummaryRoute && (!briefCheck.ready || !attemptId));
         } else {
           setBrief(null);
           setShowBriefing(false);
