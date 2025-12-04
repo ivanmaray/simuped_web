@@ -1626,8 +1626,8 @@ export default function Online_Detalle() {
                         return;
                       }
                       // Ensure the countdown starts immediately if needed
-                      try { await startAttemptCountdown(); } catch (e) { /* noop */ }
                       setShowBriefing(false);
+                      try { await startAttemptCountdown(); } catch (e) { /* noop */ }
                       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
                     }}
                     disabled={showSummary || !readyToContinue}
