@@ -1,5 +1,26 @@
-export default function Spinner({ label = "Cargando…", size = 32, centered = false }) {
+import { useEffect } from 'react'
+
+export default function Spinner({ label = "Cargando…", size = 32, centered = false, autoReloadMs = 5000, autoReloadCooldownMs = 60000 }) {
 	const px = Number(size) || 32;
+
+	// Auto-refresh if a centered spinner stays too long (helps break stuck loading loops)
+	useEffect(() => {
+		if (!centered || !autoReloadMs || autoReloadMs <= 0) return;
+		const id = window.setTimeout(() => {
+			try {
+				const key = 'spinner_autoreload_ts';
+				const now = Date.now();
+				const last = Number(window.sessionStorage?.getItem(key) || 0);
+				if (!last || now - last > autoReloadCooldownMs) {
+					window.sessionStorage?.setItem(key, String(now));
+					window.location.reload();
+				}
+			} catch {}
+		}, autoReloadMs);
+
+		return () => window.clearTimeout(id);
+	}, [centered, autoReloadMs, autoReloadCooldownMs]);
+
 	const inner = (
 		<div className="inline-flex flex-col items-center justify-center gap-2" role="status" aria-live="polite">
 			<svg

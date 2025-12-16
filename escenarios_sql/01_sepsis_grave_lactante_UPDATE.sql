@@ -21,7 +21,8 @@ INSERT INTO case_briefs (
   objectives,
   critical_actions,
   red_flags,
-  competencies
+  competencies,
+  triangle
 ) VALUES (
   13,
   'Sepsis Grave en Lactante de 6 Meses',
@@ -34,7 +35,8 @@ INSERT INTO case_briefs (
   '["Reconocer signos de sepsis grave/shock séptico en lactante", "Aplicar fluidoterapia precoz y agresiva (20 mL/kg en 5-10 min, hasta 60 mL/kg en primera hora)", "Iniciar antibioterapia empírica de amplio espectro en la primera hora (cefotaxima ± ampicilina según edad)", "Monitorización hemodinámica continua y reevaluación frecuente", "Considerar ingreso en UCIP si persiste inestabilidad tras expansión inicial"]'::jsonb,
   '["Expansión de volumen con bolos de 20 mL/kg de cristaloides en 5-10 minutos, reevaluando tras cada bolo", "Hemocultivos previos a antibióticos, pero NO retrasar antibioterapia", "Antibioterapia empírica en <1 hora: Cefotaxima 50 mg/kg/dosis IV (lactante <3 meses añadir Ampicilina 50 mg/kg/dosis)", "Valorar necesidad de soporte inotrópico si no responde a 40-60 mL/kg de volumen", "Contactar con UCIP si persiste inestabilidad o hipotensión refractaria", "Monitorización de diuresis, lactato, perfusión periférica"]'::jsonb,
   '["Hipotensión (TAS <70 mmHg en lactante)", "Relleno capilar >3 segundos + taquicardia + alteración del estado mental", "Lactato >2 mmol/L y pH <7.30", "Trombopenia (<100.000 plaquetas)", "Disfunción orgánica: oliguria, alteración de consciencia, coagulopatía", "Necesidad de >40-60 mL/kg de volumen o soporte vasoactivo"]'::jsonb,
-  '["Reconocimiento precoz de sepsis y shock séptico", "Manejo inicial de estabilización hemodinámica", "Fluidoterapia en urgencias pediátricas", "Antibioterapia empírica según edad y factores de riesgo", "Monitorización hemodinámica y criterios de derivación a UCIP"]'::jsonb
+  '["Reconocimiento precoz de sepsis y shock séptico", "Manejo inicial de estabilización hemodinámica", "Fluidoterapia en urgencias pediátricas", "Antibioterapia empírica según edad y factores de riesgo", "Monitorización hemodinámica y criterios de derivación a UCIP"]'::jsonb,
+  '{"appearance":"compromised","breathing":"taquipnea","circulation":"hipoperfusion" }'::jsonb
 );
 
 -- ==============================================================================
