@@ -1,0 +1,115 @@
+-- Script completo para arreglar el escenario 101
+
+-- 1. Hacer preguntas visibles para todos
+UPDATE questions SET roles = null WHERE step_id IN (108,109,110,111,112);
+
+-- 2. Corregir correct_option
+UPDATE questions SET correct_option = '2' WHERE id = 39;
+UPDATE questions SET correct_option = '0' WHERE id = 40;
+UPDATE questions SET correct_option = '1' WHERE id = 41;
+UPDATE questions SET correct_option = '1' WHERE id = 42;
+UPDATE questions SET correct_option = '1' WHERE id = 43;
+UPDATE questions SET correct_option = '1' WHERE id = 44;
+UPDATE questions SET correct_option = '1' WHERE id = 45;
+UPDATE questions SET correct_option = '2' WHERE id = 46;
+UPDATE questions SET correct_option = '0' WHERE id = 47;
+UPDATE questions SET correct_option = '1' WHERE id = 48;
+UPDATE questions SET correct_option = '1' WHERE id = 49;
+UPDATE questions SET correct_option = '2' WHERE id = 50;
+UPDATE questions SET correct_option = '2' WHERE id = 51;
+UPDATE questions SET correct_option = '0' WHERE id = 52;
+UPDATE questions SET correct_option = '1' WHERE id = 53;
+UPDATE questions SET correct_option = '1' WHERE id = 54;
+UPDATE questions SET correct_option = '1' WHERE id = 55;
+UPDATE questions SET correct_option = '0' WHERE id = 56;
+UPDATE questions SET correct_option = '2' WHERE id = 57;
+UPDATE questions SET correct_option = '0' WHERE id = 58;
+UPDATE questions SET correct_option = '2' WHERE id = 59;
+UPDATE questions SET correct_option = '0' WHERE id = 60;
+UPDATE questions SET correct_option = '0' WHERE id = 61;
+UPDATE questions SET correct_option = '0' WHERE id = 62;
+UPDATE questions SET correct_option = '0' WHERE id = 63;
+UPDATE questions SET correct_option = '0' WHERE id = 64;
+UPDATE questions SET correct_option = '0' WHERE id = 65;
+UPDATE questions SET correct_option = '0' WHERE id = 66;
+UPDATE questions SET correct_option = '0' WHERE id = 67;
+UPDATE questions SET correct_option = '0' WHERE id = 68;
+UPDATE questions SET correct_option = '0' WHERE id = 69;
+UPDATE questions SET correct_option = '0' WHERE id = 70;
+UPDATE questions SET correct_option = '0' WHERE id = 71;
+UPDATE questions SET correct_option = '0' WHERE id = 72;
+UPDATE questions SET correct_option = '0' WHERE id = 73;
+UPDATE questions SET correct_option = '0' WHERE id = 74;
+UPDATE questions SET correct_option = '0' WHERE id = 75;
+UPDATE questions SET correct_option = '0' WHERE id = 76;
+UPDATE questions SET correct_option = '0' WHERE id = 77;
+UPDATE questions SET correct_option = '0' WHERE id = 78;
+UPDATE questions SET correct_option = '0' WHERE id = 79;
+UPDATE questions SET correct_option = '0' WHERE id = 80;
+UPDATE questions SET correct_option = '0' WHERE id = 81;
+UPDATE questions SET correct_option = '0' WHERE id = 82;
+UPDATE questions SET correct_option = '0' WHERE id = 83;
+UPDATE questions SET correct_option = '0' WHERE id = 84;
+UPDATE questions SET correct_option = '0' WHERE id = 85;
+UPDATE questions SET correct_option = '0' WHERE id = 86;
+UPDATE questions SET correct_option = '0' WHERE id = 87;
+UPDATE questions SET correct_option = '0' WHERE id = 88;
+UPDATE questions SET correct_option = '0' WHERE id = 89;
+UPDATE questions SET correct_option = '0' WHERE id = 90;
+UPDATE questions SET correct_option = '2' WHERE id = 96;
+UPDATE questions SET correct_option = '2' WHERE id = 97;
+UPDATE questions SET correct_option = '2' WHERE id = 98;
+UPDATE questions SET correct_option = '2' WHERE id = 99;
+UPDATE questions SET correct_option = '1' WHERE id = 100;
+UPDATE questions SET correct_option = '1' WHERE id = 101;
+UPDATE questions SET correct_option = '1' WHERE id = 102;
+UPDATE questions SET correct_option = '1' WHERE id = 103;
+UPDATE questions SET correct_option = '1' WHERE id = 104;
+UPDATE questions SET correct_option = '1' WHERE id = 105;
+UPDATE questions SET correct_option = '1' WHERE id = 106;
+UPDATE questions SET correct_option = '1' WHERE id = 107;
+UPDATE questions SET correct_option = '1' WHERE id = 108;
+UPDATE questions SET correct_option = '1' WHERE id = 109;
+UPDATE questions SET correct_option = '1' WHERE id = 110;
+UPDATE questions SET correct_option = '1' WHERE id = 111;
+UPDATE questions SET correct_option = '1' WHERE id = 112;
+UPDATE questions SET correct_option = '1' WHERE id = 113;
+UPDATE questions SET correct_option = '1' WHERE id = 114;
+UPDATE questions SET correct_option = '1' WHERE id = 115;
+UPDATE questions SET correct_option = '1' WHERE id = 116;
+UPDATE questions SET correct_option = '1' WHERE id = 117;
+UPDATE questions SET correct_option = '1' WHERE id = 118;
+UPDATE questions SET correct_option = '1' WHERE id = 119;
+UPDATE questions SET correct_option = '1' WHERE id = 120;
+UPDATE questions SET correct_option = '1' WHERE id = 121;
+UPDATE questions SET correct_option = '1' WHERE id = 122;
+UPDATE questions SET correct_option = '1' WHERE id = 123;
+UPDATE questions SET correct_option = '1' WHERE id = 124;
+UPDATE questions SET correct_option = '1' WHERE id = 125;
+UPDATE questions SET correct_option = '1' WHERE id = 126;
+UPDATE questions SET correct_option = '1' WHERE id = 127;
+UPDATE questions SET correct_option = '1' WHERE id = 128;
+UPDATE questions SET correct_option = '1' WHERE id = 129;
+UPDATE questions SET correct_option = '1' WHERE id = 130;
+UPDATE questions SET correct_option = '1' WHERE id = 131;
+UPDATE questions SET correct_option = '1' WHERE id = 132;
+UPDATE questions SET correct_option = '1' WHERE id = 133;
+UPDATE questions SET correct_option = '1' WHERE id = 134;
+UPDATE questions SET correct_option = '1' WHERE id = 135;
+UPDATE questions SET correct_option = '1' WHERE id = 136;
+UPDATE questions SET correct_option = '1' WHERE id = 137;
+UPDATE questions SET correct_option = '1' WHERE id = 138;
+UPDATE questions SET correct_option = '1' WHERE id = 139;
+UPDATE questions SET correct_option = '1' WHERE id = 158;
+UPDATE questions SET correct_option = '0' WHERE id = 159;
+UPDATE questions SET correct_option = '1' WHERE id = 160;
+UPDATE questions SET correct_option = '0' WHERE id = 161;
+
+-- 3. Estandarizar options
+UPDATE questions SET options = '["Solicitar radiografía de tórax y analítica completa antes de iniciar tratamiento", "Iniciar monitorización continua, canalizar vía periférica y administrar oxígeno", "Administrar paracetamol IV para bajar la fiebre y esperar evolución", "Realizar punción lumbar inmediata ante sospecha de meningitis"]'::jsonb WHERE id = 158;
+
+UPDATE questions SET options = '["Shock séptico (distributivo)", "Shock cardiogénico", "Deshidratación leve-moderada", "Bronquiolitis con trabajo respiratorio"]'::jsonb WHERE id = 159;
+
+UPDATE questions SET options = '["Hipotensión arterial (TAS <p5)", "Alteración de la perfusión periférica (relleno capilar >3 seg)", "Taquicardia aislada", "Saturación de oxígeno <95%"]'::jsonb WHERE id = 160;
+
+UPDATE questions SET options = '["Shock frío (vasoconstricción periférica, resistencias vasculares altas)", "Shock caliente (vasodilatación, resistencias vasculares bajas)", "Shock cardiogénico", "Shock obstructivo"]'::jsonb WHERE id = 161;

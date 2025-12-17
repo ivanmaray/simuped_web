@@ -1,0 +1,113 @@
+[
+  {
+    "estructura": "Tabla: attempt_answers\n  id bigint NOT NULL DEFAULT nextval('attempt_answers_id_seq'::regclass)\n  is_critical_at_answer boolean\n  hints_used integer NOT NULL DEFAULT 0\n  answered_at timestamp with time zone NOT NULL DEFAULT now()\n  is_correct boolean NOT NULL\n  selected_option integer NOT NULL\n  question_id integer NOT NULL\n  attempt_id uuid NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: attempts\n  score numeric\n  total_count integer NOT NULL DEFAULT 0\n  finished_at timestamp with time zone\n  correct_count integer NOT NULL DEFAULT 0\n  started_at timestamp with time zone NOT NULL DEFAULT now()\n  scenario_id integer NOT NULL\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  user_id uuid NOT NULL\n  time_limit integer DEFAULT 900\n  expires_at timestamp with time zone\n  status text NOT NULL DEFAULT 'en curso'::text\n"
+  },
+  {
+    "estructura": "Tabla: case_briefs\n  timeline jsonb\n  imaging jsonb\n  quick_labs jsonb\n  vitals jsonb\n  exam jsonb\n  triangle jsonb\n  history jsonb\n  chief_complaint text\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  scenario_id integer NOT NULL\n  title text NOT NULL\n  context text\n  chips jsonb DEFAULT '[]'::jsonb\n  demographics jsonb\n  learning_objective text\n  competencies jsonb DEFAULT '[]'::jsonb\n  critical_actions jsonb DEFAULT '[]'::jsonb\n  updated_at timestamp with time zone DEFAULT now()\n  created_at timestamp with time zone DEFAULT now()\n  level text DEFAULT 'basic'::text\n  estimated_minutes integer DEFAULT 10\n  objectives jsonb\n  red_flags jsonb\n"
+  },
+  {
+    "estructura": "Tabla: case_resources\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  scenario_id bigint NOT NULL\n  title text NOT NULL\n  url text NOT NULL\n  source text\n  type text\n  year integer\n  free_access boolean DEFAULT true\n  weight integer DEFAULT 100\n  created_at timestamp with time zone DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: categories\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  name text NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: micro_case_attempt_steps\n  option_id uuid\n  outcome_label text\n  score_delta integer DEFAULT 0\n  elapsed_ms integer\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  attempt_id uuid NOT NULL\n  node_id uuid NOT NULL\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n"
+  },
+  {
+    "estructura": "Tabla: micro_case_attempts\n  started_at timestamp with time zone NOT NULL DEFAULT now()\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  completed_at timestamp with time zone\n  score_total integer DEFAULT 0\n  duration_seconds integer\n  status text NOT NULL DEFAULT 'in_progress'::text\n  attempt_role text\n  case_id uuid NOT NULL\n  user_id uuid NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: micro_case_nodes\n  metadata jsonb DEFAULT '{}'::jsonb\n  target_roles ARRAY DEFAULT '{}'::text[]\n  auto_advance_to uuid\n  is_terminal boolean NOT NULL DEFAULT false\n  order_index integer DEFAULT 0\n  media_url text\n  body_md text NOT NULL\n  kind text NOT NULL DEFAULT 'decision'::text\n  case_id uuid NOT NULL\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n"
+  },
+  {
+    "estructura": "Tabla: micro_case_options\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  target_roles ARRAY DEFAULT '{}'::text[]\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  is_critical boolean NOT NULL DEFAULT false\n  node_id uuid NOT NULL\n  feedback_md text\n  score_delta integer DEFAULT 0\n  next_node_id uuid\n  label text NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: micro_cases\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  created_by uuid\n  is_published boolean NOT NULL DEFAULT false\n  recommended_roles ARRAY DEFAULT '{}'::text[]\n  recommended_units ARRAY DEFAULT '{}'::text[]\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  slug text\n  title text NOT NULL\n  summary text\n  estimated_minutes integer\n  difficulty text\n  start_node_id uuid\n  updated_at timestamp with time zone NOT NULL DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: presencial_notifications\n  email text\n  created_at timestamp with time zone DEFAULT now()\n  user_id uuid NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: presencial_participants\n  name text NOT NULL\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  user_id uuid\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  session_id uuid NOT NULL\n  role text NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: presencial_sessions\n  scenario_id bigint NOT NULL\n  started_at timestamp with time zone NOT NULL DEFAULT now()\n  user_id uuid\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  mode text DEFAULT 'single'::text\n  participants ARRAY NOT NULL DEFAULT '{}'::uuid[]\n  ended_at timestamp with time zone\n  banner_text text\n  current_step_id bigint\n  public_code text\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: profiles\n  nombre text\n  approved_at timestamp with time zone\n  unidad text\n  verified_at timestamp with time zone\n  notified_at timestamp with time zone\n  email text\n  created_at timestamp with time zone DEFAULT now()\n  updated_at timestamp with time zone DEFAULT now()\n  rol text\n  dni text\n  apellidos text\n  areas_interes jsonb NOT NULL DEFAULT '[]'::jsonb\n  is_admin boolean NOT NULL DEFAULT false\n  approved boolean NOT NULL DEFAULT false\n  id uuid NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: questions\n  id integer NOT NULL DEFAULT nextval('questions_id_seq'::regclass)\n  step_id integer\n  question_text text NOT NULL\n  options jsonb NOT NULL\n  correct_option text NOT NULL\n  explanation text\n  roles ARRAY\n  is_critical boolean DEFAULT false\n  hints jsonb\n  time_limit integer\n  critical_rationale text\n"
+  },
+  {
+    "estructura": "Tabla: scenario_categories\n  scenario_id integer NOT NULL\n  category_id uuid NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: scenario_change_logs\n  user_name text\n  change_type text NOT NULL\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  description text\n  meta jsonb NOT NULL DEFAULT '{}'::jsonb\n  user_id uuid\n  id uuid NOT NULL DEFAULT uuid_generate_v4()\n  scenario_id integer NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: scenario_checklist\n  label text NOT NULL\n  order_index integer DEFAULT 0\n  category text\n  role text\n  id bigint NOT NULL DEFAULT nextval('scenario_checklist_id_seq'::regclass)\n  scenario_id bigint NOT NULL\n  weight integer DEFAULT 1\n"
+  },
+  {
+    "estructura": "Tabla: scenario_equipment\n  updated_at timestamp with time zone DEFAULT now()\n  notes text\n  required boolean DEFAULT true\n  category text\n  location text\n  quantity integer NOT NULL DEFAULT 1\n  name text NOT NULL\n  scenario_id integer NOT NULL\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  created_at timestamp with time zone DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: scenario_items\n  step_id bigint\n  id bigint NOT NULL DEFAULT nextval('scenario_items_id_seq'::regclass)\n  scenario_id bigint NOT NULL\n  section text NOT NULL DEFAULT 'general'::text\n  type text NOT NULL\n  label text NOT NULL\n  help text\n  options jsonb\n  order_index integer NOT NULL DEFAULT 0\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: scenario_presencial_meta\n  created_at timestamp with time zone DEFAULT now()\n  scenario_id integer NOT NULL\n  dual_mode boolean DEFAULT false\n  instructor_brief text\n  student_brief text\n  room_layout jsonb\n  roles_required jsonb\n  checklist_template jsonb\n  triggers jsonb\n  updated_at timestamp with time zone DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: scenario_rules\n  id bigint NOT NULL DEFAULT nextval('scenario_rules_id_seq'::regclass)\n  scenario_id bigint NOT NULL\n  applies_when jsonb NOT NULL\n  effects jsonb NOT NULL\n  order_index integer NOT NULL DEFAULT 0\n  is_public boolean NOT NULL DEFAULT false\n"
+  },
+  {
+    "estructura": "Tabla: scenario_script_steps\n  title text\n  order_index integer NOT NULL DEFAULT 0\n  scenario_id bigint NOT NULL\n  id bigint NOT NULL DEFAULT nextval('scenario_script_steps_id_seq'::regclass)\n  body text NOT NULL\n  actions_json jsonb\n  created_at timestamp with time zone DEFAULT now()\n  is_public boolean NOT NULL DEFAULT false\n  updated_at timestamp with time zone DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: scenario_steps\n  name text NOT NULL\n  id bigint NOT NULL DEFAULT nextval('scenario_steps_id_seq'::regclass)\n  scenario_id bigint NOT NULL\n  order_index integer NOT NULL DEFAULT 0\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  is_public boolean NOT NULL DEFAULT false\n"
+  },
+  {
+    "estructura": "Tabla: scenario_variables\n  type text NOT NULL\n  label text NOT NULL\n  key text NOT NULL\n  scenario_id bigint NOT NULL\n  id bigint NOT NULL DEFAULT nextval('scenario_variables_id_seq'::regclass)\n  unit text\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  is_hidden boolean NOT NULL DEFAULT true\n  initial_value text\n"
+  },
+  {
+    "estructura": "Tabla: scenarios\n  title text NOT NULL\n  difficulty text\n  estimated_minutes integer NOT NULL DEFAULT 10\n  status text DEFAULT 'Disponible'::text\n  created_at timestamp without time zone DEFAULT now()\n  mode ARRAY DEFAULT ARRAY['online'::text]\n  max_attempts integer NOT NULL DEFAULT 3\n  level text\n  id integer NOT NULL DEFAULT nextval('scenarios_id_seq'::regclass)\n  summary text\n"
+  },
+  {
+    "estructura": "Tabla: scheduled_session_invites\n  inviter_id uuid\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  session_id uuid NOT NULL\n  invited_email text NOT NULL\n  invited_name text\n  invited_role text\n  status text NOT NULL DEFAULT 'pending'::text\n  error_text text\n  sent_at timestamp with time zone\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  invited_user_id uuid\n  confirmed_at timestamp with time zone\n"
+  },
+  {
+    "estructura": "Tabla: scheduled_session_participants\n  confirmed_at timestamp with time zone\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  session_id uuid NOT NULL\n  user_id uuid NOT NULL\n  registered_at timestamp with time zone NOT NULL DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: scheduled_sessions\n  is_active boolean NOT NULL DEFAULT true\n  id uuid NOT NULL DEFAULT gen_random_uuid()\n  title text NOT NULL\n  description text\n  scheduled_at timestamp with time zone NOT NULL\n  location text DEFAULT 'Sala de Simulación HUCA'::text\n  max_participants integer DEFAULT 8\n  created_by uuid\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  mode text NOT NULL DEFAULT 'clásico'::text\n  scenario_id bigint\n  updated_at timestamp with time zone NOT NULL DEFAULT now()\n  enrollment_deadline timestamp with time zone\n"
+  },
+  {
+    "estructura": "Tabla: session_actions\n  action_key text NOT NULL\n  step_id bigint\n  session_id uuid NOT NULL\n  id bigint NOT NULL DEFAULT nextval('session_actions_id_seq'::regclass)\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  payload jsonb\n"
+  },
+  {
+    "estructura": "Tabla: session_banners\n  id bigint NOT NULL DEFAULT nextval('session_banners_id_seq'::regclass)\n  session_id uuid NOT NULL\n  at timestamp with time zone NOT NULL DEFAULT now()\n  text text NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: session_checklist\n  session_id uuid NOT NULL\n  status USER-DEFINED DEFAULT 'na'::check_status\n  updated_by uuid DEFAULT auth.uid()\n  updated_at timestamp with time zone DEFAULT now()\n  note text\n  item_id bigint NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: session_events\n  id bigint NOT NULL DEFAULT nextval('session_events_id_seq'::regclass)\n  payload jsonb NOT NULL DEFAULT '{}'::jsonb\n  kind text NOT NULL\n  at timestamp with time zone NOT NULL DEFAULT now()\n  session_id uuid NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: session_item_responses\n  session_id uuid NOT NULL\n  id bigint NOT NULL DEFAULT nextval('session_item_responses_id_seq'::regclass)\n  item_id bigint NOT NULL\n  created_at timestamp with time zone NOT NULL DEFAULT now()\n  value text NOT NULL\n"
+  },
+  {
+    "estructura": "Tabla: session_script_events\n  session_id uuid NOT NULL\n  step_id bigint\n  id bigint NOT NULL DEFAULT nextval('session_script_events_id_seq'::regclass)\n  is_public boolean NOT NULL DEFAULT false\n  payload jsonb\n  published_at timestamp with time zone NOT NULL DEFAULT now()\n"
+  },
+  {
+    "estructura": "Tabla: session_variables\n  session_id uuid NOT NULL\n  variable_id bigint NOT NULL\n  is_revealed boolean NOT NULL DEFAULT false\n  value text\n  updated_at timestamp with time zone NOT NULL DEFAULT now()\n  id bigint NOT NULL DEFAULT nextval('session_variables_id_seq'::regclass)\n"
+  },
+  {
+    "estructura": "Tabla: steps\n  scenario_id integer\n  id integer NOT NULL DEFAULT nextval('steps_id_seq'::regclass)\n  description text\n  role_specific boolean DEFAULT false\n  roles ARRAY\n  narrative text\n  step_order integer NOT NULL\n"
+  }
+]

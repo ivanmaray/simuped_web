@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-export default function Spinner({ label = "Cargando…", size = 32, centered = false, autoReloadMs = 5000, autoReloadCooldownMs = 60000 }) {
+export default function Spinner({ label = "Cargando…", size = 32, centered = false, autoReloadMs = 20000, autoReloadCooldownMs = 25000 }) {
 	const px = Number(size) || 32;
 
 	// Auto-refresh if a centered spinner stays too long (helps break stuck loading loops)
@@ -12,10 +12,13 @@ export default function Spinner({ label = "Cargando…", size = 32, centered = f
 				const now = Date.now();
 				const last = Number(window.sessionStorage?.getItem(key) || 0);
 				if (!last || now - last > autoReloadCooldownMs) {
+					console.warn('[Spinner] Auto-reload triggered after', autoReloadMs, 'ms of stuck loading');
 					window.sessionStorage?.setItem(key, String(now));
 					window.location.reload();
 				}
-			} catch {}
+			} catch (e) {
+				console.error('[Spinner] Auto-reload error:', e);
+			}
 		}, autoReloadMs);
 
 		return () => window.clearTimeout(id);

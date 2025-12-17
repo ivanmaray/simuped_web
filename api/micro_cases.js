@@ -103,6 +103,7 @@ async function handleListCases(req, res) {
 
 async function handleGetCase(req, res) {
   try {
+    const startMs = Date.now();
     const client = getServiceClient();
     const id = (req.query.id || req.body?.id || '').toString();
     if (!id) {
@@ -111,11 +112,16 @@ async function handleGetCase(req, res) {
 
     const requestedRole = normalizeRole(req.query.role || req.body?.role);
 
+    console.log(`[micro_cases:get] Starting fetch for case ${id}, role: ${requestedRole}`);
+
+    const t0 = Date.now();
     const { data: caseRows, error: caseErr } = await client
       .from('micro_cases')
       .select('id, slug, title, summary, estimated_minutes, difficulty, recommended_roles, recommended_units, is_published, start_node_id')
       .eq('id', id)
       .limit(1);
+
+    console.log(`[micro_cases:get] Case query took ${Date.now() - t0}ms`);
 
     if (caseErr) {
       console.error('[micro_cases] get case error', caseErr);
@@ -143,11 +149,14 @@ async function handleGetCase(req, res) {
       }
     }
 
+    const t1 = Date.now();
     const { data: nodeRows, error: nodesErr } = await client
       .from('micro_case_nodes')
       .select('id, case_id, kind, body_md, media_url, order_index, is_terminal, auto_advance_to, metadata, target_roles')
       .eq('case_id', id)
       .order('order_index', { ascending: true });
+
+    console.log(`[micro_cases:get] Nodes query took ${Date.now() - t1}ms, fetched ${(nodeRows || []).length} nodes`);
 
     if (nodesErr) {
       console.error('[micro_cases] nodes error', nodesErr);
@@ -156,6 +165,7 @@ async function handleGetCase(req, res) {
 
     const nodeIds = (nodeRows || []).map((node) => node.id);
 
+    const t2 = Date.now();
     const { data: optionsRows, error: optionsErr } = nodeIds.length === 0
       ? { data: [], error: null }
       : await client
@@ -163,6 +173,8 @@ async function handleGetCase(req, res) {
         .select('id, node_id, label, next_node_id, feedback_md, score_delta, is_critical, target_roles')
         .in('node_id', nodeIds)
         .order('created_at', { ascending: true });
+
+    console.log(`[micro_cases:get] Options query took ${Date.now() - t2}ms, fetched ${(optionsRows || []).length} options`);
 
     if (optionsErr) {
       console.error('[micro_cases] options error', optionsErr);
@@ -223,6 +235,9 @@ async function handleGetCase(req, res) {
     }
 
     const availableRoles = Array.from(availableRolesSet).filter(Boolean).sort();
+
+    const totalMs = Date.now() - startMs;
+    console.log(`[micro_cases:get] Total time: ${totalMs}ms for case ${id}`);
 
     return res.status(200).json({
       ok: true,
