@@ -797,22 +797,37 @@ export default function Admin_ScenarioEditor() {
         console.error("[DEBUG] registerChange: No access token");
         return;
       }
-      const insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/scenario_change_logs`, {
-        method: 'POST',
-        headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify(payload),
-      });
+      // Timebox the insert to avoid UI hangs if network stalls
+      const controller = new AbortController();
+      const timeoutMs = 5000;
+      const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+      let insertResponse;
+      try {
+        insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/scenario_change_logs`, {
+          method: 'POST',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
       if (!insertResponse.ok) {
         const errorText = await insertResponse.text();
         console.error("[DEBUG] registerChange: Insert failed", insertResponse.status, errorText);
         throw new Error(`Insert change log failed: ${insertResponse.status}`);
       }
-      await fetchChangeLogs(resolvedId);
+      // Refresh logs non-critically; ignore errors and do not time out UI
+      try {
+        await fetchChangeLogs(resolvedId);
+      } catch (e) {
+        console.warn('[DEBUG] registerChange: fetchChangeLogs warning', e);
+      }
     } catch (err) {
       console.error("[Admin_ScenarioEditor] registerChange", err);
     }
