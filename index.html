@@ -49,6 +49,24 @@
   <body>
     <noscript>Para usar SimuPed necesitas activar JavaScript.</noscript>
     <div id="root"></div>
+    <!-- Boot watchdog to auto-recover from blank screen if app doesn't mount -->
+    <script>
+      (function(){
+        try {
+          var key='boot_watchdog_ts';
+          var now=Date.now();
+          var last=Number(sessionStorage.getItem(key)||0);
+          setTimeout(function(){
+            if(!window.__APP_MOUNTED__){
+              if(!last|| now-last>60000){
+                sessionStorage.setItem(key,String(Date.now()));
+                location.reload();
+              }
+            }
+          }, 10000);
+        } catch(e){}
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
