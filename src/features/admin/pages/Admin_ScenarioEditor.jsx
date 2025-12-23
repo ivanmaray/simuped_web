@@ -833,6 +833,21 @@ export default function Admin_ScenarioEditor() {
     }
   }
 
+  // Non-blocking wrapper to avoid UI hangs on slow networks or RLS stalls
+  async function registerChangeNonBlocking(changeType, description, meta = {}, maxWaitMs = 3000) {
+    try {
+      const regPromise = registerChange(changeType, description, meta).catch((e) => {
+        console.warn('[DEBUG] registerChangeNonBlocking warning', e);
+      });
+      await Promise.race([
+        regPromise,
+        new Promise((resolve) => setTimeout(resolve, maxWaitMs)),
+      ]);
+    } catch (e) {
+      console.warn('[DEBUG] registerChangeNonBlocking error', e);
+    }
+  }
+
   useEffect(() => {
     let active = true;
     async function load() {
@@ -1163,12 +1178,14 @@ export default function Admin_ScenarioEditor() {
       const selectedLabels = allCategories
         .filter((category) => selectedCategories.includes(category.id))
         .map((category) => category.name);
-      await registerChange("categorias", "Actualizó las categorías del escenario", {
+      console.log("[DEBUG] handleSaveCategories: Registering change (non-blocking)");
+      await registerChangeNonBlocking("categorias", "Actualizó las categorías del escenario", {
         category_ids: selectedCategories,
         category_labels: selectedLabels,
         added,
         removed,
       });
+      console.log("[DEBUG] handleSaveCategories: Proceeding after registerChange race");
       setCategorySuccess("Categorías actualizadas");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] categories", err);
@@ -1338,10 +1355,12 @@ export default function Admin_ScenarioEditor() {
       }
       const oldBrief = initialBriefForm || {};
       const diff = computeDiff(oldBrief, basePayload);
-      await registerChange("brief", "Actualizó el brief y los objetivos del caso", {
+      console.log("[DEBUG] handleSaveBrief: Registering change (non-blocking)");
+      await registerChangeNonBlocking("brief", "Actualizó el brief y los objetivos del caso", {
         diff,
         fields: Object.keys(diff || {}),
       });
+      console.log("[DEBUG] handleSaveBrief: Proceeding after registerChange race)");
       if (hydrated) setInitialBriefForm(hydrated);
       setBriefSuccess("Brief actualizado");
     } catch (err) {
@@ -2105,11 +2124,13 @@ criticalRationale: updatedRowObj.critical_rationale || "",
       } else if (!question.id) {
         meta.new = payload;
       }
-      await registerChange(
+      console.log("[DEBUG] handleSaveQuestion: Registering change (non-blocking)");
+      await registerChangeNonBlocking(
         "preguntas",
         question.id ? "Actualizó una pregunta" : "Añadió una nueva pregunta",
         meta
       );
+      console.log("[DEBUG] handleSaveQuestion: Proceeding after registerChange race");
 
       await loadQuestionsForStepIds([stepKey]);
       setQuestionsSuccess(question.id ? "Pregunta actualizada" : "Pregunta creada");
@@ -2149,11 +2170,13 @@ criticalRationale: updatedRowObj.critical_rationale || "",
     try {
       const { error } = await supabase.from("questions").delete().eq("id", question.id);
       if (error) throw error;
-      await registerChange("preguntas", "Eliminó una pregunta", {
+      console.log("[DEBUG] handleDeleteQuestion: Registering change (non-blocking)");
+      await registerChangeNonBlocking("preguntas", "Eliminó una pregunta", {
         step_id: stepKey,
         question_id: question.id,
         before: { id: question.id, text: question.text, options: question.options },
       });
+      console.log("[DEBUG] handleDeleteQuestion: Proceeding after registerChange race");
       await loadQuestionsForStepIds([stepKey]);
       setQuestionsSuccess("Pregunta eliminada");
     } catch (err) {
@@ -2230,12 +2253,14 @@ criticalRationale: updatedRowObj.critical_rationale || "",
       setSteps(normalized);
       setInitialSteps(normalized);
       await loadQuestionsForStepIds(normalized.map((row) => row.id).filter(Boolean));
-      await registerChange("pasos", "Actualizó la secuencia de pasos del escenario", {
+      console.log("[DEBUG] handleSaveSteps: Registering change (non-blocking)");
+      await registerChangeNonBlocking("pasos", "Actualizó la secuencia de pasos del escenario", {
         total_steps: normalized.length,
         inserted: insertedSteps,
         deleted: deletedSteps,
         updated: updatedSteps,
       });
+      console.log("[DEBUG] handleSaveSteps: Proceeding after registerChange race");
       setStepsSuccess("Pasos actualizados");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] steps", err);
@@ -2319,10 +2344,12 @@ criticalRationale: updatedRowObj.critical_rationale || "",
         setForm((prev) => (prev ? { ...prev, level: nextScenario.level, status: nextScenario.status, title: nextScenario.title } : prev));
       }
       const diff = computeDiff(oldScenarioState, payload);
-      await registerChange("metadata", "Actualizó la información general del escenario", {
+      console.log("[DEBUG] handleSaveScenario: Registering change (non-blocking)");
+      await registerChangeNonBlocking("metadata", "Actualizó la información general del escenario", {
         diff,
         fields: Object.keys(diff || {}),
       });
+      console.log("[DEBUG] handleSaveScenario: Proceeding after registerChange race");
       setSuccess("Escenario actualizado correctamente");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] save", err);
