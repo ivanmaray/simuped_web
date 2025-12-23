@@ -1607,14 +1607,22 @@ export default function Admin_ScenarioEditor() {
           return Object.keys(diff).length > 0 ? { id: item.id, title: item.title, diff } : null;
         })
         .filter(Boolean);
-      console.log("[DEBUG] handleSaveResources: Registering change");
-      await registerChange("recursos", "Actualizó las lecturas y materiales del caso", {
+      console.log("[DEBUG] handleSaveResources: Registering change (non-blocking)");
+      // Fire-and-forget change log registration, but timebox our wait so UI never hangs
+      const MAX_REGISTER_WAIT_MS = 3000;
+      const regPromise = registerChange("recursos", "Actualizó las lecturas y materiales del caso", {
         total_resources: next.length,
         inserted: insertedResources,
         deleted: deletedResources,
         updated: updatedResources,
+      }).catch((e) => {
+        console.warn("[DEBUG] handleSaveResources: registerChange warning", e);
       });
-      console.log("[DEBUG] handleSaveResources: Change registered");
+      await Promise.race([
+        regPromise,
+        new Promise((resolve) => setTimeout(resolve, MAX_REGISTER_WAIT_MS)),
+      ]);
+      console.log("[DEBUG] handleSaveResources: Proceeding after registerChange race");
       setResourcesSuccess("Lecturas actualizadas");
       console.log("[DEBUG] handleSaveResources: Success set");
     } catch (err) {
