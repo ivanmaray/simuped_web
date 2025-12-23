@@ -1950,6 +1950,16 @@ export default function Admin_ScenarioEditor() {
     const operationKey = question.id || localId;
     setQuestionOperation(operationKey, "saving");
     try {
+      // Get access token once for both update and insert paths
+      const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
+      const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
+      const accessToken = authData?.access_token;
+      console.log("[DEBUG] handleSaveQuestion: Auth key", authKey, "Auth data keys", Object.keys(authData || {}), "Access token present", !!accessToken);
+      if (!accessToken) {
+        console.error("[DEBUG] handleSaveQuestion: No access token");
+        throw new Error("Sesión expirada, por favor recarga la página");
+      }
+
       const payload = {
         question_text: text,
         options: sanitizedOptions,
@@ -1973,15 +1983,6 @@ export default function Admin_ScenarioEditor() {
           .maybeSingle();
         if (!existingQErr) oldQuestion = existingQ;
         // Use returning select to obtain the updated row and detect if update actually persisted
-        // Get access token
-        const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
-        const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
-        const accessToken = authData?.access_token;
-        console.log("[DEBUG] handleSaveQuestion: Auth key", authKey, "Auth data keys", Object.keys(authData), "Access token present", !!accessToken);
-        if (!accessToken) {
-          console.error("[DEBUG] handleSaveQuestion: No access token");
-          throw new Error("No access token available");
-        }
         // Direct fetch update
         console.log("[DEBUG] handleSaveQuestion: About to update question", question.id, "payload", payload);
         const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}`, {
