@@ -1951,7 +1951,15 @@ export default function Admin_ScenarioEditor() {
     setQuestionOperation(operationKey, "saving");
     try {
       const payload = {
-        correct_option: String(correctIndex),
+        question_text: text,
+        options: sanitizedOptions,
+        correct_option: correctIndex,
+        explanation,
+        roles: rolesList,
+        is_critical: Boolean(question.isCritical),
+        hints: hintsList,
+        time_limit: Number.isFinite(timeLimitValue) ? timeLimitValue : null,
+        critical_rationale: criticalRationale,
       };
 
       let savedId = question.id;
@@ -1975,7 +1983,7 @@ export default function Admin_ScenarioEditor() {
           throw new Error("No access token available");
         }
         // Direct fetch update
-        console.log("[DEBUG] handleSaveQuestion: About to update question", question.id, "with correct_option", correctIndex, "payload", payload);
+        console.log("[DEBUG] handleSaveQuestion: About to update question", question.id, "payload", payload);
         const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}`, {
           method: 'PATCH',
           headers: {
