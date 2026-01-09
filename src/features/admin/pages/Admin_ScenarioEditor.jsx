@@ -1188,8 +1188,15 @@ export default function Admin_ScenarioEditor() {
       console.log("[DEBUG] handleSaveCategories: Proceeding after registerChange race");
       setCategorySuccess("Categorías actualizadas");
     } catch (err) {
+      // Defensive: some environments may throw non-Error values (null, string, DOMException without message)
+      const fallbackMsg = "No se pudieron actualizar las categorías";
+      let msg = fallbackMsg;
+      if (err) {
+        if (typeof err === "string") msg = err;
+        else if (typeof err.message === "string" && err.message) msg = err.message;
+      }
       console.error("[Admin_ScenarioEditor] categories", err);
-      setCategoryError(err?.message || "No se pudieron actualizar las categorías");
+      setCategoryError(msg);
     } finally {
       setCategorySaving(false);
     }
@@ -2340,7 +2347,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
         }
       }
       // If the DB lacks the new column, retry update without `time_limit_minutes`.
-      if (updateErr && String(updateErr.message).toLowerCase().includes("time_limit_minutes") || String(updateErr.message).toLowerCase().includes("column")) {
+      if (updateErr && (String(updateErr.message).toLowerCase().includes("time_limit_minutes") || String(updateErr.message).toLowerCase().includes("column"))) {
         // No fallback needed since we don't send time_limit_minutes anymore
         const payloadNoTL = { ...payload };
         delete payloadNoTL.time_limit_minutes; // no-op if not present
