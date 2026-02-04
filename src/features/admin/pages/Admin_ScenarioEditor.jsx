@@ -16,6 +16,7 @@ import {
 // Normalize Supabase base URL in case the env var includes /rest/v1
 const SUPABASE_BASE_URL = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/rest\/v1\/?$/, "");
 const SUPABASE_REST_URL = `${SUPABASE_BASE_URL}/rest/v1`;
+const DEFAULT_TIMEOUT_MS = 8000;
 
 function getSupabaseAuthKey() {
   const host = SUPABASE_BASE_URL.replace(/^https?:\/\//, "");
@@ -183,6 +184,22 @@ function raceWithTimeout(promise, ms, label = "Timeout") {
   return Promise.race([promise, timeout]).finally(() => {
     window.clearTimeout(timeoutId);
   });
+}
+
+async function fetchWithTimeout(url, options = {}, ms = DEFAULT_TIMEOUT_MS, label = "Timeout") {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), ms);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error(label);
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 async function saveBriefDirectREST({ scenarioId, briefId, payload }) {
@@ -1206,14 +1223,14 @@ export default function Admin_ScenarioEditor() {
     setCategorySuccess("");
     setCategorySaving(true);
     try {
-      const response = await fetch("/api/admin?action=set_scenario_categories", {
+      const response = await fetchWithTimeout("/api/admin?action=set_scenario_categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scenario_id: scenarioNumericId,
           category_ids: selectedCategories,
         }),
-      });
+      }, DEFAULT_TIMEOUT_MS, "Tiempo agotado guardando categorías");
       const payload = await response.json().catch(() => null);
       if (!response.ok || payload?.ok === false) {
         const code = payload?.error || "unknown";
@@ -1545,14 +1562,14 @@ export default function Admin_ScenarioEditor() {
       
       console.log("[DEBUG] handleSaveResources: URL:", SUPABASE_REST_URL, "Key present:", !!supabaseKey);
       
-      const response = await fetch(`${SUPABASE_REST_URL}/scenarios?select=id&limit=1`, {
+      const response = await fetchWithTimeout(`${SUPABASE_REST_URL}/scenarios?select=id&limit=1`, {
         method: 'GET',
         headers: {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
           'Content-Type': 'application/json',
         },
-      });
+      }, DEFAULT_TIMEOUT_MS, "Tiempo agotado comprobando conexión a Supabase");
       
       console.log("[DEBUG] handleSaveResources: Direct fetch response status:", response.status);
       
@@ -1613,14 +1630,14 @@ export default function Admin_ScenarioEditor() {
       if (toDelete.length > 0) {
         console.log("[DEBUG] handleSaveResources: Deleting resources");
         const deleteIds = toDelete.map((item) => item.id).join(',');
-        const deleteResponse = await fetch(`${SUPABASE_REST_URL}/case_resources?id=in.(${deleteIds})`, {
+        const deleteResponse = await fetchWithTimeout(`${SUPABASE_REST_URL}/case_resources?id=in.(${deleteIds})`, {
           method: 'DELETE',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
-        });
+        }, DEFAULT_TIMEOUT_MS, "Tiempo agotado eliminando recursos");
         console.log("[DEBUG] handleSaveResources: Delete response status:", deleteResponse.status);
         if (!deleteResponse.ok) {
           const errorText = await deleteResponse.text();
@@ -1644,7 +1661,7 @@ export default function Admin_ScenarioEditor() {
               year: item.year,
               free_access: item.free_access,
             };
-            const updateResponse = await fetch(`${SUPABASE_REST_URL}/case_resources?id=eq.${item.id}`, {
+            const updateResponse = await fetchWithTimeout(`${SUPABASE_REST_URL}/case_resources?id=eq.${item.id}`, {
               method: 'PATCH',
               headers: {
                 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1653,7 +1670,7 @@ export default function Admin_ScenarioEditor() {
                 'Prefer': 'return=representation',
               },
               body: JSON.stringify(updatePayload),
-            });
+            }, DEFAULT_TIMEOUT_MS, "Tiempo agotado actualizando recursos");
             console.log("[DEBUG] handleSaveResources: Update response status for", item.id, ":", updateResponse.status);
             if (!updateResponse.ok) {
               const errorText = await updateResponse.text();
@@ -1680,7 +1697,7 @@ export default function Admin_ScenarioEditor() {
         }));
         console.log("[DEBUG] handleSaveResources: Insert payload", insertPayload);
         console.log("[DEBUG] handleSaveResources: About to call direct fetch insert");
-        const insertResponse = await fetch(`${SUPABASE_REST_URL}/case_resources`, {
+        const insertResponse = await fetchWithTimeout(`${SUPABASE_REST_URL}/case_resources`, {
           method: 'POST',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1689,7 +1706,7 @@ export default function Admin_ScenarioEditor() {
             'Prefer': 'return=representation',
           },
           body: JSON.stringify(insertPayload),
-        });
+        }, DEFAULT_TIMEOUT_MS, "Tiempo agotado creando recursos");
         console.log("[DEBUG] handleSaveResources: Direct insert response status:", insertResponse.status);
         if (!insertResponse.ok) {
           const errorText = await insertResponse.text();
@@ -1701,14 +1718,14 @@ export default function Admin_ScenarioEditor() {
         console.log("[DEBUG] handleSaveResources: Insert completed successfully");
       }
       console.log("[DEBUG] handleSaveResources: Refreshing data");
-      const refreshResponse = await fetch(`${SUPABASE_REST_URL}/case_resources?scenario_id=eq.${scenarioNumericId}&select=id,title,url,source,type,year,free_access&order=title.asc`, {
+      const refreshResponse = await fetchWithTimeout(`${SUPABASE_REST_URL}/case_resources?scenario_id=eq.${scenarioNumericId}&select=id,title,url,source,type,year,free_access&order=title.asc`, {
         method: 'GET',
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-      });
+      }, DEFAULT_TIMEOUT_MS, "Tiempo agotado refrescando recursos");
       console.log("[DEBUG] handleSaveResources: Refresh response status:", refreshResponse.status);
       if (!refreshResponse.ok) {
         const errorText = await refreshResponse.text();
@@ -2083,16 +2100,21 @@ export default function Admin_ScenarioEditor() {
       let oldQuestion = null;
       if (question.id) {
         // Fetch existing persisted row to compute diff
-        const { data: existingQ, error: existingQErr } = await supabase
+        const existingPromise = supabase
           .from("questions")
           .select("id,question_text,options,correct_option,explanation,roles,is_critical,hints,time_limit,critical_rationale")
           .eq("id", question.id)
           .maybeSingle();
+        const { data: existingQ, error: existingQErr } = await raceWithTimeout(
+          existingPromise,
+          DEFAULT_TIMEOUT_MS,
+          "Tiempo agotado leyendo pregunta"
+        );
         if (!existingQErr) oldQuestion = existingQ;
         // Use returning select to obtain the updated row and detect if update actually persisted
         // Direct fetch update
         console.log("[DEBUG] handleSaveQuestion: About to update question", question.id, "payload", payload);
-        const updateResponse = await fetch(`${SUPABASE_REST_URL}/questions?id=eq.${question.id}`, {
+        const updateResponse = await fetchWithTimeout(`${SUPABASE_REST_URL}/questions?id=eq.${question.id}`, {
           method: 'PATCH',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -2101,7 +2123,7 @@ export default function Admin_ScenarioEditor() {
             'Prefer': 'return=representation',
           },
           body: JSON.stringify(payload),
-        });
+        }, DEFAULT_TIMEOUT_MS, "Tiempo agotado guardando pregunta");
         console.log("[DEBUG] handleSaveQuestion: Update response status", updateResponse.status);
         if (!updateResponse.ok) {
           const errorText = await updateResponse.text();
@@ -2109,14 +2131,14 @@ export default function Admin_ScenarioEditor() {
           throw new Error(`Update question failed: ${updateResponse.status} ${errorText}`);
         }
         // Since return=representation may not work, fetch the updated row
-        const fetchResponse = await fetch(`${SUPABASE_REST_URL}/questions?id=eq.${question.id}&select=*`, {
+        const fetchResponse = await fetchWithTimeout(`${SUPABASE_REST_URL}/questions?id=eq.${question.id}&select=*`, {
           method: 'GET',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
-        });
+        }, DEFAULT_TIMEOUT_MS, "Tiempo agotado leyendo pregunta");
         console.log("[DEBUG] handleSaveQuestion: Fetch response status", fetchResponse.status);
         if (!fetchResponse.ok) {
           const errorText = await fetchResponse.text();
@@ -2212,7 +2234,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
           ...payload,
           step_id: stepKey,
         };
-        const insertResponse = await fetch(`${SUPABASE_REST_URL}/questions`, {
+        const insertResponse = await fetchWithTimeout(`${SUPABASE_REST_URL}/questions`, {
           method: 'POST',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -2221,7 +2243,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
             'Prefer': 'return=representation',
           },
           body: JSON.stringify(insertPayload),
-        });
+        }, DEFAULT_TIMEOUT_MS, "Tiempo agotado creando pregunta");
         if (!insertResponse.ok) {
           const errorText = await insertResponse.text();
           throw new Error(`Insert question failed: ${insertResponse.status} ${errorText}`);
@@ -2327,14 +2349,14 @@ criticalRationale: updatedRowObj.critical_rationale || "",
     }
     setStepsSaving(true);
     try {
-      const response = await fetch("/api/admin?action=sync_scenario_steps", {
+      const response = await fetchWithTimeout("/api/admin?action=sync_scenario_steps", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scenario_id: scenarioNumericId,
           steps: sanitized,
         }),
-      });
+      }, DEFAULT_TIMEOUT_MS, "Tiempo agotado guardando pasos");
       const payload = await response.json().catch(() => null);
       if (!response.ok || payload?.ok === false) {
         const base = payload?.error || payload?.message || "No se pudieron actualizar los pasos";
@@ -2428,12 +2450,13 @@ criticalRationale: updatedRowObj.critical_rationale || "",
         }
       }
       const attemptUpdate = async (pl) => {
-        return await supabase
+        const updatePromise = supabase
           .from("scenarios")
           .update(pl)
           .eq("id", scenarioId)
           .select()
           .maybeSingle();
+        return await raceWithTimeout(updatePromise, DEFAULT_TIMEOUT_MS, "Tiempo agotado guardando escenario");
       };
       let { data, error: updateErr } = await attemptUpdate(payload);
       if (updateErr && String(updateErr.message).includes("scenarios_status_check")) {
