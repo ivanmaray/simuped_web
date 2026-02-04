@@ -931,9 +931,8 @@ export default function Online_Detalle() {
         setLoadingResources(true);
         const { data: res, error: rErr } = await supabase
           .from("case_resources")
-          .select("id, title, url, source, type, year, free_access, weight")
+          .select("id, title, url, source, type, year, free_access")
           .eq("scenario_id", esc.id)
-          .order("weight", { ascending: true })
           .order("title", { ascending: true });
         if (!rErr) {
           setResources(res || []);

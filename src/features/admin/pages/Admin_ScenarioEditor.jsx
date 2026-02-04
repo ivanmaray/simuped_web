@@ -910,9 +910,8 @@ export default function Admin_ScenarioEditor() {
             .maybeSingle(),
           supabase
             .from("case_resources")
-            .select("id,title,url,source,type,year,free_access,weight")
+            .select("id,title,url,source,type,year,free_access")
             .eq("scenario_id", data.id)
-            .order("weight", { ascending: false })
             .order("title", { ascending: true }),
           supabase
             .from("scenario_change_logs")
@@ -1408,8 +1407,6 @@ export default function Admin_ScenarioEditor() {
     setResourcesSuccess("");
     setResourcesError("");
     setResources((prev) => {
-      const lastWeight = prev.length > 0 ? Number(prev[prev.length - 1].weight) : 100;
-      const nextWeight = Number.isFinite(lastWeight) ? lastWeight - 10 : 90;
       return [
         ...prev,
         {
@@ -1420,7 +1417,6 @@ export default function Admin_ScenarioEditor() {
           type: "",
           year: "",
           free_access: true,
-          weight: nextWeight,
         },
       ];
     });
@@ -1541,7 +1537,6 @@ export default function Admin_ScenarioEditor() {
               type: item.type || null,
               year: item.year,
               free_access: item.free_access,
-              weight: item.weight,
             };
             const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?id=eq.${item.id}`, {
               method: 'PATCH',
@@ -1576,7 +1571,6 @@ export default function Admin_ScenarioEditor() {
           type: item.type || null,
           year: item.year,
           free_access: item.free_access,
-          weight: item.weight,
         }));
         console.log("[DEBUG] handleSaveResources: Insert payload", insertPayload);
         console.log("[DEBUG] handleSaveResources: About to call direct fetch insert");
@@ -1601,7 +1595,7 @@ export default function Admin_ScenarioEditor() {
         console.log("[DEBUG] handleSaveResources: Insert completed successfully");
       }
       console.log("[DEBUG] handleSaveResources: Refreshing data");
-      const refreshResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?scenario_id=eq.${scenarioNumericId}&select=id,title,url,source,type,year,free_access,weight&order=weight.desc,title.asc`, {
+      const refreshResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?scenario_id=eq.${scenarioNumericId}&select=id,title,url,source,type,year,free_access&order=title.asc`, {
         method: 'GET',
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -3531,16 +3525,6 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                               onChange={(event) => handleResourceChange(index, "year", event.target.value)}
                               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
                               placeholder="2024"
-                            />
-                          </label>
-                          <label className="block text-sm text-slate-600">
-                            <span className="text-xs uppercase tracking-wide text-slate-400">Peso (relevancia)</span>
-                            <input
-                              type="number"
-                              value={typeof resource.weight === 'number' ? resource.weight : ''}
-                              onChange={(event) => handleResourceChange(index, "weight", event.target.value)}
-                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
-                              placeholder="1"
                             />
                           </label>
                         </div>

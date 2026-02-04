@@ -267,9 +267,9 @@ export default function Evaluacion_Main() {
             // ⚠️ Importante: no hacemos embed a scenarios para evitar restricciones RLS adicionales
             const { data: resRows, error: resErr } = await supabase
               .from("case_resources")
-              .select("id, scenario_id, title, source, url, year, weight")
+              .select("id, scenario_id, title, source, url, year")
               .in("scenario_id", scenarioIdsStr)
-              .order("weight", { ascending: true })
+              .order("title", { ascending: true })
               .order("id", { ascending: true });
 
             if (resErr) {

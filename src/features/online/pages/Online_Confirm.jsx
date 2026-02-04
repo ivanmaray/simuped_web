@@ -4,15 +4,6 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
 
-function renderStars(weight) {
-  // Map numeric weight (e.g., 0-100) to 1-5 stars. Default to 3 if undefined.
-  const w = Number.isFinite(Number(weight)) ? Number(weight) : 60;
-  const stars = Math.max(1, Math.min(5, Math.round(w / 20)));
-  const filled = "★".repeat(stars);
-  const empty = "☆".repeat(5 - stars);
-  return `${filled}${empty}`;
-}
-
 const MAX_ATTEMPTS = 3;
 const DEFAULT_LIMIT_SECS = 900; // 15 minutos por intento
 
@@ -178,9 +169,9 @@ export default function Online_Confirm() {
         setLoadingResources(true);
         const { data: res, error: rErr } = await supabase
           .from("case_resources")
-          .select("id, title, url, source, type, year, free_access, weight")
+          .select("id, title, url, source, type, year, free_access")
           .eq("scenario_id", scenarioId)
-          .order("weight", { ascending: true })
+          .order("title", { ascending: true })
           .limit(12);
         if (rErr) {
           console.warn("[Confirm] resources error (no bloqueante):", rErr);
@@ -662,13 +653,6 @@ export default function Online_Confirm() {
                             ].filter(Boolean).join(" · ")}
                           </div>
                         </div>
-                        <span
-                          className="text-xs font-medium text-amber-600"
-                          title={`Relevancia: ${renderStars(r.weight)} (${Number.isFinite(Number(r.weight)) ? Math.max(1, Math.min(5, Math.round(Number(r.weight) / 20))) : 3}/5)`}
-                          aria-label="Relevancia"
-                        >
-                          {renderStars(r.weight)}
-                        </span>
                       </div>
                     </li>
                   ))}
