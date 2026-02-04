@@ -185,6 +185,43 @@ function raceWithTimeout(promise, ms, label = "Timeout") {
   });
 }
 
+async function saveBriefDirectREST({ scenarioId, briefId, payload }) {
+  const authKey = getSupabaseAuthKey();
+  const authData = JSON.parse(localStorage.getItem(authKey) || "{}");
+  const accessToken = authData?.access_token;
+  if (!accessToken) {
+    throw new Error("Sesión expirada, recarga la página");
+  }
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const isUpdate = Boolean(briefId);
+  const url = isUpdate
+    ? `${SUPABASE_REST_URL}/case_briefs?id=eq.${briefId}`
+    : `${SUPABASE_REST_URL}/case_briefs`;
+  const body = isUpdate
+    ? payload
+    : {
+        scenario_id: scenarioId,
+        ...payload,
+      };
+  const response = await fetch(url, {
+    method: isUpdate ? "PATCH" : "POST",
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText || "Error guardando brief"}`);
+  }
+  const data = await response.json();
+  const row = Array.isArray(data) ? data[0] : data;
+  return row;
+}
+
 function listToTextarea(value) {
   if (Array.isArray(value)) {
     return value
@@ -1346,49 +1383,84 @@ export default function Admin_ScenarioEditor() {
         basePayload.competencies = competenciesPayload;
       }
       let hydrated;
+      let supabaseErr = null;
       if (briefForm?.id) {
-        const updatePromise = supabase
-          .from("case_briefs")
-          .update(basePayload)
-          .eq("id", briefForm.id)
-          .select()
-          .maybeSingle();
-        const { data, error: updateErr } = await raceWithTimeout(
-          updatePromise,
-          8000,
-          "Tiempo agotado guardando brief"
-        );
-        if (updateErr) throw updateErr;
-        const updatedRoles = new Set(briefRoles);
-        Object.keys(data?.objectives || {}).forEach((roleKey) => {
-          if (roleKey) updatedRoles.add(roleKey);
-        });
-        hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
-        setBriefForm(hydrated);
-        setBriefRoles(Array.from(updatedRoles));
+        try {
+          const updatePromise = supabase
+            .from("case_briefs")
+            .update(basePayload)
+            .eq("id", briefForm.id)
+            .select()
+            .maybeSingle();
+          const { data, error: updateErr } = await raceWithTimeout(
+            updatePromise,
+            8000,
+            "Tiempo agotado guardando brief"
+          );
+          if (updateErr) throw updateErr;
+          const updatedRoles = new Set(briefRoles);
+          Object.keys(data?.objectives || {}).forEach((roleKey) => {
+            if (roleKey) updatedRoles.add(roleKey);
+          });
+          hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
+          setBriefForm(hydrated);
+          setBriefRoles(Array.from(updatedRoles));
+        } catch (err) {
+          supabaseErr = err;
+          console.warn("[DEBUG] handleSaveBrief: supabase update fallback to REST", err?.message);
+          const row = await saveBriefDirectREST({
+            scenarioId: scenarioNumericId,
+            briefId: briefForm.id,
+            payload: basePayload,
+          });
+          const updatedRoles = new Set(briefRoles);
+          Object.keys(row?.objectives || {}).forEach((roleKey) => {
+            if (roleKey) updatedRoles.add(roleKey);
+          });
+          hydrated = hydrateBriefForm(row, Array.from(updatedRoles));
+          setBriefForm(hydrated);
+          setBriefRoles(Array.from(updatedRoles));
+        }
       } else {
-        const insertPayload = {
-          scenario_id: scenarioNumericId,
-          ...basePayload,
-        };
-        const insertPromise = supabase
-          .from("case_briefs")
-          .insert(insertPayload)
-          .select()
-          .maybeSingle();
-        const { data, error: insertErr } = await raceWithTimeout(
-          insertPromise,
-          8000,
-          "Tiempo agotado guardando brief"
-        );
-        if (insertErr) throw insertErr;
-        const updatedRoles = new Set(briefRoles);
-        Object.keys(data?.objectives || {}).forEach((roleKey) => {
-          if (roleKey) updatedRoles.add(roleKey);
-        });
-        hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
-        setBriefForm(hydrated);
-        setBriefRoles(Array.from(updatedRoles));
+        try {
+          const insertPayload = {
+            scenario_id: scenarioNumericId,
+            ...basePayload,
+          };
+          const insertPromise = supabase
+            .from("case_briefs")
+            .insert(insertPayload)
+            .select()
+            .maybeSingle();
+          const { data, error: insertErr } = await raceWithTimeout(
+            insertPromise,
+            8000,
+            "Tiempo agotado guardando brief"
+          );
+          if (insertErr) throw insertErr;
+          const updatedRoles = new Set(briefRoles);
+          Object.keys(data?.objectives || {}).forEach((roleKey) => {
+            if (roleKey) updatedRoles.add(roleKey);
+          });
+          hydrated = hydrateBriefForm(data, Array.from(updatedRoles));
+          setBriefForm(hydrated);
+          setBriefRoles(Array.from(updatedRoles));
+        } catch (err) {
+          supabaseErr = err;
+          console.warn("[DEBUG] handleSaveBrief: supabase insert fallback to REST", err?.message);
+          const row = await saveBriefDirectREST({
+            scenarioId: scenarioNumericId,
+            briefId: null,
+            payload: basePayload,
+          });
+          const updatedRoles = new Set(briefRoles);
+          Object.keys(row?.objectives || {}).forEach((roleKey) => {
+            if (roleKey) updatedRoles.add(roleKey);
+          });
+          hydrated = hydrateBriefForm(row, Array.from(updatedRoles));
+          setBriefForm(hydrated);
+          setBriefRoles(Array.from(updatedRoles));
+        }
       }
       const oldBrief = initialBriefForm || {};
       const diff = computeDiff(oldBrief, basePayload);
@@ -1404,7 +1476,7 @@ export default function Admin_ScenarioEditor() {
       console.error("[Admin_ScenarioEditor] brief", err);
       const isTimeout = err?.message?.includes("Tiempo agotado guardando brief");
       const fallbackMessage = isTimeout
-        ? "Tiempo de espera agotado al guardar el brief. Reintenta."
+        ? "Tiempo de espera agotado al guardar el brief. Reintenta o recarga la sesión."
         : err?.message || "No se pudo actualizar el brief";
       setBriefError(fallbackMessage);
     } finally {
@@ -1515,6 +1587,7 @@ export default function Admin_ScenarioEditor() {
       type: item?.type?.trim() || "",
       year: item?.year ? Number.parseInt(item.year, 10) : null,
       free_access: Boolean(item?.free_access),
+      weight: Number.isFinite(Number(item?.weight)) ? Number(item.weight) : 0,
     }));
     console.log("[DEBUG] handleSaveResources: Sanitized resources", sanitized);
     if (sanitized.some((item) => !item.title || !item.url)) {
