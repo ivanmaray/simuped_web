@@ -164,6 +164,17 @@ function computeDiff(oldObj = {}, newObj = {}) {
   return changes;
 }
 
+// Race any promise with a timeout to prevent indefinite spinners when a network request stalls
+function raceWithTimeout(promise, ms, label = "Timeout") {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(label)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    window.clearTimeout(timeoutId);
+  });
+}
+
 function listToTextarea(value) {
   if (Array.isArray(value)) {
     return value
@@ -1326,12 +1337,17 @@ export default function Admin_ScenarioEditor() {
       }
       let hydrated;
       if (briefForm?.id) {
-        const { data, error: updateErr } = await supabase
+        const updatePromise = supabase
           .from("case_briefs")
           .update(basePayload)
           .eq("id", briefForm.id)
           .select()
           .maybeSingle();
+        const { data, error: updateErr } = await raceWithTimeout(
+          updatePromise,
+          8000,
+          "Tiempo agotado guardando brief"
+        );
         if (updateErr) throw updateErr;
         const updatedRoles = new Set(briefRoles);
         Object.keys(data?.objectives || {}).forEach((roleKey) => {
@@ -1345,11 +1361,16 @@ export default function Admin_ScenarioEditor() {
           scenario_id: scenarioNumericId,
           ...basePayload,
         };
-        const { data, error: insertErr } = await supabase
+        const insertPromise = supabase
           .from("case_briefs")
           .insert(insertPayload)
           .select()
           .maybeSingle();
+        const { data, error: insertErr } = await raceWithTimeout(
+          insertPromise,
+          8000,
+          "Tiempo agotado guardando brief"
+        );
         if (insertErr) throw insertErr;
         const updatedRoles = new Set(briefRoles);
         Object.keys(data?.objectives || {}).forEach((roleKey) => {
@@ -1371,7 +1392,11 @@ export default function Admin_ScenarioEditor() {
       setBriefSuccess("Brief actualizado");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] brief", err);
-      setBriefError(err?.message || "No se pudo actualizar el brief");
+      const isTimeout = err?.message?.includes("Tiempo agotado guardando brief");
+      const fallbackMessage = isTimeout
+        ? "Tiempo de espera agotado al guardar el brief. Reintenta."
+        : err?.message || "No se pudo actualizar el brief";
+      setBriefError(fallbackMessage);
     } finally {
       setBriefSaving(false);
     }
