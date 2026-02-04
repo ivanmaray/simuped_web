@@ -1,7 +1,9 @@
 // src/supabaseClient.js
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
+// Accept both plain project URL and URLs accidentally ending with /rest/v1
+const rawUrl = import.meta.env.VITE_SUPABASE_URL;
+const url = rawUrl?.replace(/\/rest\/v1\/?$/, "");
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const isBrowser = typeof window !== "undefined";

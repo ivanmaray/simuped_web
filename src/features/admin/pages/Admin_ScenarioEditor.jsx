@@ -13,6 +13,16 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 
+// Normalize Supabase base URL in case the env var includes /rest/v1
+const SUPABASE_BASE_URL = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/rest\/v1\/?$/, "");
+const SUPABASE_REST_URL = `${SUPABASE_BASE_URL}/rest/v1`;
+
+function getSupabaseAuthKey() {
+  const host = SUPABASE_BASE_URL.replace(/^https?:\/\//, "");
+  const projectRef = host.split(".")[0] || "";
+  return `sb-${projectRef}-auth-token`;
+}
+
 const statusOptions = [
   { value: "Disponible", label: "Disponible" },
   { value: "En construcción: en proceso", label: "En construcción: en proceso" },
@@ -801,7 +811,7 @@ export default function Admin_ScenarioEditor() {
     }
     try {
       // Get access token from localStorage
-      const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
+      const authKey = getSupabaseAuthKey();
       const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
       const accessToken = authData?.access_token;
       if (!accessToken) {
@@ -814,7 +824,7 @@ export default function Admin_ScenarioEditor() {
       const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
       let insertResponse;
       try {
-        insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/scenario_change_logs`, {
+        insertResponse = await fetch(`${SUPABASE_REST_URL}/scenario_change_logs`, {
           method: 'POST',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1459,12 +1469,11 @@ export default function Admin_ScenarioEditor() {
     // Test with direct fetch to Supabase REST API
     console.log("[DEBUG] handleSaveResources: Testing direct fetch to Supabase...");
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
-      console.log("[DEBUG] handleSaveResources: URL:", supabaseUrl, "Key present:", !!supabaseKey);
+      console.log("[DEBUG] handleSaveResources: URL:", SUPABASE_REST_URL, "Key present:", !!supabaseKey);
       
-      const response = await fetch(`${supabaseUrl}/rest/v1/scenarios?select=id&limit=1`, {
+      const response = await fetch(`${SUPABASE_REST_URL}/scenarios?select=id&limit=1`, {
         method: 'GET',
         headers: {
           'apikey': supabaseKey,
@@ -1506,7 +1515,6 @@ export default function Admin_ScenarioEditor() {
       type: item?.type?.trim() || "",
       year: item?.year ? Number.parseInt(item.year, 10) : null,
       free_access: Boolean(item?.free_access),
-      weight: Number.isFinite(Number(item?.weight)) ? Number(item.weight) : 0,
     }));
     console.log("[DEBUG] handleSaveResources: Sanitized resources", sanitized);
     if (sanitized.some((item) => !item.title || !item.url)) {
@@ -1515,7 +1523,7 @@ export default function Admin_ScenarioEditor() {
       return;
     }
     // Get session token from localStorage to avoid hanging Supabase client
-    const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
+    const authKey = getSupabaseAuthKey();
     const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
     const accessToken = authData?.access_token;
     if (!accessToken) {
@@ -1532,7 +1540,7 @@ export default function Admin_ScenarioEditor() {
       if (toDelete.length > 0) {
         console.log("[DEBUG] handleSaveResources: Deleting resources");
         const deleteIds = toDelete.map((item) => item.id).join(',');
-        const deleteResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?id=in.(${deleteIds})`, {
+        const deleteResponse = await fetch(`${SUPABASE_REST_URL}/case_resources?id=in.(${deleteIds})`, {
           method: 'DELETE',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1563,7 +1571,7 @@ export default function Admin_ScenarioEditor() {
               year: item.year,
               free_access: item.free_access,
             };
-            const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?id=eq.${item.id}`, {
+            const updateResponse = await fetch(`${SUPABASE_REST_URL}/case_resources?id=eq.${item.id}`, {
               method: 'PATCH',
               headers: {
                 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1599,7 +1607,7 @@ export default function Admin_ScenarioEditor() {
         }));
         console.log("[DEBUG] handleSaveResources: Insert payload", insertPayload);
         console.log("[DEBUG] handleSaveResources: About to call direct fetch insert");
-        const insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources`, {
+        const insertResponse = await fetch(`${SUPABASE_REST_URL}/case_resources`, {
           method: 'POST',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1620,7 +1628,7 @@ export default function Admin_ScenarioEditor() {
         console.log("[DEBUG] handleSaveResources: Insert completed successfully");
       }
       console.log("[DEBUG] handleSaveResources: Refreshing data");
-      const refreshResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/case_resources?scenario_id=eq.${scenarioNumericId}&select=id,title,url,source,type,year,free_access&order=title.asc`, {
+      const refreshResponse = await fetch(`${SUPABASE_REST_URL}/case_resources?scenario_id=eq.${scenarioNumericId}&select=id,title,url,source,type,year,free_access&order=title.asc`, {
         method: 'GET',
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -1977,7 +1985,7 @@ export default function Admin_ScenarioEditor() {
     setQuestionOperation(operationKey, "saving");
     try {
       // Get access token once for both update and insert paths
-      const authKey = `sb-${import.meta.env.VITE_SUPABASE_URL.split('https://')[1].split('.')[0]}-auth-token`;
+      const authKey = getSupabaseAuthKey();
       const authData = JSON.parse(localStorage.getItem(authKey) || '{}');
       const accessToken = authData?.access_token;
       console.log("[DEBUG] handleSaveQuestion: Auth key", authKey, "Auth data keys", Object.keys(authData || {}), "Access token present", !!accessToken);
@@ -2011,7 +2019,7 @@ export default function Admin_ScenarioEditor() {
         // Use returning select to obtain the updated row and detect if update actually persisted
         // Direct fetch update
         console.log("[DEBUG] handleSaveQuestion: About to update question", question.id, "payload", payload);
-        const updateResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}`, {
+        const updateResponse = await fetch(`${SUPABASE_REST_URL}/questions?id=eq.${question.id}`, {
           method: 'PATCH',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -2028,7 +2036,7 @@ export default function Admin_ScenarioEditor() {
           throw new Error(`Update question failed: ${updateResponse.status} ${errorText}`);
         }
         // Since return=representation may not work, fetch the updated row
-        const fetchResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions?id=eq.${question.id}&select=*`, {
+        const fetchResponse = await fetch(`${SUPABASE_REST_URL}/questions?id=eq.${question.id}&select=*`, {
           method: 'GET',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -2131,7 +2139,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
           ...payload,
           step_id: stepKey,
         };
-        const insertResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/questions`, {
+        const insertResponse = await fetch(`${SUPABASE_REST_URL}/questions`, {
           method: 'POST',
           headers: {
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
