@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-function usePreviousAttempts(caseId) {
+function usePreviousAttempts(caseId, token) {
   const [attempts, setAttempts] = useState([]);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (!caseId) return;
+    if (!caseId || !token) return;
     setLoading(true);
-    fetch(`/api/micro_cases?action=attempts&case_id=${caseId}`)
+    fetch(`/api/micro_cases?action=attempts&case_id=${caseId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
       .then((res) => res.json())
       .then((data) => {
         setAttempts(Array.isArray(data.attempts) ? data.attempts : []);
@@ -49,8 +53,8 @@ function Toast({ message, tone = "info" }) {
 const FEEDBACK_DELAY_MS = 400;
 const INFO_AUTO_ADVANCE_DELAY_MS = 1400;
 
-export default function MicroCasePlayer({ microCase, onSubmitAttempt, participantRole }) {
-  const { attempts: previousAttempts, loading: loadingAttempts } = usePreviousAttempts(microCase?.id);
+export default function MicroCasePlayer({ microCase, onSubmitAttempt, participantRole, token }) {
+  const { attempts: previousAttempts, loading: loadingAttempts } = usePreviousAttempts(microCase?.id, token);
   const { nodeMap, startId } = useNodeGraph(microCase);
   const [currentNodeId, setCurrentNodeId] = useState(startId);
   const [history, setHistory] = useState([]);
@@ -150,6 +154,10 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
   async function handleFinish() {
     if (submitting) return;
+    if (!token) {
+      setLastFeedback({ content: 'Sesión no válida. Inicia sesión para registrar el resultado.', tone: 'error' });
+      return;
+    }
     setSubmitting(true);
     try {
       const durationSeconds = Math.max(0, Math.ceil((tick - startedAt) / 1000));

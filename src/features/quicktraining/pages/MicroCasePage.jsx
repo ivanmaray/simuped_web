@@ -122,6 +122,7 @@ export default function MicroCasePage() {
             key={`${caseData.id}-${participantRole}`}
             microCase={caseData}
             participantRole={participantRole}
+            token={token}
             onSubmitAttempt={handleSubmitAttempt}
           />
         ) : (
