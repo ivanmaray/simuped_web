@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import Navbar from "./components/Navbar.jsx"
@@ -50,17 +50,6 @@ export default function App() {
   const [resetMsg, setResetMsg] = useState('')
   const [mountedUI, setMountedUI] = useState(false)
   const [heroVideo, setHeroVideo] = useState('/videohero1.gif')
-
-  const miembros = useMemo(() => [
-    { foto: "/equipo/ivan-maray.jpg",   nombre: "Iván Maray",         rol: "Facultativo UGC Farmacia HUCA" },
-    { foto: "/equipo/andres-concha.jpg",nombre: "Andrés Concha",      rol: "Jefe UCI Pediátrica HUCA" },
-    { foto: "/equipo/laina-oyague.jpg", nombre: "Laina Oyague",        rol: "Residente UGC Farmacia HUCA" },
-    { foto: "/equipo/mateo-eiroa.jpg",  nombre: "Mateo Eiroa",         rol: "Residente UGC Farmacia HUCA" },
-    { foto: "/equipo/ana-vivanco.jpg",  nombre: "Ana Vivanco",         rol: "Facultativa UCI Pediátrica HUCA" },
-    { foto: "/equipo/sara-ovalle.jpg",  nombre: "Sara Ovalle",         rol: "Residente UCI Pediátrica HUCA" },
-    { foto: "/equipo/susana-perez.jpg", nombre: "Susana Pérez",        rol: "Supervisora UCI Pediátrica HUCA" },
-    { foto: "/equipo/ana-lozano.jpg",   nombre: "Ana Lozano",          rol: "Directora UGC Farmacia HUCA" },
-  ], []);
 
   const handleLogin = useCallback(async (e) => {
     e.preventDefault();
@@ -428,35 +417,6 @@ useEffect(() => {
           </div>
         </div>
       </section>
-  {/* EQUIPO */}
-      <section id="equipo" className="bg-white scroll-mt-28">
-        <div className="max-w-6xl mx-auto px-5 py-12">
-          <h3 className="text-3xl font-bold mb-6 text-slate-900 text-center">Equipo SimuPed</h3>
-          <Reveal>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {miembros.map((m, idx) => (
-                <Reveal delay={idx * 60} key={m.nombre}>
-                  <article
-                    className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition"
-                  >
-                    <img
-                      src={m.foto}
-                      alt={m.nombre}
-                      className="h-16 w-16 object-cover bg-slate-200"
-                      onError={(e) => (e.currentTarget.style.display = 'none')}
-                    />
-                    <div>
-                      <h3 className="text-xl font-semibold text-slate-900 leading-tight">{m.nombre}</h3>
-                      <p className="text-slate-600">{m.rol}</p>
-                    </div>
-                  </article>
-                </Reveal>
-              ))}
-            </div>
-          </Reveal>
-        </div>
-      </section>
-
       {/* CÓMO PARTICIPAR */}
       <section id="como-participar" className="bg-white scroll-mt-28">
         <div aria-hidden className="h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />

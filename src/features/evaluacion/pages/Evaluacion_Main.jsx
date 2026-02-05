@@ -87,7 +87,7 @@ function BarChart({ data, title = "Media por escenario" }) {
   const barH = 32;
   const gap = 12;
   const paddingY = 24;
-  const labelSpace = 210;
+  const labelSpace = 260;
   const paddingRight = 28;
   const width = 900;
   const usable = width - labelSpace - paddingRight;
@@ -141,10 +141,15 @@ function BarChart({ data, title = "Media por escenario" }) {
               const label = d.label || `Escenario ${i + 1}`;
               const pctLabel = `${Math.round(Number(d.value) || 0)}%`;
               const textInside = w > 110;
+              const labelWidth = labelSpace - 18;
               return (
                 <g key={label}>
                   <rect x={labelSpace} y={y - 4} width={usable} height={barH + 8} fill={i % 2 === 0 ? '#F8FAFC' : '#FFFFFF'} rx="10" />
-                  <text x={0} y={labelY} fontSize="13" fill="#0f172a">{label}</text>
+                  <foreignObject x={0} y={y - 2} width={labelWidth} height={barH + 4}>
+                    <div style={{ width: `${labelWidth}px`, height: `${barH + 4}px`, display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#0f172a', fontSize: '13px', fontFamily: 'Inter, system-ui, sans-serif' }} title={label}>
+                      {label}
+                    </div>
+                  </foreignObject>
                   <rect x={labelSpace} y={y} width={w} height={barH} rx="10" fill="url(#barFill)" />
                   <text
                     x={textInside ? labelSpace + w - 10 : labelSpace + w + 10}
