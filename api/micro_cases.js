@@ -356,7 +356,8 @@ async function handleGetAttempts(req, res) {
       .limit(20);
     if (error) {
       console.error('[micro_cases] get attempts error', error);
-      return res.status(500).json({ ok: false, error: 'supabase_error', detail: error.message });
+      // Fail soft: return empty attempts but surface a warning so UI no longer shows 500
+      return res.status(200).json({ ok: true, attempts: [], warning: 'supabase_error', detail: error.message });
     }
     return res.status(200).json({ ok: true, attempts: data || [] });
   } catch (err) {
