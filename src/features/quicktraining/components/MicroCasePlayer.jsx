@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-function usePreviousAttempts(caseId, token) {
+function usePreviousAttempts(caseId, token, version = 0) {
   const [attempts, setAttempts] = useState([]);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
@@ -11,13 +11,19 @@ function usePreviousAttempts(caseId, token) {
         Authorization: `Bearer ${token}`,
       },
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          // If unauthorized, keep empty attempts; caller can decide messaging
+          return { attempts: [] };
+        }
+        return res.json();
+      })
       .then((data) => {
         setAttempts(Array.isArray(data.attempts) ? data.attempts : []);
       })
       .catch(() => setAttempts([]))
       .finally(() => setLoading(false));
-  }, [caseId]);
+  }, [caseId, token, version]);
   return { attempts, loading };
 }
 import ReactMarkdown from "react-markdown";
@@ -54,7 +60,8 @@ const FEEDBACK_DELAY_MS = 400;
 const INFO_AUTO_ADVANCE_DELAY_MS = 1400;
 
 export default function MicroCasePlayer({ microCase, onSubmitAttempt, participantRole, token }) {
-  const { attempts: previousAttempts, loading: loadingAttempts } = usePreviousAttempts(microCase?.id, token);
+  const [attemptsVersion, setAttemptsVersion] = useState(0);
+  const { attempts: previousAttempts, loading: loadingAttempts } = usePreviousAttempts(microCase?.id, token, attemptsVersion);
   const { nodeMap, startId } = useNodeGraph(microCase);
   const [currentNodeId, setCurrentNodeId] = useState(startId);
   const [history, setHistory] = useState([]);
@@ -171,6 +178,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
       if (maybePromise && typeof maybePromise.then === "function") {
         await maybePromise;
       }
+      setAttemptsVersion((v) => v + 1);
     } finally {
       setSubmitting(false);
     }
