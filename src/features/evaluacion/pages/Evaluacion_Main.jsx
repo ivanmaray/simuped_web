@@ -82,37 +82,79 @@ function pct(ok, total) {
 }
 
 function BarChart({ data, title = "Media por escenario" }) {
-  const max = Math.max(100, ...data.map((d) => d.value || 0));
-  const barH = 28;
+  const sorted = (data || []).slice().sort((a, b) => (b.value || 0) - (a.value || 0));
+  const max = Math.max(100, ...sorted.map((d) => Number(d.value) || 0));
+  const barH = 32;
   const gap = 12;
-  const padding = 24;
-  const width = 720;
-  const height = data.length > 0 ? padding * 2 + data.length * (barH + gap) - gap : padding * 2 + barH;
+  const paddingY = 24;
+  const labelSpace = 210;
+  const paddingRight = 28;
+  const width = 900;
+  const usable = width - labelSpace - paddingRight;
+  const height = sorted.length > 0 ? paddingY * 2 + sorted.length * (barH + gap) - gap : paddingY * 2 + barH;
+  const tickStep = max <= 120 ? 20 : 25;
+  const ticks = [];
+  for (let v = 0; v <= max; v += tickStep) ticks.push(v);
+  if (ticks[ticks.length - 1] !== max) ticks.push(max);
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white shadow-[0_22px_44px_-32px_rgba(15,23,42,0.4)] px-6 py-6">
       <header className="flex items-center justify-between gap-2">
-        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-        {data.length > 0 && (
-          <span className="text-xs uppercase tracking-wide text-slate-400">{data.length} escenario{data.length !== 1 ? 's' : ''}</span>
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          {sorted.length > 0 && <p className="text-xs text-slate-500 mt-0.5">Ordenado de mayor a menor</p>}
+        </div>
+        {sorted.length > 0 && (
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[12px] font-medium text-slate-600 ring-1 ring-slate-200">
+            {sorted.length} escenario{sorted.length !== 1 ? 's' : ''}
+          </span>
         )}
       </header>
-      {data.length === 0 ? (
+      {sorted.length === 0 ? (
         <p className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
           Aún no hay datos suficientes. Completa algunos simulacros para ver tu comparativa.
         </p>
       ) : (
         <div className="mt-5 overflow-x-auto">
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[480px] h-auto">
-            {data.map((d, i) => {
-              const y = padding + i * (barH + gap);
-              const w = (d.value / max) * (width - padding * 2 - 120);
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[560px] h-auto">
+            <defs>
+              <linearGradient id="barFill" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#0A3D91" stopOpacity="0.88" />
+                <stop offset="100%" stopColor="#4FA3E3" stopOpacity="0.95" />
+              </linearGradient>
+            </defs>
+
+            {ticks.map((v) => {
+              const x = labelSpace + (v / max) * usable;
               return (
-                <g key={d.label}>
-                  <text x={0} y={y + barH * 0.7} fontSize="12" fill="#334155">{d.label}</text>
-                  <rect x={180} y={y} width={Math.max(6, w)} height={barH} rx="8" fill="#4FA3E3" opacity="0.9" />
-                  <text x={180 + Math.max(6, w) + 8} y={y + barH * 0.7} fontSize="12" fill="#0f172a">
-                    {Math.round(d.value)}%
+                <g key={`tick-${v}`}>
+                  <line x1={x} x2={x} y1={paddingY - 6} y2={height - paddingY + 6} stroke="#E2E8F0" strokeWidth="1" />
+                  <text x={x} y={paddingY - 10} fontSize="11" fill="#94A3B8" textAnchor="middle">{v}%</text>
+                </g>
+              );
+            })}
+
+            {sorted.map((d, i) => {
+              const y = paddingY + i * (barH + gap);
+              const w = Math.max(8, (Number(d.value) / max) * usable);
+              const labelY = y + barH * 0.65;
+              const label = d.label || `Escenario ${i + 1}`;
+              const pctLabel = `${Math.round(Number(d.value) || 0)}%`;
+              const textInside = w > 110;
+              return (
+                <g key={label}>
+                  <rect x={labelSpace} y={y - 4} width={usable} height={barH + 8} fill={i % 2 === 0 ? '#F8FAFC' : '#FFFFFF'} rx="10" />
+                  <text x={0} y={labelY} fontSize="13" fill="#0f172a">{label}</text>
+                  <rect x={labelSpace} y={y} width={w} height={barH} rx="10" fill="url(#barFill)" />
+                  <text
+                    x={textInside ? labelSpace + w - 10 : labelSpace + w + 10}
+                    y={labelY}
+                    fontSize="12"
+                    fill={textInside ? '#FFFFFF' : '#0f172a'}
+                    textAnchor={textInside ? 'end' : 'start'}
+                    fontWeight="600"
+                  >
+                    {pctLabel}
                   </text>
                 </g>
               );
@@ -479,11 +521,11 @@ export default function Evaluacion_Main() {
           const { data: attempts, error: attErr } = await supabase
             .from("micro_case_attempts")
             .select(`
-              id, case_id, score_total, duration_seconds, status, completed_at, attempt_role, created_at,
+              id, case_id, score_total, duration_seconds, status, completed_at, attempt_role, started_at,
               micro_cases ( title, slug )
             `)
             .eq("user_id", userId)
-            .order("created_at", { ascending: false });
+            .order("started_at", { ascending: false });
           if (attErr) {
             if (String(attErr?.code) === "42P01") {
               setMicroFeatureAvailable(false);
@@ -503,7 +545,7 @@ export default function Evaluacion_Main() {
             status: att.status || "in_progress",
             completed_at: att.completed_at || null,
             attempt_role: att.attempt_role || "",
-            created_at: att.created_at || null
+            created_at: att.created_at || att.started_at || null
           }));
           setMicroRows(results);
           setMicroFeatureAvailable(true);
