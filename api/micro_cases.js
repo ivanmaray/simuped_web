@@ -349,17 +349,22 @@ async function handleGetAttempts(req, res) {
     }
     const { data, error } = await client
       .from('micro_case_attempts')
-      .select('id, score_total, duration_seconds, status, completed_at, attempt_role, created_at')
+      .select('id, score_total, duration_seconds, status, completed_at, attempt_role, started_at')
       .eq('case_id', caseId)
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+      .order('started_at', { ascending: false })
       .limit(20);
     if (error) {
       console.error('[micro_cases] get attempts error', error);
       // Fail soft: return empty attempts but surface a warning so UI no longer shows 500
       return res.status(200).json({ ok: true, attempts: [], warning: 'supabase_error', detail: error.message });
     }
-    return res.status(200).json({ ok: true, attempts: data || [] });
+    const attempts = (data || []).map((row) => ({
+      ...row,
+      // Frontend expects created_at; provide alias from started_at for backward compatibility
+      created_at: row.created_at || row.started_at
+    }));
+    return res.status(200).json({ ok: true, attempts });
   } catch (err) {
     if (err.message === 'server_not_configured') {
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
