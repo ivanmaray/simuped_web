@@ -151,7 +151,8 @@ export default function Principal_Dashboard() {
           reportWarning("Dashboard.profile.catch", err, { userId: session.user.id });
         }
 
-        await Promise.all([cargarEscenarios(), cargarSesionesProgramadas()]);
+        await cargarEscenarios();
+        cargarSesionesProgramadas(); // no bloqueante — carga el calendario en segundo plano
       } catch (e) {
         reportError("Dashboard.init", e, { userId: session?.user?.id });
         setErrorMsg(e?.message || "Error inicializando el panel");
@@ -185,30 +186,27 @@ export default function Principal_Dashboard() {
 
         if (error) throw error;
 
-        // Get participant counts for each session
-        const sessionsWithCounts = await Promise.all(
-          (sessions || []).map(async (session) => {
-            try {
-              const { count } = await supabase
-                .from("scheduled_session_participants")
-                .select("id", { count: "exact" })
-                .eq("session_id", session.id);
-
-              return {
-                ...session,
-                registered_count: count || 0,
-                scheduled_at: new Date(session.scheduled_at)
-              };
-            } catch (err) {
-              console.warn("Error getting participants for session:", err);
-              return {
-                ...session,
-                registered_count: 0,
-                scheduled_at: new Date(session.scheduled_at)
-              };
-            }
-          })
-        );
+        // Get participant counts in a single query instead of N+1
+        const sessionIds = (sessions || []).map(s => s.id);
+        let countMap = {};
+        if (sessionIds.length > 0) {
+          try {
+            const { data: countRows } = await supabase
+              .from("scheduled_session_participants")
+              .select("session_id, count:id.count()")
+              .in("session_id", sessionIds);
+            countMap = Object.fromEntries(
+              (countRows || []).map(r => [r.session_id, Number(r.count) || 0])
+            );
+          } catch (err) {
+            console.warn("Error getting participant counts:", err);
+          }
+        }
+        const sessionsWithCounts = (sessions || []).map(s => ({
+          ...s,
+          registered_count: countMap[s.id] ?? 0,
+          scheduled_at: new Date(s.scheduled_at)
+        }));
 
         setScheduledSessions(sessionsWithCounts);
       } catch (e) {
