@@ -17,6 +17,40 @@ export default function Navbar({ variant = "auto" }) {
   const [loggingOut, setLoggingOut] = useState(false);
   useEffect(() => { setOpen(false); }, [location.pathname]);
 
+  // Inject navbar styles
+  const navbarStyles = `
+    .nav-link {
+      position: relative;
+      transition: color 0.3s ease;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background-color: #0A3D91;
+      transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .nav-link:hover::after {
+      width: 100%;
+    }
+    .nav-link.active {
+      color: #0A3D91;
+    }
+    .nav-link.active::after {
+      width: 100%;
+    }
+    .nav-cta {
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .nav-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(10, 61, 145, 0.15);
+    }
+  `;
+
   // Privado si hay sesión o si se fuerza por prop
   const isPrivate = variant === "private" || (variant === "auto" && !!session);
 
@@ -33,6 +67,7 @@ export default function Navbar({ variant = "auto" }) {
 
   return (
     <>
+      <style>{navbarStyles}</style>
       <header className="fixed top-0 inset-x-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
         <div className="max-w-6xl mx-auto px-4 sm:px-5">
           <div className="h-16 md:h-20 flex items-center justify-between gap-3">
@@ -85,9 +120,11 @@ export default function Navbar({ variant = "auto" }) {
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-3 pl-1">
-                  <NavItem to="/registro" label="Registro" />
-                  {/* Botón de login que lleva al hero de la home */}
-                  <NavItem to="/" label="Entrar" />
+                  <NavItem to="/registro" label="Registro" isCTA />
+                  {/* Botón de login que lleva a la tarjeta de login */}
+                  <a href="#login" className="nav-cta inline-flex min-h-[42px] px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: '#0A3D91' }}>
+                    Entrar
+                  </a>
                 </div>
               )}
             </nav>
@@ -187,17 +224,25 @@ export default function Navbar({ variant = "auto" }) {
   );
 }
 
-function NavItem({ to, label, emphasize = false, tag }) {
-  const base = "inline-flex min-h-[42px] max-w-[120px] flex-col items-center justify-center gap-1 px-2 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg hover:bg-slate-100 transition";
-  const defaultCls = base + " text-slate-700";
-  const activeCls = base + " text-slate-900 bg-slate-100";
-  const emphasizeCls = base + " text-white bg-slate-900 hover:bg-slate-800";
+function NavItem({ to, label, emphasize = false, tag, isCTA = false }) {
+  const base = "inline-flex min-h-[42px] max-w-[120px] flex-col items-center justify-center gap-1 px-3 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg nav-link transition";
+  
+  if (isCTA) {
+    return (
+      <NavLink
+        to={to}
+        className="nav-cta inline-flex min-h-[42px] px-4 py-2 text-sm font-semibold text-white rounded-lg"
+        style={{ background: '#0A3D91' }}
+      >
+        <span>{label}</span>
+      </NavLink>
+    );
+  }
+  
   return (
     <NavLink
       to={to}
-      className={({ isActive }) =>
-        emphasize ? emphasizeCls : isActive ? activeCls : defaultCls
-      }
+      className={({ isActive }) => base + (isActive ? " active text-slate-900" : " text-slate-700")}
     >
       <span className="leading-tight">{label}</span>
       {tag ? (
@@ -210,7 +255,7 @@ function NavItem({ to, label, emphasize = false, tag }) {
 }
 
 function AnchorItem({ href, label }) {
-  const base = "inline-flex min-h-[42px] max-w-[110px] items-center justify-center px-2 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg hover:bg-slate-100 transition text-slate-700";
+  const base = "inline-flex min-h-[42px] max-w-[110px] items-center justify-center px-3 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg nav-link text-slate-700 transition";
   return (
     <a href={href} className={base}>
       {label}
@@ -224,15 +269,17 @@ function LogoutButton({ onClick, disabled }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+      className="nav-cta inline-flex min-h-[42px] items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
       aria-label="Cerrar sesión"
       title="Cerrar sesión"
+      style={{ background: '#0A3D91' }}
     >
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M10 17l5-5-5-5" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
+      <span className="ml-1">Salir</span>
     </button>
   );
 }

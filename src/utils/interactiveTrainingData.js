@@ -73,7 +73,7 @@ export const interactiveCategories = [
   },
   {
     id: "infectious",
-    label: "Infecciones pediatrico",
+    label: "Infecciosas pediátricas",
     shortLabel: "ID",
     description: "Sepsis, focos ocultos y optimizacion de antimicrobianos.",
     type: CATEGORY_TYPES.SPECIALTY,
@@ -151,52 +151,62 @@ export const interactiveCases = [
         {
           id: "general_status",
           label: "Estado general inicial",
-          notes: "GCS 15 pediatrico. Orientado pero intermitente. Afebril, sin signos de distrés respiratorio agudo."
+          notes: "GCS 15 pediatrico. Orientado pero intermitente. Afebril, sin signos de distrés respiratorio agudo.",
+          sceneFocus: "Visualización general del paciente en la camilla"
         },
         {
           id: "airway_screen",
           label: "AIRWAY – Alineacion y permeabilidad",
-          notes: "Collar rigido en su lugar. Cavidad oral limpia, sin cuerpos extraños. Voz pastosa, sin estridor."
+          notes: "Collar rigido en su lugar. Cavidad oral limpia, sin cuerpos extraños. Voz pastosa, sin estridor.",
+          sceneFocus: "Enfoque en cabeza y cuello - Cavidad oral y permeabilidad de vías aéreas"
         },
         {
           id: "breathing_assessment",
           label: "BREATH – Patron ventilatorio",
-          notes: "FR 20 rpm con excursion toracica simetrica. Auscultacion con murmullo vesicular conservado y sin crepitantes."
+          notes: "FR 20 rpm con excursion toracica simetrica. Auscultacion con murmullo vesicular conservado y sin crepitantes.",
+          sceneFocus: "Enfoque en tórax - Expansión torácica y patrón respiratorio"
         },
         {
           id: "circulation_check",
           label: "CIRC – Perfusion periferica",
-          notes: "Pulsos radiales +2, relleno capilar < 2 s, extremidades tibias. PA dentro de percentil para edad."
+          notes: "Pulsos radiales +2, relleno capilar < 2 s, extremidades tibias. PA dentro de percentil para edad.",
+          sceneFocus: "Enfoque en extremidades - Palpación de pulsos y relleno capilar"
         },
         {
           id: "neuro_check",
           label: "NEURO – Pupilas y tono",
-          notes: "Midriasis derecha 5 mm con respuesta lenta, izquierda 3 mm reactiva. Sin signos de lateralizacion motora."
+          notes: "Midriasis derecha 5 mm con respuesta lenta, izquierda 3 mm reactiva. Sin signos de lateralizacion motora.",
+          sceneFocus: "Enfoque en cara y ojos - Evaluación pupilar y reactividad"
         },
         {
           id: "head_neck",
           label: "HEENT / NECK",
-          notes: "Equimosis temporal derecha, sensibilidad a la palpacion. Sin otorragia ni rinorraquia. Dolor cervical posterior sin crepitaciones."
+          notes: "Equimosis temporal derecha, sensibilidad a la palpacion. Sin otorragia ni rinorraquia. Dolor cervical posterior sin crepitaciones.",
+          sceneFocus: "Enfoque en cabeza, cuello y cara - Buscar lesiones y sensibilidad"
         },
         {
           id: "thorax_survey",
           label: "TORAX – Contusiones y ruidos",
-          notes: "Dolor costal leve en hemitórax derecho, sin inestabilidad. Auscultacion cardiopulmonar normal, oximetria 96 % en AA."
+          notes: "Dolor costal leve en hemitórax derecho, sin inestabilidad. Auscultacion cardiopulmonar normal, oximetria 96 % en AA.",
+          sceneFocus: "Enfoque en tórax anterior - Palpación costal y ruidos cardiopulmonares"
         },
         {
           id: "abdomen_pelvis",
           label: "ABD / PELVIS",
-          notes: "Abdomen blando, depresible, sin defensa. Pelvis estable a la compresion. No hay equimosis de cinturón."
+          notes: "Abdomen blando, depresible, sin defensa. Pelvis estable a la compresion. No hay equimosis de cinturón.",
+          sceneFocus: "Enfoque en abdomen y pelvis - Palpación abdominal y evaluación pélvica"
         },
         {
           id: "extremities_back",
           label: "EXTREMIDADES / ESPALDA",
-          notes: "Movimientos conservados. Sin deformidades ni sangrado activo. Palpacion dorsal en bloque sin escalones vertebrales."
+          notes: "Movimientos conservados. Sin deformidades ni sangrado activo. Palpacion dorsal en bloque sin escalones vertebrales.",
+          sceneFocus: "Enfoque en extremidades y espalda - Movimiento y alineación vertebral"
         },
         {
           id: "skin_psych",
           label: "PIEL / ESTADO EMOCIONAL",
-          notes: "Piel rosada, sin diaforesis. Adolescente ansioso pero colaborador, solicita contactar a sus padres."
+          notes: "Piel rosada, sin diaforesis. Adolescente ansioso pero colaborador, solicita contactar a sus padres.",
+          sceneFocus: "Visualización general - Observar coloración de piel y estado emocional"
         }
       ]
     },
@@ -251,6 +261,25 @@ export const interactiveCases = [
     ],
     investigations: [
       {
+        id: "ct_head",
+        label: "TAC craneal sin contraste",
+        type: "imaging",
+        description: "Estudia posibles colecciones intracerebrales, fracturas y edema cerebral.",
+        time: 30,
+        cost: 5,
+        result: {
+          summary: "Hematoma epidural agudo biconvexo en región temporal derecha con efecto de masa leve.",
+          highlights: [
+            "Coleccion hiperatenuada de 4 x 3 cm",
+            "Desvio de linea media menor a 5 mm",
+            "Espacios subaracnoideos permeables",
+            "Sin fractura craneal visible"
+          ],
+          interpretation: "Hematoma epidural que explica la anisocoria progresiva y el sensorio alterado. Requiere evaluación neuroquirurgica urgente."
+        },
+        isCritical: true
+      },
+      {
         id: "fast_scan",
         label: "EcoFAST extendido",
         type: "bedside",
@@ -267,9 +296,9 @@ export const interactiveCases = [
         },
         isCritical: false
       },
-      {
-        id: "lab_bioquimica",
-        label: "Bioquimica sanguinea",
+       {
+         id: "lab_bioquimica",
+         label: "Bioquimica sanguinea",
         type: "lab",
         description: "Solicita panel metabolico con electrolitos y funcion renal.",
         time: 25,
@@ -318,24 +347,22 @@ export const interactiveCases = [
         },
         isCritical: false
       },
-      {
-        id: "ct_head",
-        label: "Tomografia craneal sin contraste",
-        type: "imaging",
-        description: "Define lesiones intracraneales agudas y desplazamientos.",
-        time: 20,
-        cost: 3,
-        result: {
-          summary: "Coleccion extraaxial biconvexa temporal derecha con desplazamiento de linea media 5 mm.",
-          highlights: [
-            "Fractura temporal asociada",
-            "No se observa lesion intraventricular",
-            "Ventriculos comprimidos"
-          ],
-          interpretation: "Lesion focal con efecto de masa que requiere valoracion neuroquirurgica urgente."
-        },
-        isCritical: true
-      }
+       {
+         id: "xray_cervical",
+         label: "Radiografia cervical sin contraste",
+         type: "imaging",
+         description: "Descarta fracturas cervicales urgentes.",
+         time: 10,
+         cost: 2,
+         result: {
+           summary: "Alineacion cervical preservada sin fractura.",
+           highlights: [
+             "Altura vertebral conservada C1-C7",
+             "Sin luxacion"
+           ]
+         },
+         isCritical: false
+       }
     ],
     interventions: [
       {
@@ -583,6 +610,12 @@ export const interactiveCases = [
         label: "Adyuvante – Paracetamol 15 mg/kg EV",
         steps: ["Mantener cada 6 horas segun temperatura."],
         rationale: "Controla fiebre sin afectar plaquetas." 
+      },
+      {
+        id: "opioid_bolus",
+        label: "EVITAR – Bolo de opioide IV",
+        steps: ["NO administrar opioides en bolo durante evaluacion aguda de TEC."],
+        rationale: "Los opioides pueden enmascarar cambios del nivel de conciencia y pupilas, retardando deteccion de hematoma epidural que requiere urgencia neuroquirurgica." 
       }
     ],
     communications: [
@@ -597,9 +630,10 @@ export const interactiveCases = [
     ],
     evaluation: {
       mandatoryInvestigations: ["ct_head"],
-  recommendedInvestigations: ["fast_scan", "lab_bioquimica", "lab_hemograma", "lab_coagulacion"],
+      recommendedInvestigations: ["fast_scan", "lab_bioquimica", "lab_hemograma", "lab_coagulacion"],
       criticalInterventions: ["airway_rsi"],
       avoidInterventions: ["opioid_bolus"],
+      correctDischarge: "UCI",
       diagnosisOptions: [
         { id: "hematoma_epidural", label: "Hematoma epidural agudo", correct: true },
         { id: "hematoma_subdural", label: "Hematoma subdural agudo", correct: false },

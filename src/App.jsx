@@ -175,6 +175,32 @@ useEffect(() => {
         .reveal-in { opacity: 1; transform: none; }
         .float-blob { animation: floaty 10s ease-in-out infinite; }
         @keyframes floaty { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(10px) } }
+        
+        /* Icon animations */
+        .icon-box {
+          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .icon-box:hover {
+          transform: translateY(-4px) scale(1.08);
+        }
+        .icon-box svg {
+          transition: all 0.3s ease;
+        }
+        .card-modern:hover .icon-box svg {
+          filter: drop-shadow(0 4px 12px rgba(10, 61, 145, 0.25));
+        }
+        
+        /* Card hover */
+        .card-modern {
+          transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+          border-left: 4px solid transparent;
+        }
+        .card-modern:hover {
+          border-left-color: #0A3D91;
+          transform: translateY(-2px);
+          box-shadow: 0 12px 24px rgba(10, 61, 145, 0.1);
+        }
+        
         /* Justificar textos por defecto en áreas de contenido */
         .justify-all p,
         .justify-all .justify-text {
@@ -228,9 +254,9 @@ useEffect(() => {
           {/* Right: login card */}
           <div
             id="login"
-            className={`relative z-[1] bg-white/95 backdrop-blur border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xl ring-1 ring-slate-900/5 md:justify-self-end w-full max-w-[24.5rem] mr-0 xl:mr-2 2xl:mr-4 transition-all duration-700 ease-out ${mountedUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
+            className={`relative z-[1] bg-white border border-slate-200 rounded-lg p-6 sm:p-7 shadow-lg md:justify-self-end w-full max-w-[24.5rem] mr-0 xl:mr-2 2xl:mr-4 transition-all duration-700 ease-out ${mountedUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
           >
-            <h3 className="text-xl font-semibold mb-3">Iniciar sesión</h3>
+            <h3 className="text-2xl font-bold mb-4 text-slate-900">Acceso</h3>
             <form id="login-form" onSubmit={handleLogin} className="flex flex-col gap-3">
               <input
                 name="email"
@@ -251,9 +277,9 @@ useEffect(() => {
                 disabled={loading}
                 className="px-3 py-2 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-[#1E6ACB] transition-shadow"
               />
-              <div aria-live="assertive" className="min-h-[1.25rem]">
+              <div aria-live="assertive" className="min-h-0">
                 {errorMsg && (
-                  <div className="text-sm text-red-600" role="alert">
+                  <div className="text-sm text-red-600 mb-2" role="alert">
                     {errorMsg}
                   </div>
                 )}
@@ -315,51 +341,39 @@ useEffect(() => {
           {/* Tres áreas del proyecto: Plataforma, Evaluación, Presencial */}
           <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
             <Reveal>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 5.5A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v8A1.5 1.5 0 0 1 19.5 15h-15A1.5 1.5 0 0 1 3 13.5v-8Z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 20h6m-9-5h12" />
-                    </svg>
-                  </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Plataforma online</h4>
-                  <p className="text-slate-600">Entrena con <strong>casos pediátricos interactivos</strong>, guiados paso a paso y adaptados a distintos niveles de complejidad. Cada escenario combina preguntas clínicas, toma de decisiones y explicación razonada de cada respuesta.</p>
+              <div className="card-modern h-full p-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="icon-box h-12 w-12 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 grid place-content-center mb-4 text-[#0A3D91]">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5.5A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v8A1.5 1.5 0 0 1 19.5 15h-15A1.5 1.5 0 0 1 3 13.5v-8Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 20h6m-9-5h12" />
+                  </svg>
                 </div>
+                <h4 className="text-lg font-semibold mb-3 text-slate-900">Plataforma online</h4>
+                <p className="text-sm text-slate-600 leading-relaxed">Entrena con <strong>casos pediátricos interactivos</strong>, guiados paso a paso y adaptados a distintos niveles de complejidad. Cada escenario combina preguntas clínicas, toma de decisiones y explicación razonada.</p>
               </div>
             </Reveal>
             <Reveal delay={100}>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-6" />
-                    </svg>
-                  </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Evaluación del desempeño</h4>
-                  <p className="text-slate-600">Recibe <strong>retroalimentación inmediata y personalizada</strong> en cada escenario: fortalezas, áreas de mejora y evolución competencial, con métricas orientadas al aprendizaje y la práctica asistencial.</p>
+              <div className="card-modern h-full p-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="icon-box h-12 w-12 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 grid place-content-center mb-4 text-[#0A3D91]">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-6" />
+                  </svg>
                 </div>
+                <h4 className="text-lg font-semibold mb-3 text-slate-900">Evaluación del desempeño</h4>
+                <p className="text-sm text-slate-600 leading-relaxed">Recibe <strong>retroalimentación inmediata y personalizada</strong> en cada escenario: fortalezas, áreas de mejora y evolución competencial, con métricas orientadas al aprendizaje.</p>
               </div>
             </Reveal>
             <Reveal delay={200}>
-              <div className="group relative h-full">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D9120] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-                <div className="relative h-full p-6 rounded-3xl border border-white/80 bg-white/95 backdrop-blur shadow-sm group-hover:shadow-xl transition-all duration-500 ease-out transform group-hover:-translate-y-1">
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      {/* Cabezas */}
-                      <circle cx="8" cy="9" r="3" />
-                      <circle cx="16" cy="9" r="3" />
-                      {/* Hombros/bases */}
-                      <path d="M4 20v-1a4 4 0 0 1 8 0v1H4z" />
-                      <path d="M12 20v-1a4 4 0 0 1 8 0v1h-8z" />
-                    </svg>
-                  </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Simulación presencial asistida</h4>
-                  <p className="text-slate-600">Participa en <strong>sesiones colaborativas de simulación clínica</strong> entre profesionales de medicina, enfermería y farmacia hospitalaria, que integran el <strong>diagnóstico, tratamiento, cuidados y gestión segura del medicamento</strong>, fortaleciendo la coordinación y comunicación en el equipo asistencial.</p>
+              <div className="card-modern h-full p-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="icon-box h-12 w-12 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 grid place-content-center mb-4 text-[#0A3D91]">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="8" cy="9" r="2.5" />
+                    <circle cx="16" cy="9" r="2.5" />
+                    <path d="M5 20h4v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h4" />
+                  </svg>
                 </div>
+                <h4 className="text-lg font-semibold mb-3 text-slate-900">Simulación presencial</h4>
+                <p className="text-sm text-slate-600 leading-relaxed">Participa en <strong>sesiones colaborativas</strong> entre medicina, enfermería y farmacia, que integran diagnóstico, tratamiento, cuidados y gestión segura del medicamento.</p>
               </div>
             </Reveal>
           </div>
@@ -425,122 +439,144 @@ useEffect(() => {
             ¿Cómo participar?
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 snap-x snap-mandatory overflow-x-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Profesionales */}
-            <div className="group relative h-full snap-center">
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-              <div className="relative h-full p-[1px] rounded-3xl bg-gradient-to-br from-white via-slate-200 to-white/60">
-                <div className="h-full p-6 rounded-[calc(1.5rem-1px)] border border-white/80 bg-white/95 backdrop-blur shadow-sm transition-all duration-500 ease-out group-hover:shadow-xl group-hover:-translate-y-1">
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    {/* Cruz médica */}
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16M4 12h16" />
-                    </svg>
-                  </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Profesionales</h4>
-                  <p className="text-slate-600 mb-4">
-                    Solicita acceso individual para entrenar en la plataforma online y participar en sesiones de simulación presencial.
-                  </p>
-                  <a href="/registro" className="inline-block px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow transition hover:-translate-y-[1px]" style={{ background: '#6ED3C2' }}>
-                    Solicitar acceso
-                  </a>
+            <Reveal>
+              <div className="card-modern h-full p-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="icon-box h-12 w-12 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 grid place-content-center mb-4 text-[#0A3D91]">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16M4 12h16" />
+                  </svg>
                 </div>
+                <h4 className="text-lg font-semibold mb-3 text-slate-900">Profesionales</h4>
+                <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                  Solicita acceso individual para entrenar en la plataforma online y participar en sesiones de simulación presencial.
+                </p>
+                <a href="/registro" className="inline-block px-4 py-2 rounded-lg font-semibold text-white hover:opacity-90 transition" style={{ background: '#0A3D91' }}>
+                  Solicitar acceso
+                </a>
               </div>
-            </div>
+            </Reveal>
 
             {/* Residentes y estudiantes */}
-            <div className="group relative h-full">
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-              <div className="relative h-full p-[1px] rounded-3xl bg-gradient-to-br from-white via-slate-200 to-white/60">
-                <div className="h-full p-6 rounded-[calc(1.5rem-1px)] border border-white/80 bg-white/95 backdrop-blur shadow-sm transition-all duration-500 ease-out group-hover:shadow-xl group-hover:-translate-y-1">
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    {/* Birrete */}
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10l9-5 9 5-9 5-9-5z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 12v5a2 2 0 01-2 2H7a2 2 0 01-2-2v-5" />
-                    </svg>
-                  </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Residentes y estudiantes</h4>
-                  <p className="text-slate-600 mb-4">
-                    Si tienes invitación, accede con tus credenciales. Si no, solicítala a tu tutor o centro.
-                  </p>
-                  <a href="#login" className="inline-block px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow transition hover:-translate-y-[1px]" style={{ background: '#8FD6FF' }}>
-                    Acceder con invitación
-                  </a>
+            <Reveal delay={100}>
+              <div className="card-modern h-full p-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="icon-box h-12 w-12 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 grid place-content-center mb-4 text-[#0A3D91]">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 10l9-5 9 5-9 5-9-5z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 12v5a2 2 0 01-2 2H7a2 2 0 01-2-2v-5" />
+                  </svg>
                 </div>
+                <h4 className="text-lg font-semibold mb-3 text-slate-900">Residentes y estudiantes</h4>
+                <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                  Si tienes invitación, accede con tus credenciales. Si no, solicítala a tu tutor o centro.
+                </p>
+                <a href="#login" className="inline-block px-4 py-2 rounded-lg font-semibold text-white hover:opacity-90 transition" style={{ background: '#0A3D91' }}>
+                  Acceder con invitación
+                </a>
               </div>
-            </div>
+            </Reveal>
 
             {/* Centros y unidades */}
-            <div className="group relative h-full">
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/45 via-[#4FA3E333] to-[#0A3D911A] opacity-0 group-hover:opacity-100 transition duration-500 blur-md" />
-              <div className="relative h-full p-[1px] rounded-3xl bg-gradient-to-br from-white via-slate-200 to-white/60">
-                <div className="h-full p-6 rounded-[calc(1.5rem-1px)] border border-white/80 bg-white/95 backdrop-blur shadow-sm transition-all duration-500 ease-out group-hover:shadow-xl group-hover:-translate-y-1">
-                  <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-white to-white/60 border border-white/70 shadow-inner grid place-content-center mb-4 text-[#0A3D91]">
-                    {/* Edificio */}
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M6 21V7a2 2 0 012-2h8a2 2 0 012 2v14M9 10h2M13 10h2M9 14h2M13 14h2" />
-                    </svg>
-                  </div>
-                  <h4 className="text-xl font-semibold mb-2 text-[#0A3D91]">Centros y unidades</h4>
-                  <p className="text-slate-600 mb-4">
-                    Implanta SimuPed en tu servicio: demo, soporte de implantación, licencias y métricas.
-                  </p>
-                  <a href="mailto:contacto@simuped.com?subject=Solicitar%20demo%20SimuPed" className="inline-block px-4 py-2 rounded-lg font-semibold text-slate-900 shadow-sm hover:shadow transition hover:-translate-y-[1px]" style={{ background: '#F9C891' }}>
-                    Próximamente
-                  </a>
+            <Reveal delay={200}>
+              <div className="card-modern h-full p-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="icon-box h-12 w-12 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 grid place-content-center mb-4 text-[#0A3D91]">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M6 21V7a2 2 0 012-2h8a2 2 0 012 2v14M9 10h2M13 10h2M9 14h2M13 14h2" />
+                  </svg>
                 </div>
+                <h4 className="text-lg font-semibold mb-3 text-slate-900">Centros y unidades</h4>
+                <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                  Implanta SimuPed en tu servicio: demo, soporte de implantación, licencias y métricas.
+                </p>
+                <a href="mailto:contacto@simuped.com?subject=Solicitar%20demo%20SimuPed" className="inline-block px-4 py-2 rounded-lg font-semibold text-white hover:opacity-90 transition" style={{ background: '#0A3D91' }}>
+                  Próximamente
+                </a>
               </div>
-            </div>
+            </Reveal>
           </div>
 
-          {/* CTA final */}
-          <div className="mt-10 text-center">
-            <a
-              href="mailto:contacto@simuped.com?subject=Contacto%20SimuPed"
-              className="inline-block px-5 py-3 rounded-lg font-semibold text-white transition hover:-translate-y-[1px] hover:shadow"
-              style={{ background: '#0A3D91' }}>
-              Contactar con el equipo
-            </a>
-          </div>
+          {/* CTA final - Mejorado */}
+          <Reveal>
+            <div className="mt-16 bg-gradient-to-r from-blue-50 to-slate-50 rounded-lg border border-slate-200 p-8 sm:p-10 text-center">
+              <h3 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-3">
+                ¿Listo para comenzar?
+              </h3>
+              <p className="text-slate-600 mb-6 max-w-2xl mx-auto">
+                Solicita acceso a SimuPed y únete a profesionales de salud que ya están mejorando su desempeño clínico.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <a
+                  href="/registro"
+                  className="nav-cta px-6 py-3 rounded-lg font-semibold text-white"
+                  style={{ background: '#0A3D91' }}>
+                  Solicitar acceso
+                </a>
+                <a
+                  href="mailto:contacto@simuped.com?subject=Consulta%20SimuPed"
+                  className="px-6 py-3 rounded-lg font-semibold text-slate-900 border-2 border-slate-300 hover:border-slate-400 transition">
+                  Contactar equipo
+                </a>
+              </div>
+            </div>
+          </Reveal>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-white border-t border-slate-200">
-        <Reveal>
-          <div className="max-w-6xl mx-auto px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span className="text-slate-500">
-              © {new Date().getFullYear()} SimuPed
-            </span>
-            <div className="flex gap-4 items-center">
-              <a
-                href="mailto:contacto@simuped.com"
-                className="text-[#0A3D91] hover:underline"
-              >
-                contacto@simuped.com
-              </a>
-              <Link
-                to="/privacidad"
-                className="text-[#0A3D91] hover:underline"
-              >
-                Privacidad
-              </Link>
-              <Link
-                to="/cookies"
-                className="text-[#0A3D91] hover:underline"
-              >
-                Cookies
-              </Link>
-              <a
-                href="#inicio"
-                className="text-[#0A3D91] hover:underline"
-              >
-                Volver arriba
-              </a>
+      <footer className="bg-slate-900 text-white border-t border-slate-800">
+        <div className="max-w-6xl mx-auto px-5 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            {/* Brand */}
+            <div>
+              <h3 className="text-lg font-bold mb-3">SimuPed</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                Plataforma innovadora de simulación clínica pediátrica para el entrenamiento de profesionales de salud.
+              </p>
+            </div>
+            
+            {/* Enlaces rápidos */}
+            <div>
+              <h4 className="text-sm font-semibold mb-3 uppercase tracking-wider text-slate-300">Navegación</h4>
+              <ul className="space-y-2 text-sm">
+                <li><a href="/#proyecto" className="text-slate-400 hover:text-white transition">Proyecto</a></li>
+                <li><a href="/#como-participar" className="text-slate-400 hover:text-white transition">Cómo participar</a></li>
+                <li><Link to="/privacidad" className="text-slate-400 hover:text-white transition">Privacidad</Link></li>
+                <li><Link to="/cookies" className="text-slate-400 hover:text-white transition">Cookies</Link></li>
+              </ul>
+            </div>
+            
+            {/* Acciones */}
+            <div>
+              <h4 className="text-sm font-semibold mb-3 uppercase tracking-wider text-slate-300">Acciones</h4>
+              <ul className="space-y-2 text-sm">
+                <li><Link to="/registro" className="text-slate-400 hover:text-white transition">Solicitar acceso</Link></li>
+                <li><a href="#login" className="text-slate-400 hover:text-white transition">Iniciar sesión</a></li>
+                <li><a href="mailto:contacto@simuped.com" className="text-slate-400 hover:text-white transition">Contactar</a></li>
+              </ul>
+            </div>
+            
+            {/* Contacto */}
+            <div>
+              <h4 className="text-sm font-semibold mb-3 uppercase tracking-wider text-slate-300">Contacto</h4>
+              <p className="text-slate-400 text-sm">
+                <a href="mailto:contacto@simuped.com" className="hover:text-white transition">
+                  contacto@simuped.com
+                </a>
+              </p>
             </div>
           </div>
-        </Reveal>
+          
+          {/* Divider */}
+          <div className="border-t border-slate-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <span className="text-sm text-slate-400">
+              © {new Date().getFullYear()} SimuPed. Todos los derechos reservados.
+            </span>
+            <a href="#inicio" className="text-sm text-slate-400 hover:text-white transition">
+              ↑ Volver arriba
+            </a>
+          </div>
+        </div>
       </footer>
     </div>
   )

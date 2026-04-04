@@ -175,44 +175,47 @@ export default function Online_Main() {
     }
 
     async function init() {
-      const { data, error } = await supabase.auth.getSession();
-      if (!mounted) return;
-      if (error) {
-        console.error("[Simulacion] getSession error:", error);
-        setErrorMsg(error.message || "Error obteniendo sesión");
-      }
-      const sess = data?.session ?? null;
-      setSession(sess);
-      if (sess) {
-        // Cargar el rol del perfil
-        try {
-          const { data: prof, error: perr } = await supabase
-            .from("profiles")
-            .select("rol")
-            .eq("id", sess.user.id)
-            .maybeSingle();
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted) return;
+        if (error) {
+          console.error("[Simulacion] getSession error:", error);
+          setErrorMsg(error.message || "Error obteniendo sesión");
+        }
+        const sess = data?.session ?? null;
+        setSession(sess);
+        if (sess) {
+          // Cargar el rol del perfil
+          try {
+            const { data: prof, error: perr } = await supabase
+              .from("profiles")
+              .select("rol")
+              .eq("id", sess.user.id)
+              .maybeSingle();
 
-          if (perr) {
-            console.error("[Simulacion] cargar rol error:", perr);
+            if (perr) {
+              console.error("[Simulacion] cargar rol error:", perr);
+            }
+            const r = (prof?.rol || "").toString().toLowerCase();
+            setRol(r);
+          } catch (e) {
+            console.error("[Simulacion] excepción cargando rol:", e);
+          } finally {
+            setRoleChecked(true);
           }
-          const r = (prof?.rol || "").toString().toLowerCase();
-          setRol(r);
-        } catch (e) {
-          console.error("[Simulacion] excepción cargando rol:", e);
-        } finally {
+        } else {
           setRoleChecked(true);
         }
-      } else {
-        setRoleChecked(true);
-      }
-      if (!sess) {
-        setLoading(false);
-        return;
-      }
+        if (!sess) return;
 
-      await cargarEscenarios();
-      await cargarIntentos(sess.user.id);
-      setLoading(false);
+        await cargarEscenarios();
+        await cargarIntentos(sess.user.id);
+      } catch (e) {
+        console.error("[Simulacion] excepción en init:", e);
+        if (mounted) setErrorMsg("Error cargando la página. Recarga para intentarlo de nuevo.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
     }
 
     async function cargarEscenarios() {

@@ -7,6 +7,14 @@ import Navbar from "../../../components/Navbar.jsx";
 const MAX_ATTEMPTS = 3;
 const DEFAULT_LIMIT_SECS = 900; // 15 minutos por intento
 
+// Normaliza objetivos: acepta string, array o null → siempre devuelve array
+function toArray(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') return val.split(/\.\s+/).map(s => s.trim()).filter(Boolean);
+  return [];
+}
+
 function formatLevel(level) {
   const key = String(level || "").toLowerCase();
   const map = { basico: "Básico", básico: "Básico", medio: "Medio", avanzado: "Avanzado" };
@@ -549,7 +557,7 @@ export default function Online_Confirm() {
                 const title =
                   userRole === "medico" ? "Médico" :
                   userRole === "enfermeria" ? "Enfermería" : "Farmacia";
-                const items = brief?.objectives?.[roleKey] || [];
+                const items = toArray(brief?.objectives?.[roleKey]);
                 return (
                   <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
                     <div className="text-xs font-semibold text-slate-500 mb-1">{title}</div>
@@ -566,22 +574,22 @@ export default function Online_Confirm() {
                   <div>
                     <div className="text-xs font-semibold text-slate-500 mb-1">Médico</div>
                     <ul className="list-disc pl-5 text-sm text-slate-700">
-                      {(brief?.objectives?.MED || []).map((line, i) => <li key={i}>{line}</li>)}
-                      {!((brief?.objectives?.MED || []).length) && <li className="text-slate-500">—</li>}
+                      {toArray(brief?.objectives?.MED).map((line, i) => <li key={i}>{line}</li>)}
+                      {!toArray(brief?.objectives?.MED).length && <li className="text-slate-500">—</li>}
                     </ul>
                   </div>
                   <div>
                     <div className="text-xs font-semibold text-slate-500 mb-1">Enfermería</div>
                     <ul className="list-disc pl-5 text-sm text-slate-700">
-                      {(brief?.objectives?.NUR || []).map((line, i) => <li key={i}>{line}</li>)}
-                      {!((brief?.objectives?.NUR || []).length) && <li className="text-slate-500">—</li>}
+                      {toArray(brief?.objectives?.NUR).map((line, i) => <li key={i}>{line}</li>)}
+                      {!toArray(brief?.objectives?.NUR).length && <li className="text-slate-500">—</li>}
                     </ul>
                   </div>
                   <div>
                     <div className="text-xs font-semibold text-slate-500 mb-1">Farmacia</div>
                     <ul className="list-disc pl-5 text-sm text-slate-700">
-                      {(brief?.objectives?.PHARM || []).map((line, i) => <li key={i}>{line}</li>)}
-                      {!((brief?.objectives?.PHARM || []).length) && <li className="text-slate-500">—</li>}
+                      {toArray(brief?.objectives?.PHARM).map((line, i) => <li key={i}>{line}</li>)}
+                      {!toArray(brief?.objectives?.PHARM).length && <li className="text-slate-500">—</li>}
                     </ul>
                   </div>
                 </div>

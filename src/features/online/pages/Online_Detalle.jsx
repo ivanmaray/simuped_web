@@ -954,7 +954,7 @@ export default function Online_Detalle() {
         .select(`
           id, description, step_order, role_specific, roles, narrative,
           questions:questions (
-            id, question_text, options, correct_option, explanation, roles, is_critical, hints, time_limit
+            id, question_text, options, correct_option, explanation, roles, is_critical, hints, time_limit, question_order
           )
         `)
         .eq("scenario_id", esc.id)
@@ -981,8 +981,10 @@ export default function Online_Detalle() {
               is_critical: q.is_critical,
               hints: q.hints,
               time_limit: q.time_limit,
+              question_order: q.question_order ?? q.id, // fallback a id si aún no tiene orden
               _options: normalizeOptions(q.options),
-            }));
+            }))
+            .sort((a, b) => a.question_order - b.question_order); // timed primero (asignadas order=1,2)
           return { ...s, questions: qs };
         });
 

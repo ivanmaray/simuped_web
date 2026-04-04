@@ -18,9 +18,8 @@ const stageTabs = [
 const infoTabs = [
   { id: "investigations", label: "Investigaciones" },
   { id: "interventions", label: "Intervenciones" },
-  { id: "evaluation", label: "Evaluacion" },
   { id: "communications", label: "Comunicacion" },
-  { id: "handoff", label: "Traspaso" }
+  { id: "evaluation", label: "Finalizar" }
 ];
 
 const LEVEL_TONE = {
@@ -56,147 +55,140 @@ function Badge({ tone, children }) {
   );
 }
 
-function ListCard({ title, items }) {
-  if (!items || items.length === 0) return null;
+function InvestigationCard({ data, isActive, onToggle, isExpanded, onExpand }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      {title ? <h4 className="text-sm font-semibold text-slate-700 mb-2 uppercase tracking-wide">{title}</h4> : null}
-      <ul className="space-y-2 text-sm text-slate-600">
-        {items.map((item, idx) => (
-          <li key={`${title || "item"}-${idx}`} className="flex items-start gap-2">
-            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0A3D91]"></span>
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </article>
-  );
-}
-
-function StatPill({ label }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-      {label}
-    </span>
-  );
-}
-
-function InvestigationCard({ data, isActive, onToggle }) {
-  return (
-    <article
-      className={`rounded-3xl border bg-white p-5 shadow-sm transition ${
-        isActive ? "border-[#0A3D91] ring-2 ring-[#0A3D91]/20" : "border-slate-200"
-      }`}
+    <div
+      className={`pb-3 border-b border-slate-100 last:border-0 transition`}
     >
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
-            {getInvestigationTypeLabel(data.type)}
-          </p>
-          <h4 className="text-base font-semibold text-slate-900">{data.label}</h4>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {typeof data.time === "number" ? <StatPill label={`Tiempo ${data.time} min`} /> : null}
-          {typeof data.cost === "number" ? <StatPill label={`Nivel ${data.cost}`} /> : null}
-          <StatPill label={isActive ? "Solicitado" : "Pendiente"} />
-        </div>
-      </header>
-      <p className="mt-3 text-sm text-slate-600 leading-relaxed">{data.description}</p>
-
-      {isActive ? (
-        <div className="mt-4 space-y-3 rounded-2xl border border-[#0A3D91]/20 bg-[#0A3D91]/5 p-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#0A3D91]">Resumen</p>
-            <p className="mt-1 text-sm text-slate-700">{data.result.summary}</p>
-          </div>
-          {data.result.highlights?.length ? (
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#0A3D91]">Destacados</p>
-              <ul className="space-y-1 text-sm text-slate-700">
-                {data.result.highlights.map((highlight, idx) => (
-                  <li key={`${data.id}-highlight-${idx}`} className="flex items-start gap-2">
-                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#0A3D91]" aria-hidden="true"></span>
-                    <span>{highlight}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {data.result?.interpretation ? (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#0A3D91]">Interpretacion</p>
-              <p className="mt-1 text-sm text-slate-700">{data.result.interpretation}</p>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          className={`rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition ${
-            isActive
-              ? "bg-slate-900 text-white hover:bg-slate-700"
-              : "bg-[#0A3D91] text-white hover:bg-[#0A3D91]/90"
-          }`}
-        >
-          {isActive ? "Marcar como pendiente" : "Solicitar estudio"}
-        </button>
-        {data.isCritical ? (
-          <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-            Critico
-          </span>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function InterventionCard({ data, isActive, onToggle }) {
-  return (
-    <article
-      className={`rounded-3xl border bg-white p-5 shadow-sm transition ${
-        isActive ? "border-emerald-300 ring-2 ring-emerald-200" : "border-slate-200"
-      }`}
-    >
-      <header className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h4 className="text-base font-semibold text-slate-900">{data.label}</h4>
-          {isActive ? (
-            <p className="text-sm text-slate-600 leading-relaxed">{data.rationale}</p>
-          ) : (
-            <p className="text-xs text-slate-400">Decide si necesitas esta intervencion antes de ver los detalles.</p>
-          )}
-        </div>
-        <StatPill label={isActive ? "Ejecutada" : "Pendiente"} />
-      </header>
-      {isActive && data.steps?.length ? (
-        <ul className="mt-4 space-y-2 text-sm text-slate-600">
-          {data.steps.map((step, idx) => (
-            <li key={`${data.id}-step-${idx}`} className="flex items-start gap-2">
-              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-              <span>{step}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {/* Summary - always visible */}
       <button
         type="button"
-        onClick={onToggle}
-        className={`mt-5 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition ${
-          isActive ? "bg-slate-900 text-white hover:bg-slate-700" : "bg-emerald-500 text-white hover:bg-emerald-600"
-        }`}
+        onClick={onExpand}
+        className="w-full text-left space-y-1"
       >
-        {isActive ? "Marcar como pendiente" : "Aplicar esta intervencion"}
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              {getInvestigationTypeLabel(data.type)}
+            </p>
+            <h4 className="text-sm font-semibold text-slate-900">{data.label}</h4>
+          </div>
+          <svg
+            className={`h-4 w-4 text-slate-400 transition-transform flex-shrink-0 mt-0.5 ${
+              isExpanded ? "rotate-180" : ""
+            }`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </div>
+        <div className="flex gap-3 text-xs text-slate-500">
+          {typeof data.time === "number" && <span>{data.time}m</span>}
+          {typeof data.cost === "number" && <span>L{data.cost}</span>}
+        </div>
       </button>
-    </article>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="mt-3 space-y-3 pt-3 border-t border-slate-100">
+          <p className="text-xs text-slate-600 leading-relaxed">{data.description}</p>
+
+          {isActive ? (
+            <div className="space-y-2 text-xs text-slate-700 bg-slate-50 -mx-2 px-2 py-2 rounded">
+              <div>
+                <p className="font-semibold text-slate-900 mb-1">Resultado:</p>
+                <p className="text-slate-600">{data.result.summary}</p>
+              </div>
+              {data.result.highlights?.length ? (
+                <ul className="list-disc list-inside space-y-0.5 text-slate-600">
+                  {data.result.highlights.map((h, i) => (
+                    <li key={i}>{h}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onToggle}
+            className={`w-full px-3 py-2 text-xs font-semibold rounded transition ${
+              isActive
+                ? "bg-slate-200 text-slate-900 hover:bg-slate-300"
+                : "bg-[#0A3D91] text-white hover:bg-[#0A3D91]/90"
+            }`}
+          >
+            {isActive ? "Marcar pendiente" : "Solicitar"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InterventionCard({ data, isActive, onToggle, isExpanded, onExpand }) {
+  return (
+    <div
+      className={`pb-3 border-b border-slate-100 last:border-0 transition`}
+    >
+      {/* Summary - always visible */}
+      <button
+        type="button"
+        onClick={onExpand}
+        className="w-full text-left"
+      >
+        <div className="flex justify-between items-center gap-2">
+          <h4 className="text-sm font-semibold text-slate-900">{data.label}</h4>
+          <svg
+            className={`h-4 w-4 text-slate-400 transition-transform flex-shrink-0 ${
+              isExpanded ? "rotate-180" : ""
+            }`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </div>
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="mt-3 space-y-3 pt-3 border-t border-slate-100">
+          {data.rationale && (
+            <p className="text-xs text-slate-600">{data.rationale}</p>
+          )}
+
+          {data.steps?.length ? (
+            <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
+              {data.steps.map((step, idx) => (
+                <li key={`${data.id}-step-${idx}`}>{step}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onToggle}
+            className={`w-full px-3 py-2 text-xs font-semibold rounded transition ${
+              isActive
+                ? "bg-slate-200 text-slate-900 hover:bg-slate-300"
+                : "bg-emerald-500 text-white hover:bg-emerald-600"
+            }`}
+          >
+            {isActive ? "Marcar pendiente" : "Aplicar"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
 function EmptyState({ message }) {
   return (
-    <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-600">
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-xs text-slate-600">
       {message}
     </div>
   );
@@ -206,14 +198,20 @@ export default function InteractiveCase() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const [activeStage, setActiveStage] = useState(null);
+  const [showPatientPanel, setShowPatientPanel] = useState(false);
+  const [selectedExamStep, setSelectedExamStep] = useState(null);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [activeInfoTab, setActiveInfoTab] = useState(null);
+  const [expandedInvestigation, setExpandedInvestigation] = useState(null);
+  const [expandedIntervention, setExpandedIntervention] = useState(null);
   const [investigationState, setInvestigationState] = useState({});
   const [interventionState, setInterventionState] = useState({});
   const [examState, setExamState] = useState({});
   const [stabilizationState, setStabilizationState] = useState({});
   const [hypothesisState, setHypothesisState] = useState({});
   const [selectedDiagnosis, setSelectedDiagnosis] = useState(null);
-  const [evaluationTriggered, setEvaluationTriggered] = useState(false);
+  const [selectedDischarge, setSelectedDischarge] = useState(null);
+  const [caseScore, setCaseScore] = useState(null);
 
   const scenario = useMemo(() => findInteractiveCase(caseId), [caseId]);
   const levelKey = scenario?.level ? String(scenario.level).trim().toLowerCase() : null;
@@ -231,9 +229,6 @@ export default function InteractiveCase() {
   const sceneConfig = scenario?.scene || {};
   const hasCustomModel = Boolean(sceneConfig.modelPath);
   const sceneCaption = sceneConfig.caption || "Sala de simulacion";
-  const sceneDescription =
-    sceneConfig.description ||
-    "Este espacio mostrara la escena en 3D o una representacion multimedia del paciente. Mientras tanto puedes centrarte en el flujo clinico.";
 
   const investigationMap = useMemo(() => {
     const map = new Map();
@@ -319,6 +314,8 @@ export default function InteractiveCase() {
 
   const toggleExamStep = (id) => {
     setExamState((prev) => ({ ...prev, [id]: !prev[id] }));
+    const step = examSteps.find(s => s.id === id);
+    setSelectedExamStep(examState[id] ? null : step);
   };
 
   const toggleStabilization = (id) => {
@@ -329,8 +326,78 @@ export default function InteractiveCase() {
     setHypothesisState((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleEvaluate = () => {
-    setEvaluationTriggered(true);
+  const handleCompleteCase = () => {
+    if (!scenario?.evaluation) return;
+    setCaseScore(calculateScore());
+  };
+
+  const calculateScore = () => {
+    if (!scenario?.evaluation) return null;
+    
+    const evaluation = scenario.evaluation;
+    let score = 0;
+    let maxScore = 0;
+    const feedback = [];
+
+    // Investigaciones obligatorias (30%)
+    const mandatoryCount = evaluation.mandatoryInvestigations?.length || 0;
+    const completedMandatory = (evaluation.mandatoryInvestigations || []).filter(id => investigationState[id]).length;
+    maxScore += 30;
+    score += (completedMandatory / mandatoryCount) * 30;
+    if (completedMandatory === mandatoryCount) {
+      feedback.push("✓ Todas las investigaciones obligatorias realizadas");
+    } else {
+      feedback.push(`✗ Faltaron ${mandatoryCount - completedMandatory} investigaciones obligatorias`);
+    }
+
+    // Intervenciones críticas (30%)
+    const criticalCount = evaluation.criticalInterventions?.length || 0;
+    const completedCritical = (evaluation.criticalInterventions || []).filter(id => interventionState[id]).length;
+    maxScore += 30;
+    score += (completedCritical / criticalCount) * 30;
+    if (completedCritical === criticalCount) {
+      feedback.push("✓ Todas las intervenciones críticas realizadas");
+    } else {
+      feedback.push(`✗ Faltaron ${criticalCount - completedCritical} intervenciones críticas`);
+    }
+
+    // Evitar intervenciones peligrosas (20%)
+    const avoidCount = evaluation.avoidInterventions?.length || 0;
+    const avoidedDangerous = (evaluation.avoidInterventions || []).filter(id => !interventionState[id]).length;
+    maxScore += 20;
+    score += (avoidedDangerous / avoidCount) * 20;
+    if (avoidedDangerous === avoidCount) {
+      feedback.push("✓ Evitaste intervenciones peligrosas");
+    } else {
+      feedback.push(`✗ Realizaste ${avoidCount - avoidedDangerous} intervenciones a evitar`);
+    }
+
+    // Diagnóstico correcto (10%)
+    const diagnosisOption = evaluation.diagnosisOptions?.find(opt => opt.id === selectedDiagnosis);
+    maxScore += 10;
+    if (diagnosisOption?.correct) {
+      score += 10;
+      feedback.push("✓ Diagnóstico correcto");
+    } else {
+      feedback.push("✗ Diagnóstico incorrecto");
+    }
+
+    // Destino correcto (10%)
+    const expectedDischarge = evaluation.correctDischarge;
+    maxScore += 10;
+    if (expectedDischarge === selectedDischarge) {
+      score += 10;
+      feedback.push("✓ Destino de alta adecuado");
+    } else {
+      feedback.push(`✗ Destino incorrecto (esperado: ${expectedDischarge})`);
+    }
+
+    return {
+      score: Math.round(score),
+      maxScore,
+      percentage: Math.round((score / maxScore) * 100),
+      feedback
+    };
   };
 
   if (!scenario) {
@@ -343,7 +410,7 @@ export default function InteractiveCase() {
           <p className="text-sm text-slate-600">Verifica el enlace o regresa a la biblioteca para elegir otro escenario.</p>
           <Link
             to="/entrenamiento-interactivo"
-            className="rounded-full bg-[#0A3D91] px-5 py-2 text-sm font-semibold text-white shadow hover:bg-[#0A3D91]/90"
+            className="rounded-lg bg-[#0A3D91] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#0A3D91]/90"
           >
             Volver a la biblioteca
           </Link>
@@ -366,13 +433,13 @@ export default function InteractiveCase() {
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
             >
               Volver
             </button>
             <Link
               to="/entrenamiento-interactivo"
-              className="rounded-full bg-[#0A3D91] px-5 py-2 text-sm font-semibold text-white shadow hover:bg-[#0A3D91]/90"
+              className="rounded-lg bg-[#0A3D91] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#0A3D91]/90"
             >
               Ver biblioteca
             </Link>
@@ -383,553 +450,519 @@ export default function InteractiveCase() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="h-screen bg-slate-50 flex flex-col">
       <Navbar variant="private" />
-      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-10">
-        <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur md:flex-row md:items-center md:justify-between">
-          <div className="space-y-3">
-            <nav className="inline-flex items-center gap-2 text-xs text-slate-500">
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Volver
-              </button>
-              <span>/</span>
-              <span>Entrenamiento interactivo</span>
-            </nav>
-            <h1 className="text-3xl font-semibold text-slate-900">{scenario.title}</h1>
-            <p className="max-w-2xl text-sm text-slate-600">{scenario.summary}</p>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <Badge tone="border-emerald-200 bg-emerald-50 text-emerald-700">Disponible</Badge>
-              {scenario.duration ? (
-                <Badge tone="border-slate-200 bg-slate-100 text-slate-600">{scenario.duration}</Badge>
-              ) : null}
-              {levelLabel ? (
-                <Badge tone={levelTone}>Nivel {levelLabel}</Badge>
-              ) : null}
-              {categoryLabels.map((label) => (
-                <Badge key={label} tone="border-slate-200 bg-slate-100 text-slate-600">{label}</Badge>
-              ))}
-            </div>
-            {scenario.tags?.length ? (
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                {scenario.tags.map((tag) => (
-                  <span key={tag} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium uppercase tracking-wider">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
+      
+      <main className="flex flex-1 overflow-hidden">
+        {/* LEFT SIDEBAR */}
+        <div className="hidden lg:flex border-r border-slate-200 bg-white overflow-hidden">
+          {/* Vertical tab bar - always visible */}
+          <div className="w-12 border-r border-slate-200 flex flex-col">
+            <button
+              type="button"
+              onClick={() => setActiveStage(activeStage === "exam" ? null : "exam")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeStage === "exam"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Examen"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Exam.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveStage(activeStage === "stabilize" ? null : "stabilize")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeStage === "stabilize"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Estabilizar"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Estab.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveStage(activeStage === "hypotheses" ? null : "hypotheses")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeStage === "hypotheses"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Hipótesis"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Hipot.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPatientPanel(!showPatientPanel)}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                showPatientPanel
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Paciente"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Pac.
+              </span>
+            </button>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-100 px-6 py-4 text-sm text-slate-700">
-            <p className="font-semibold uppercase tracking-[0.35em] text-slate-500">Paciente</p>
-            <p className="mt-2 text-base font-semibold text-slate-900">{scenario.patient.name}</p>
-            <p className="text-sm text-slate-600">
-              {scenario.patient.age} anos · {scenario.patient.sex}
-            </p>
-            <p className="mt-2 text-xs uppercase tracking-[0.3em] text-slate-500">Llegada</p>
-            <p className="text-sm text-slate-700 leading-relaxed">{scenario.patient.arrivalMode}</p>
-          </div>
-        </header>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr_1fr]">
-          <aside className="space-y-5">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Paciente</p>
-              <button
-                type="button"
-                onClick={() => setActiveInfoTab((prev) => (prev === "patient" ? null : "patient"))}
-                className={`mt-3 flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                  activeInfoTab === "patient" ? "border-[#0A3D91] text-[#0A3D91]" : "border-slate-200 text-slate-700 hover:text-[#0A3D91]"
-                }`}
-              >
-                Datos del paciente
-                <svg
-                  className={`h-4 w-4 transition-transform ${activeInfoTab === "patient" ? "rotate-180" : ""}`}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              {activeInfoTab === "patient" ? (
-                <div className="mt-3 space-y-4 border-t border-slate-200 pt-4 text-sm text-slate-600">
-                  <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Contexto</h3>
-                    <p className="mt-2 leading-relaxed">{scenario.patient.narrative}</p>
-                  </article>
-                  <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Signos vitales</h3>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {Object.entries(scenario.patient.vitals || {}).map(([key, value]) => (
-                        <div key={key} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                          <p className="text-xs font-semibold text-slate-500">{formatVitalLabel(key)}</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+          {/* Expandable panel - Stages */}
+          {activeStage && (
+            <div className="w-56 flex flex-col border-r border-slate-200 bg-white overflow-hidden animate-in fade-in slide-in-from-left-full duration-200">
+              {/* Header */}
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-900">
+                  {activeStage === "exam" ? "Examen" : activeStage === "stabilize" ? "Estabilizar" : "Hipótesis"}
+                </h2>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {activeStage === "exam" &&
+                  (examSteps.length ? (
+                    <div className="space-y-2">
+                      {examSteps.map((step, idx) => {
+                        const stepId = step.id || `exam-${idx}`;
+                        const isSelected = Boolean(examState[stepId]);
+                        return (
+                          <div key={stepId} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleExamStep(stepId)}
+                              className={`block w-full text-left rounded px-3 py-2 text-xs font-medium transition border ${
+                                isSelected
+                                  ? "bg-[#0A3D91]/10 text-[#0A3D91] border-[#0A3D91] font-semibold"
+                                  : "text-slate-700 border-slate-200 hover:border-[#0A3D91]"
+                              }`}
+                              title={step.label}
+                            >
+                              <div className="flex items-start gap-2">
+                                {isSelected && (
+                                  <svg className="h-4 w-4 text-[#0A3D91] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                                <span>{step.label}</span>
+                              </div>
+                            </button>
+                            {isSelected && step.notes && (
+                              <div className="ml-2 px-2 py-1.5 bg-[#0A3D91]/5 rounded border border-[#0A3D91]/20 text-[11px] text-slate-700 leading-relaxed">
+                                {step.notes}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 text-center py-4">Sin pasos</p>
+                  ))}
+
+                {activeStage === "stabilize" &&
+                  (stabilizationPlan.length ? (
+                    <div className="space-y-1.5">
+                      {stabilizationPlan.map((item, idx) => {
+                        const actionId = item.id || `stabilize-${idx}`;
+                        const isSelected = Boolean(stabilizationState[actionId]);
+                        return (
+                          <div key={actionId}>
+                            <label className="flex items-start gap-2.5 cursor-pointer p-2 rounded hover:bg-emerald-50 transition">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleStabilization(actionId)}
+                                className="w-4 h-4 mt-0.5 flex-shrink-0 accent-emerald-600"
+                              />
+                              <span className={`text-xs leading-snug flex-1 ${isSelected ? "font-semibold text-emerald-700" : "text-slate-700"}`}>
+                                {item.action}
+                              </span>
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 text-center py-4">Sin acciones</p>
+                  ))}
+
+                {activeStage === "hypotheses" &&
+                  (hypotheses.length ? (
+                    <div className="space-y-1.5">
+                      {hypotheses.map((item, idx) => {
+                        const hypId = item.id || `hypothesis-${idx}`;
+                        const isSelected = Boolean(hypothesisState[hypId]);
+                        return (
+                          <div key={hypId}>
+                            <label className="flex items-start gap-2.5 cursor-pointer p-2 rounded hover:bg-indigo-50 transition">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleHypothesis(hypId)}
+                                className="w-4 h-4 mt-0.5 flex-shrink-0 accent-indigo-600"
+                              />
+                              <span className={`text-xs leading-snug flex-1 ${isSelected ? "font-semibold text-indigo-700" : "text-slate-700"}`}>
+                                {item.label}
+                              </span>
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 text-center py-4">Sin hipótesis</p>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Expandable panel - Patient */}
+          {showPatientPanel && (
+            <div className="w-56 flex flex-col border-r border-slate-200 bg-white overflow-hidden animate-in fade-in slide-in-from-left-full duration-200">
+              {/* Header */}
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-900">Paciente</h2>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Datos Generales</p>
+                  <div className="rounded border border-slate-200 bg-white p-3 space-y-2 text-xs">
+                    <div>
+                      <p className="font-semibold text-slate-900">{scenario.patient.name}</p>
+                      <p className="text-slate-600 text-[11px]">{scenario.patient.age}a · {scenario.patient.sex}</p>
+                    </div>
+                    <p className="text-slate-600 text-[11px]">{scenario.patient.arrivalMode}</p>
+                  </div>
+                </div>
+                {scenario.patient.vitals && Object.keys(scenario.patient.vitals).length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Vitales</p>
+                    <div className="space-y-2">
+                      {Object.entries(scenario.patient.vitals).map(([key, value]) => (
+                        <div key={key} className="rounded border border-slate-200 bg-white px-3 py-2 flex justify-between items-center">
+                          <p className="text-[11px] text-slate-600 font-medium">{formatVitalLabel(key)}</p>
+                          <p className="text-[12px] font-semibold text-slate-900">{value}</p>
                         </div>
                       ))}
                     </div>
-                  </article>
-                </div>
-              ) : null}
-            </section>
-
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Etapas del caso</p>
-              <div className="mt-4 space-y-3">
-                {stageTabs.map((tab) => {
-                  const isOpen = activeStage === tab.id;
-                  return (
-                    <article key={tab.id} className="rounded-2xl border border-slate-200 bg-slate-50">
-                      <button
-                        type="button"
-                        onClick={() => setActiveStage((prev) => (prev === tab.id ? null : tab.id))}
-                        className={`flex w-full items-center justify-between gap-4 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${
-                          isOpen ? "text-[#0A3D91]" : "text-slate-700 hover:text-[#0A3D91]"
-                        }`}
-                      >
-                        <span>
-                          {tab.label}
-                          <span className="block text-xs font-normal text-slate-500">{tab.helper}</span>
-                        </span>
-                        <svg
-                          className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </button>
-                      {isOpen ? (
-                        <div className="border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
-                          {tab.id === "exam" ? (
-                            examSteps.length ? (
-                              <div className="space-y-3">
-                                {examSteps.map((step, index) => {
-                                  const stepId = step.id || `exam-${index}`;
-                                  const isSelected = Boolean(examState[stepId]);
-                                  return (
-                                  <div
-                                    key={stepId}
-                                    className={`rounded-xl border bg-white p-3 shadow-sm transition ${
-                                      isSelected ? "border-[#0A3D91] ring-2 ring-[#0A3D91]/20" : "border-slate-200"
-                                    }`}
-                                  >
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div>
-                                        <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">{step.label}</h4>
-                                        {isSelected ? (
-                                          <p className="mt-1 text-sm text-slate-600">{step.notes}</p>
-                                        ) : (
-                                          <p className="mt-1 text-xs text-slate-400">Selecciona el paso para ver los hallazgos.</p>
-                                        )}
-                                      </div>
-                                      <div className="flex flex-col items-end gap-2">
-                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
-                                          Paso {index + 1}
-                                        </span>
-                                        <span
-                                          className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                                            isSelected
-                                              ? "bg-emerald-100 text-emerald-700"
-                                              : "bg-slate-100 text-slate-500"
-                                          }`}
-                                        >
-                                          {isSelected ? "Seleccionado" : "Pendiente"}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleExamStep(stepId)}
-                                      className={`mt-3 w-full rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                                        isSelected
-                                          ? "bg-slate-900 text-white hover:bg-slate-700"
-                                          : "bg-[#0A3D91] text-white hover:bg-[#0A3D91]/90"
-                                      }`}
-                                    >
-                                      {isSelected ? "Ocultar hallazgos" : "Examinar este paso"}
-                                    </button>
-                                  </div>
-                                );})}
-                              </div>
-                            ) : (
-                              <EmptyState message="Agrega los pasos de examen cuando cargues casos reales." />
-                            )
-                          ) : null}
-
-                          {tab.id === "stabilize" ? (
-                            stabilizationPlan.length ? (
-                              <div className="space-y-3">
-                                {stabilizationPlan.map((item, index) => {
-                                  const actionId = item.id || `stabilize-${index}`;
-                                  const isSelected = Boolean(stabilizationState[actionId]);
-                                  return (
-                                  <article
-                                    key={actionId}
-                                    className={`rounded-xl border bg-white p-3 shadow-sm transition ${
-                                      isSelected ? "border-emerald-300 ring-2 ring-emerald-200" : "border-slate-200"
-                                    }`}
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">{item.action}</h4>
-                                        {isSelected ? (
-                                          <p className="mt-1 text-sm text-slate-600">{item.rationale}</p>
-                                        ) : (
-                                          <p className="mt-1 text-xs text-slate-400">Decide si aplicaras esta medida en el escenario.</p>
-                                        )}
-                                      </div>
-                                      <span
-                                        className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                                          isSelected ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
-                                        }`}
-                                      >
-                                        {isSelected ? "Seleccionada" : "Pendiente"}
-                                      </span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleStabilization(actionId)}
-                                      className={`mt-3 w-full rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                                        isSelected
-                                          ? "bg-slate-900 text-white hover:bg-slate-700"
-                                          : "bg-emerald-500 text-white hover:bg-emerald-600"
-                                      }`}
-                                    >
-                                      {isSelected ? "Retirar medida" : "Aplicar esta medida"}
-                                    </button>
-                                  </article>
-                                );})}
-                              </div>
-                            ) : (
-                              <EmptyState message="Completa este apartado cuando definas medidas iniciales." />
-                            )
-                          ) : null}
-
-                          {tab.id === "hypotheses" ? (
-                            hypotheses.length ? (
-                              <div className="space-y-3">
-                                {hypotheses.map((item, index) => {
-                                  const hypId = item.id || `hypothesis-${index}`;
-                                  const isSelected = Boolean(hypothesisState[hypId]);
-                                  return (
-                                  <article
-                                    key={hypId}
-                                    className={`rounded-xl border bg-white p-3 shadow-sm transition ${
-                                      isSelected ? "border-indigo-300 ring-2 ring-indigo-200" : "border-slate-200"
-                                    }`}
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-800">{item.label}</h4>
-                                        {isSelected ? (
-                                          <p className="mt-1 text-sm text-slate-600">{item.rationale}</p>
-                                        ) : (
-                                          <p className="mt-1 text-xs text-slate-400">Activa este diagnostico provisional para revisar datos de apoyo.</p>
-                                        )}
-                                      </div>
-                                      <span
-                                        className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                                          isSelected ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
-                                        }`}
-                                      >
-                                        {isSelected ? "Analizado" : "Pendiente"}
-                                      </span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleHypothesis(hypId)}
-                                      className={`mt-3 w-full rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                                        isSelected
-                                          ? "bg-slate-900 text-white hover:bg-slate-700"
-                                          : "bg-indigo-500 text-white hover:bg-indigo-600"
-                                      }`}
-                                    >
-                                      {isSelected ? "Ocultar detalles" : "Considerar diagnostico"}
-                                    </button>
-                                  </article>
-                                );})}
-                              </div>
-                            ) : (
-                              <EmptyState message="Agrega las hipotesis principales para guiar el caso." />
-                            )
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          </aside>
-
-          <section className="space-y-5">
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-              <div className="relative h-[320px] bg-slate-900/30">
-                <SimulationStage
-                  modelPath={sceneConfig.modelPath}
-                  modelScale={sceneConfig.modelScale}
-                  cameraPosition={sceneConfig.cameraPosition}
-                  autoRotate={sceneConfig.autoRotate ?? !hasCustomModel}
-                  proceduralVariant={sceneConfig.proceduralVariant}
-                />
-                <span className="pointer-events-none absolute left-6 top-6 rounded-full bg-white/80 px-4 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-slate-600">
-                  {sceneCaption}
-                </span>
-              </div>
-              <div className="border-t border-slate-200 bg-slate-900 px-6 py-6 text-white">
-                <h2 className="text-xl font-semibold">Box UCIP</h2>
-                <p className="mt-2 text-sm text-white/80">{sceneDescription}</p>
-                {!hasCustomModel && sceneConfig.notes ? (
-                  <p className="mt-3 text-xs text-white/60">{sceneConfig.notes}</p>
-                ) : null}
+                  </div>
+                )}
               </div>
             </div>
-          </section>
+          )}
+        </div>
 
-          <aside className="space-y-4">
-            <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">Modulos del caso</p>
-              <div className="mt-4 space-y-3">
-                {infoTabs.map((tab) => {
-                  const isOpen = activeInfoTab === tab.id;
-                  return (
-                    <article key={tab.id} className="rounded-2xl border border-slate-200 bg-slate-50">
+        {/* CENTER - SCENE AREA */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Header */}
+          <header className="border-b border-slate-200 bg-white px-4 sm:px-6 py-3 shrink-0">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <nav className="inline-flex items-center gap-2 text-xs text-slate-400 mb-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    ←
+                  </button>
+                  <span>/</span>
+                  <span>Entrenamiento</span>
+                </nav>
+                <h1 className="text-lg font-semibold text-slate-900">{scenario.title}</h1>
+                {scenario.duration && (
+                  <p className="text-xs text-slate-500 mt-0.5">{scenario.duration}</p>
+                )}
+              </div>
+              <div className="flex gap-2 lg:hidden">
+              </div>
+            </div>
+          </header>
+
+          {/* Scene Placeholder */}
+          <div className="flex-1 flex items-center justify-center overflow-hidden p-4 sm:p-6">
+            <div className="w-full max-w-2xl">
+              <div className="rounded-lg border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-slate-100 p-8 sm:p-12 text-center space-y-4">
+                <div className="flex justify-center">
+                  {selectedExamStep ? (
+                    <div className="space-y-3 w-full">
+                      <div className="inline-flex items-center justify-center h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-[#0A3D91]/10">
+                        <svg className="h-6 w-6 sm:h-8 sm:w-8 text-[#0A3D91]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                      </div>
+                      <h2 className="text-lg font-semibold text-slate-900">{selectedExamStep.label}</h2>
+                      <p className="text-sm text-slate-600">{selectedExamStep.sceneFocus}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <svg className="h-12 w-12 sm:h-16 sm:w-16 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                        <polyline points="9 22 9 12 15 12 15 22" />
+                      </svg>
+                    </>
+                  )}
+                </div>
+                {!selectedExamStep && (
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">Escena 3D - Selecciona un examen</h2>
+                    <p className="text-sm text-slate-600 mt-2">Abre el panel de examen a la izquierda y selecciona un paso para ver dónde se realiza.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT SIDEBAR - VERTICAL TABS */}
+        <div className="hidden lg:flex border-l border-slate-200 bg-white overflow-hidden">
+          {/* Vertical tab bar - always visible */}
+          <div className="w-12 border-r border-slate-200 flex flex-col">
+            <button
+              type="button"
+              onClick={() => setActiveInfoTab(activeInfoTab === "investigations" ? null : "investigations")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeInfoTab === "investigations"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Investigaciones"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Invest.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveInfoTab(activeInfoTab === "interventions" ? null : "interventions")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeInfoTab === "interventions"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Intervenciones"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Interv.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveInfoTab(activeInfoTab === "evaluation" ? null : "evaluation")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeInfoTab === "evaluation"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Evaluación"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Eval.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveInfoTab(activeInfoTab === "communications" ? null : "communications")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeInfoTab === "communications"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Comunicación"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Com.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveInfoTab(activeInfoTab === "evaluation" ? null : "evaluation")}
+              className={`flex-1 py-4 px-2 flex items-center justify-center transition border-l-2 ${
+                activeInfoTab === "evaluation"
+                  ? "border-[#0A3D91] bg-[#0A3D91]/5 text-[#0A3D91]"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+              title="Finalizar"
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+                Final.
+              </span>
+            </button>
+          </div>
+
+          {/* Expandable panel */}
+          {activeInfoTab && (
+            <div className="w-56 flex flex-col border-r border-slate-200 bg-white overflow-hidden animate-in fade-in slide-in-from-right-full duration-200">
+              {/* Header */}
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+               <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-900">
+                  {activeInfoTab === "investigations" ? "Investigaciones" : activeInfoTab === "interventions" ? "Intervenciones" : activeInfoTab === "communications" ? "Comunicación" : "Finalizar Caso"}
+                </h2>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-0">
+                {activeInfoTab === "investigations" && (
+                  investigations.length ? (
+                    <div className="space-y-0">
+                      {investigations.map((item) => (
+                        <InvestigationCard
+                          key={item.id}
+                          data={item}
+                          isActive={Boolean(investigationState[item.id])}
+                          onToggle={() => toggleInvestigation(item.id)}
+                          isExpanded={expandedInvestigation === item.id}
+                          onExpand={() => setExpandedInvestigation(expandedInvestigation === item.id ? null : item.id)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState message="Sin investigaciones" />
+                  )
+                )}
+
+                {activeInfoTab === "interventions" && (
+                  interventions.length ? (
+                    <div className="space-y-0">
+                      {interventions.map((item) => (
+                        <InterventionCard
+                          key={item.id}
+                          data={item}
+                          isActive={Boolean(interventionState[item.id])}
+                          onToggle={() => toggleIntervention(item.id)}
+                          isExpanded={expandedIntervention === item.id}
+                          onExpand={() => setExpandedIntervention(expandedIntervention === item.id ? null : item.id)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState message="Sin intervenciones" />
+                  )
+                )}
+
+                {activeInfoTab === "evaluation" && evaluationStatus && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Diagnóstico</p>
+                      {scenario?.evaluation?.diagnosisOptions ? (
+                        <div className="space-y-1">
+                          {scenario.evaluation.diagnosisOptions.map((option) => (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setSelectedDiagnosis(option.id)}
+                              className={`w-full text-left rounded px-3 py-2 text-xs font-medium transition border ${
+                                selectedDiagnosis === option.id
+                                  ? option.correct ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-red-100 text-red-700 border-red-300"
+                                  : "text-slate-700 border-slate-200 hover:border-[#0A3D91]"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {selectedDiagnosis === option.id && (
+                                  <svg className={`h-4 w-4 flex-shrink-0 ${option.correct ? "text-emerald-600" : "text-red-600"}`} fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                                <span>{option.label}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500">Sin opciones de diagnóstico</p>
+                      )}
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-2 space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Destino de Alta</p>
+                      <div className="space-y-1">
+                        {["UCI", "Planta", "Alta a casa"].map((option) => (
+                          <button
+                            key={option}
+                            onClick={() => setSelectedDischarge(option)}
+                            className={`w-full text-left rounded px-2 py-1.5 text-xs font-medium transition border ${
+                              selectedDischarge === option
+                                ? "bg-[#0A3D91]/10 text-[#0A3D91] border-[#0A3D91] font-semibold"
+                                : "text-slate-700 border-slate-200 hover:border-[#0A3D91]"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {selectedDischarge === option && (
+                                <svg className="h-4 w-4 text-[#0A3D91] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                              <span>{option}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {!caseScore && (
                       <button
                         type="button"
-                        onClick={() => setActiveInfoTab((prev) => (prev === tab.id ? null : tab.id))}
-                        className={`flex w-full items-center justify-between gap-4 rounded-2xl px-4 py-2 text-left text-sm font-semibold transition ${
-                          isOpen ? "text-[#0A3D91]" : "text-slate-600 hover:text-[#0A3D91]"
-                        }`}
+                        onClick={handleCompleteCase}
+                        disabled={!selectedDiagnosis || !selectedDischarge}
+                        className="w-full mt-2 rounded px-3 py-2 text-xs font-semibold text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
-                        {tab.label}
-                        <svg
-                          className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                        Completar Caso
                       </button>
+                    )}
 
-                      {isOpen ? (
-                        <div className="border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
-                          {tab.id === "investigations" ? (
-                            investigations.length ? (
-                              <div className="space-y-4">
-                                {investigations.map((item) => (
-                                  <InvestigationCard
-                                    key={item.id}
-                                    data={item}
-                                    isActive={Boolean(investigationState[item.id])}
-                                    onToggle={() => toggleInvestigation(item.id)}
-                                  />
-                                ))}
-                              </div>
-                            ) : (
-                              <EmptyState message="Define las investigaciones disponibles para este caso." />
-                            )
-                          ) : null}
-
-                          {tab.id === "interventions" ? (
-                            interventions.length ? (
-                              <div className="space-y-4">
-                                {interventions.map((item) => (
-                                  <InterventionCard
-                                    key={item.id}
-                                    data={item}
-                                    isActive={Boolean(interventionState[item.id])}
-                                    onToggle={() => toggleIntervention(item.id)}
-                                  />
-                                ))}
-                              </div>
-                            ) : (
-                              <EmptyState message="Agrega intervenciones accionables para este escenario." />
-                            )
-                          ) : null}
-
-                          {tab.id === "evaluation" ? (
-                            scenario?.evaluation ? (
-                              <div className="space-y-4">
-                                <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <header className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">Estado del caso</p>
-                          <h4 className="text-lg font-semibold text-slate-900">Tu seleccion hasta ahora</h4>
+                    {caseScore && (
+                      <div className="border-t border-slate-200 pt-2 space-y-2">
+                        <div className={`rounded px-3 py-2 text-center ${caseScore.percentage >= 80 ? "bg-emerald-50" : caseScore.percentage >= 60 ? "bg-yellow-50" : "bg-red-50"}`}>
+                          <p className={`text-lg font-bold ${caseScore.percentage >= 80 ? "text-emerald-700" : caseScore.percentage >= 60 ? "text-yellow-700" : "text-red-700"}`}>
+                            {caseScore.percentage}%
+                          </p>
+                          <p className={`text-xs font-semibold ${caseScore.percentage >= 80 ? "text-emerald-600" : caseScore.percentage >= 60 ? "text-yellow-600" : "text-red-600"}`}>
+                            {caseScore.score}/{caseScore.maxScore} puntos
+                          </p>
                         </div>
-                        <div className="flex flex-col items-end gap-1 text-xs text-slate-500">
-                          <span>{activeInvestigations.length} investigaciones solicitadas</span>
-                          <span>{activeInterventions.length} intervenciones aplicadas</span>
-                          <span>{activeHypotheses.length} hipotesis analizadas</span>
+                        <div className="space-y-1">
+                          {caseScore.feedback.map((item, idx) => (
+                            <p key={idx} className="text-[10px] text-slate-600 bg-slate-50 rounded px-2 py-1">
+                              {item}
+                            </p>
+                          ))}
                         </div>
-                      </header>
-                      <dl className="mt-4 grid gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600">
-                        <div className="flex items-center justify-between">
-                          <dt className="font-medium text-slate-500">Tiempo estimado</dt>
-                          <dd className="font-semibold text-slate-900">{timeBudget} min</dd>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <dt className="font-medium text-slate-500">Complejidad acumulada</dt>
-                          <dd className="font-semibold text-slate-900">Nivel {complexityScore}</dd>
-                        </div>
-                      </dl>
-                      <div className="mt-5 space-y-4">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Selecciona la hipotesis final</p>
-                          <div className="mt-3 space-y-2">
-                            {scenario.evaluation.diagnosisOptions?.map((option) => (
-                              <label
-                                key={option.id}
-                                className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2 text-sm transition ${
-                                  selectedDiagnosis === option.id
-                                    ? "border-[#0A3D91] bg-[#0A3D91]/10 text-[#0A3D91]"
-                                    : "border-slate-200 bg-white text-slate-600 hover:border-[#0A3D91]/40"
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name="diagnosis"
-                                  value={option.id}
-                                  checked={selectedDiagnosis === option.id}
-                                  onChange={(event) => {
-                                    setSelectedDiagnosis(event.target.value);
-                                    setEvaluationTriggered(false);
-                                  }}
-                                  className="h-4 w-4"
-                                />
-                                <span className="font-semibold">{option.label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleEvaluate}
-                          className="w-full rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-slate-700"
-                        >
-                          Revisar decision
-                        </button>
                       </div>
-                    </article>
-                                {evaluationTriggered ? (
-                                  <article className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                                    <header>
-                                      <h4 className="text-lg font-semibold text-slate-900">Retroalimentacion</h4>
-                                      {!selectedDiagnosis ? (
-                                        <p className="mt-1 text-sm text-amber-600">
-                                          Primero selecciona una hipotesis final para evaluar el caso.
-                                        </p>
-                                      ) : null}
-                                    </header>
+                    )}
+                  </div>
+                )}
 
-                                    {selectedDiagnosis && evaluationStatus ? (
-                                      <div className="space-y-4 text-sm text-slate-600">
-                                        {evaluationStatus.missingMandatoryInvestigations.length ? (
-                                          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-                                            <p className="text-sm font-semibold text-amber-800">Aun faltan estudios fundamentales:</p>
-                                            <ul className="mt-2 space-y-1 text-amber-800">
-                                              {evaluationStatus.missingMandatoryInvestigations.map((id) => (
-                                                <li key={`mandatory-${id}`}>- {investigationMap.get(id) || id}</li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        ) : (
-                                          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
-                                            Estudios esenciales completados.
-                                          </div>
-                                        )}
-
-                                        {evaluationStatus.missingCriticalInterventions.length ? (
-                                          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-                                            <p className="text-sm font-semibold text-rose-700">Intervenciones criticas sin ejecutar:</p>
-                                            <ul className="mt-2 space-y-1 text-rose-700">
-                                              {evaluationStatus.missingCriticalInterventions.map((id) => (
-                                                <li key={`critical-${id}`}>- {interventionMap.get(id) || id}</li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        ) : (
-                                          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
-                                            Intervenciones clave aplicadas.
-                                          </div>
-                                        )}
-
-                                        {evaluationStatus.pendingRecommendedInvestigations.length ? (
-                                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                            <p className="text-sm font-semibold text-slate-700">Considera sumar:</p>
-                                            <ul className="mt-2 space-y-1 text-slate-600">
-                                              {evaluationStatus.pendingRecommendedInvestigations.map((id) => (
-                                                <li key={`recommended-${id}`}>- {investigationMap.get(id) || id}</li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        ) : null}
-
-                                        {evaluationStatus.avoidTriggered.length ? (
-                                          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
-                                            Evita realizar: {evaluationStatus.avoidTriggered
-                                              .map((id) => interventionMap.get(id) || id)
-                                              .join(", ")}
-                                          </div>
-                                        ) : null}
-
-                                        <div
-                                          className={`rounded-2xl px-4 py-3 text-sm font-semibold ${
-                                            evaluationStatus.isDiagnosisCorrect
-                                              ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                                              : "border border-rose-200 bg-rose-50 text-rose-700"
-                                          }`}
-                                        >
-                                          {evaluationStatus.diagnosisOption
-                                            ? evaluationStatus.isDiagnosisCorrect
-                                              ? "Hipotesis final adecuada."
-                                              : "Revisa la seleccion final: la evidencia apunta a otra causa."
-                                            : "Selecciona una hipotesis para recibir retroalimentacion."}
-                                        </div>
-
-                                        {evaluationStatus.summaryTips.length ? (
-                                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Siguientes pasos</p>
-                                            <ul className="mt-2 space-y-1 text-slate-600">
-                                              {evaluationStatus.summaryTips.map((tip, idx) => (
-                                                <li key={`tip-${idx}`}>- {tip}</li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        ) : null}
-                                      </div>
-                                    ) : null}
-                                  </article>
-                                ) : null}
-                              </div>
-                            ) : (
-                              <EmptyState message="Configura las reglas de evaluacion en el dataset para activar esta vista." />
-                            )
-                          ) : null}
-
-                          {tab.id === "communications" ? <ListCard title="Canales Clave" items={communications} /> : null}
-                          {tab.id === "handoff" ? <ListCard title="Notas de traspaso" items={handoffNotes} /> : null}
+                {activeInfoTab === "communications" && (
+                  <div className="space-y-2">
+                    {scenario?.communications?.length ? (
+                      scenario.communications.map((item, idx) => (
+                        <div key={idx} className="bg-slate-50 rounded border border-slate-200 px-3 py-2">
+                          <p className="text-[11px] font-semibold text-slate-900 mb-1">{item.label}</p>
+                          <p className="text-[10px] text-slate-600">{item.message}</p>
                         </div>
-                      ) : null}
-                    </article>
-                  );
-                })}
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-500 text-center py-4">Sin comunicaciones</p>
+                    )}
+                  </div>
+                )}
               </div>
-            </section>
-          </aside>
+            </div>
+          )}
         </div>
       </main>
+
     </div>
   );
 }
