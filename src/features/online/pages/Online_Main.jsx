@@ -60,7 +60,6 @@ export default function Online_Main() {
   const [escenarios, setEscenarios] = useState([]);
   const [q, setQ] = useState("");
   const [nivel, setNivel] = useState("");       // basico|medio|avanzado
-  const [modo, setModo] = useState("online");   // por defecto 'online'
   const [categoria, setCategoria] = useState(""); // nombre de categoría
   const [estado, setEstado] = useState("");
   const [loadingEsc, setLoadingEsc] = useState(false);
@@ -97,7 +96,6 @@ export default function Online_Main() {
   const resetFilters = () => {
     setQ("");
     setNivel("");
-    setModo("online");
     setCategoria("");
     setEstado("");
   };
@@ -116,13 +114,11 @@ export default function Online_Main() {
       const cats = e.scenario_categories?.map(sc => sc.categories?.name).filter(Boolean) || [];
       const matchQ = !q || e.title?.toLowerCase().includes(q.trim().toLowerCase()) || e.summary?.toLowerCase().includes(q.trim().toLowerCase());
       const matchNivel = !nivel || String(e.level || '').toLowerCase() === nivel;
-      const modeArr = Array.isArray(e.mode) ? e.mode : (e.mode ? [e.mode] : []);
-      const matchModo = !modo || modeArr.map(m => String(m).toLowerCase()).includes(modo);
       const matchCat   = !categoria || cats.includes(categoria);
       const matchEstado = !estado || String(e.status || '').toLowerCase() === estado;
-      return matchQ && matchNivel && matchModo && matchCat && matchEstado;
+      return matchQ && matchNivel && matchCat && matchEstado;
     });
-  }, [escenarios, q, nivel, modo, categoria, estado]);
+  }, [escenarios, q, nivel, categoria, estado]);
 
   useEffect(() => {
     let mounted = true;
@@ -388,7 +384,7 @@ export default function Online_Main() {
                 <ChevronDownIcon className={`h-4 w-4 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
               </button>
             </div>
-            <div className={`${filtersOpen ? "grid" : "hidden"} md:grid grid-cols-1 gap-4 border-b border-slate-100 px-5 py-5 md:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]`}
+            <div className={`${filtersOpen ? "grid" : "hidden"} md:grid grid-cols-1 gap-4 border-b border-slate-100 px-5 py-5 md:grid-cols-[1.4fr_1fr_1fr_1fr]`}
             >
               <label className="block">
                 <span className="text-xs uppercase tracking-wide text-slate-400">Búsqueda</span>
@@ -414,18 +410,6 @@ export default function Online_Main() {
                   <option value="basico">Básico</option>
                   <option value="medio">Medio</option>
                   <option value="avanzado">Avanzado</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Modo</span>
-                <select
-                  value={modo}
-                  onChange={(e) => setModo(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
-                >
-                  <option value="">Todos los modos</option>
-                  <option value="online">Online</option>
-                  <option value="presencial">Presencial</option>
                 </select>
               </label>
               <label className="block">
@@ -500,7 +484,6 @@ export default function Online_Main() {
             const isClickable = estadoStyle.clickable;
             const stat = attemptStats[esc.id];
             const notaMedia = stat?.scored ? stat.avg.toFixed(1) : null;
-            const modeArr = Array.isArray(esc.mode) ? esc.mode : (esc.mode ? [esc.mode] : []);
             const createdAt = esc.created_at ? new Date(esc.created_at) : null;
             const isNuevo = createdAt ? ((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)) <= NEW_THRESHOLD_DAYS : false;
 
@@ -518,7 +501,7 @@ export default function Online_Main() {
               >
                 <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-br from-[#0A3D91]/8 via-transparent to-transparent" aria-hidden="true" />
                 <div className="relative z-10 flex flex-col h-full gap-4">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
@@ -534,23 +517,9 @@ export default function Online_Main() {
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {modeArr.map((m) => {
-                        const k = String(m || '').toLowerCase();
-                        const label = k === 'online' ? 'Online' : k === 'presencial' ? 'Presencial' : (m || '');
-                        return (
-                          <span
-                            key={label}
-                            className="px-2.5 py-0.5 rounded-full text-[11px] bg-white/80 ring-1 ring-slate-200 text-slate-700"
-                          >
-                            {label}
-                          </span>
-                        );
-                      })}
-                    </div>
                   </div>
 
-                  <p className="text-sm text-slate-600 leading-relaxed max-h-20 overflow-hidden">
+                  <p className="text-sm text-slate-600 leading-relaxed">
                     {esc.summary || "Sin descripción disponible."}
                   </p>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { calculateBadgeProgress, getBadgeRecommendations, BADGE_CATEGORIES } from '../utils/badgeSystem';
 import {
   TrophyIcon,
@@ -37,13 +37,14 @@ export default function BadgeDisplay({ userStats, userId, compact = false }) {
     return <CompactBadgeSummary earnedCount={badgeData.earnedBadges.length} />;
   }
 
+  const sortedInProgressBadges = useMemo(
+    () => [...badgeData.inProgressBadges].sort((a, b) => b.progressValue - a.progressValue),
+    [badgeData.inProgressBadges]
+  );
+
   const filteredBadges = selectedCategory === 'all'
     ? badgeData.earnedBadges
     : badgeData.earnedBadges.filter(badge => badge.category === selectedCategory);
-
-  const getCategoryIcon = (category) => {
-    return BADGE_CATEGORIES[category]?.icon || '🏆';
-  };
 
   return (
     <div className="w-full">
@@ -54,9 +55,9 @@ export default function BadgeDisplay({ userStats, userId, compact = false }) {
             <TrophySolid className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">Sistema de Logros Médicos</h3>
+            <h3 className="text-lg font-semibold text-slate-900">Sistema de logros</h3>
             <p className="text-sm text-slate-600">
-              {badgeData.earnedBadges.length} conquistados, {badgeData.inProgressBadges.length} en progreso
+              {badgeData.earnedBadges.length} logrados · {badgeData.inProgressBadges.length} en progreso
             </p>
           </div>
         </div>
@@ -67,7 +68,7 @@ export default function BadgeDisplay({ userStats, userId, compact = false }) {
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-sm"
         >
           <FireIcon className="h-4 w-4" />
-          Próximos logros
+          Más cercanos
         </button>
       </div>
 
@@ -107,7 +108,7 @@ export default function BadgeDisplay({ userStats, userId, compact = false }) {
         <div className="mb-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
           <h4 className="flex items-center gap-2 text-sm font-semibold text-indigo-900 mb-3">
             <StarIcon className="h-4 w-4" />
-            Próximos logros recomendados
+            Siguientes logros recomendados
           </h4>
           <div className="grid gap-3">
             {badgeData.recommendations.map(badge => (
@@ -133,10 +134,13 @@ export default function BadgeDisplay({ userStats, userId, compact = false }) {
         <div className="mt-8">
           <h4 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
             <ClockIcon className="h-5 w-5 text-slate-600" />
-            Logros en progreso
+            Más cerca de lograr
           </h4>
+          <p className="text-sm text-slate-600 mb-4">
+            Ordenados por avance para que sepas qué desbloquear primero.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {badgeData.inProgressBadges.slice(0, 4).map(badge => (
+            {sortedInProgressBadges.slice(0, 4).map(badge => (
               <ProgressBadgeCard key={badge.id} badge={badge} />
             ))}
           </div>
@@ -234,8 +238,8 @@ function RecommendationCard({ badge }) {
         <div className="text-sm font-semibold text-indigo-900">{Math.round(badge.progressValue)}%</div>
       </div>
       {badge.nextSteps?.length > 0 && (
-        <div className="text-xs text-indigo-600">
-          💡 {badge.nextSteps[0]}
+        <div className="text-xs text-indigo-600 max-w-44">
+          💡 Siguiente acción: {badge.nextSteps[0]}
         </div>
       )}
     </div>

@@ -1,129 +1,133 @@
-// Gamification: Badge & Milestone System for Medical Professionals
-// Designed for SimuPed platform with focus on continuous learning and clinical excellence
+// Sistema de logros basado en métricas disponibles hoy en SimuPed.
+
+const ROLE_ALIASES = {
+  medico: ['medico', 'médico', 'doctor', 'facultativo'],
+  enfermeria: ['enfermeria', 'enfermería', 'nurse'],
+  farmacia: ['farmacia', 'farmaceutico', 'farmacéutico', 'pharmacist'],
+  dual_leader: ['instructor', 'leader', 'lider', 'líder'],
+  dual_collaborator: ['alumno', 'student', 'participante', 'team_member', 'equipo']
+};
 
 export const MEDICAL_BADGES = {
-  // Online Simulation Badges - Specific Medical Scenarios
-  ONLINE_FIRST_SIMULATION: {
-    id: 'online_first_simulation',
-    title: 'Primer Pasos Clínicos',
+  ONLINE_FIRST_ATTEMPT: {
+    id: 'online_first_attempt',
+    title: 'Inicio en simulación online',
     description: 'Completa tu primera simulación online',
-    icon: '🎯',
+    icon: '💻',
     category: 'online',
     type: 'milestone',
-    medicalContext: 'Inicial exploration of clinical environments',
     requirements: { onlineAttempts: 1 },
     color: 'bg-green-500 text-white'
   },
-
-  ONLINE_EMERGENCY_RESPONSE: {
-    id: 'online_emergency_response',
-    title: 'Respuesta de Emergencia',
-    description: 'Maneja 3 casos de emergencia pediátrica',
-    icon: '🚑',
-    category: 'online',
-    type: 'scenario',
-    medicalContext: 'Pediatric emergency management',
-    requirements: { onlineAttempts: 3, scenarioTypes: ['emergency'] },
-    color: 'bg-red-500 text-white'
-  },
-
-  ONLINE_CRITICAL_CARE_MASTER: {
-    id: 'online_critical_care',
-    title: 'Maestro en Cuidados Críticos',
-    description: 'Completa 5 simulaciones de cuidados intensivos',
-    icon: '🏥',
-    category: 'online',
-    type: 'scenario',
-    medicalContext: 'Critical care and ICU management',
-    requirements: { onlineAttempts: 5, scenarioTypes: ['critical_care'] },
+  PRESENCIAL_FIRST_ATTEMPT: {
+    id: 'presencial_first_attempt',
+    title: 'Inicio en simulación presencial',
+    description: 'Completa tu primera simulación presencial',
+    icon: '🤝',
+    category: 'presencial',
+    type: 'milestone',
+    requirements: { presencialAttempts: 1 },
     color: 'bg-blue-500 text-white'
   },
-
-  // Presencial (Dual/Classic) Badges - Team Collaboration
-  PRESENCIAL_TEAM_COLLAB: {
-    id: 'presencial_team_leader',
-    title: 'Líder del Equipo',
-    description: 'Participa en 3 simulaciones presenciales como líder',
-    icon: '👨‍⚕️',
-    category: 'presencial',
+  MEDICO_FIRST_CASE: {
+    id: 'role_medico_first_case',
+    title: 'Práctica en rol médico',
+    description: 'Completa 1 simulación con rol médico',
+    icon: '🩺',
+    category: 'achievement',
     type: 'role',
-    medicalContext: 'Interprofessional leadership',
-    requirements: { presencialAttempts: 3, roles: ['instructor', 'leader'] },
-    color: 'bg-purple-500 text-white'
+    requirements: { role: 'medico', count: 1 },
+    color: 'bg-indigo-500 text-white'
   },
-
-  PRESENCIAL_MEDICATION_SAFETY: {
-    id: 'presencial_med_safety',
-    title: 'Seguridad en Farmacia',
-    description: 'Supera 5 simulaciones con protocolos de prescripción',
+  ENFERMERIA_FIRST_CASE: {
+    id: 'role_enfermeria_first_case',
+    title: 'Práctica en rol enfermería',
+    description: 'Completa 1 simulación con rol enfermería',
+    icon: '🧑‍⚕️',
+    category: 'achievement',
+    type: 'role',
+    requirements: { role: 'enfermeria', count: 1 },
+    color: 'bg-cyan-500 text-white'
+  },
+  FARMACIA_FIRST_CASE: {
+    id: 'role_farmacia_first_case',
+    title: 'Práctica en rol farmacia',
+    description: 'Completa 1 simulación con rol farmacia',
     icon: '💊',
-    category: 'presencial',
-    type: 'expertise',
-    medicalContext: 'Medication safety and prescription protocols',
-    requirements: { presencialAttempts: 5, checkListAccuracy: 90 },
+    category: 'achievement',
+    type: 'role',
+    requirements: { role: 'farmacia', count: 1 },
     color: 'bg-teal-500 text-white'
   },
-
-  // Achievement Level Badges - Based on Total Performance
-  PROFESIONAL_CONSISTENTE: {
-    id: 'profesional_consistente',
-    title: 'Profesional Consistente',
-    description: 'Mantiene promedio >80% en 10 simulaciones',
+  EXCELLENCE_STREAK_3: {
+    id: 'excellence_streak_3',
+    title: 'Desempeño sostenido',
+    description: 'Consigue 3 intentos seguidos con nota ≥85',
+    icon: '🔥',
+    category: 'achievement',
+    type: 'performance',
+    requirements: { scoreStreak: 3, minScore: 85 },
+    color: 'bg-amber-500 text-white'
+  },
+  CLINICAL_CONSISTENCY: {
+    id: 'clinical_consistency_10_80',
+    title: 'Consistencia clínica',
+    description: 'Mantén promedio ≥80 en 10 simulaciones',
     icon: '⭐',
     category: 'achievement',
     type: 'performance',
-    medicalContext: 'Clinical excellence and consistency',
     requirements: { totalAttempts: 10, avgScore: 80 },
     color: 'bg-yellow-500 text-yellow-900'
   },
-
-  MAESTRO_INTERDISCIPLINAR: {
-    id: 'maestro_interdisciplinar',
-    title: 'Maestro Interdisciplinar',
-    description: 'Excelencia en medicina, enfermería y farmacia',
+  HIGH_PERFORMANCE: {
+    id: 'high_performance_20_85',
+    title: 'Alto rendimiento',
+    description: 'Mantén promedio ≥85 en 20 simulaciones',
     icon: '🏆',
     category: 'achievement',
-    type: 'expertise',
-    medicalContext: 'Interdisciplinary clinical mastery',
-    requirements: { rolesDiverse: 3, performanceScore: 85 },
-    color: 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white'
+    type: 'performance',
+    requirements: { totalAttempts: 20, avgScore: 85 },
+    color: 'bg-orange-500 text-white'
   },
-
-  PEDiatra_COMMITTED: {
-    id: 'pediatra_committed',
-    title: 'Pediatra Comprometido',
-    description: 'Completa 20 simulaciones con mejora continua',
-    icon: '🩺',
-    category: 'achievement',
-    type: 'dedication',
-    medicalContext: 'Commitment to pediatric care excellence',
-    requirements: { totalAttempts: 20, improvementRate: 5 },
-    color: 'bg-blue-600 text-white'
-  },
-
-  // Special Recognition Badges - Innovative Features
-  EARLY_ADOPTER: {
-    id: 'early_adopter',
-    title: 'Innovador Temprano',
-    description: 'Primer usuario en probar nuevas funcionalidades',
-    icon: '🌟',
+  CATEGORY_EXPLORER: {
+    id: 'category_explorer_5',
+    title: 'Cobertura clínica inicial',
+    description: 'Participa en 5 categorías distintas',
+    icon: '🧭',
     category: 'special',
-    type: 'recognition',
-    medicalContext: 'Technology adoption for medical education',
-    requirements: { platformAdoption: true, feedbackProvided: 3 },
-    color: 'bg-pink-500 text-white'
+    type: 'exploration',
+    requirements: { categories: 5 },
+    color: 'bg-fuchsia-500 text-white'
   },
-
-  FEEDBACK_CHAMPION: {
-    id: 'feedback_champion',
-    title: 'Campeón de Retroalimentación',
-    description: 'Proporciona feedback detallado en simulaciones',
-    icon: '💬',
+  CATEGORY_MASTER: {
+    id: 'category_master_8',
+    title: 'Cobertura clínica avanzada',
+    description: 'Participa en 8 categorías distintas',
+    icon: '🧠',
     category: 'special',
-    type: 'engagement',
-    medicalContext: 'Active contribution to teaching quality',
-    requirements: { feedbackCount: 10, feedbackQuality: 4.5 },
-    color: 'bg-indigo-500 text-white'
+    type: 'exploration',
+    requirements: { categories: 8 },
+    color: 'bg-purple-600 text-white'
+  },
+  DUAL_LEADER: {
+    id: 'dual_leader_3',
+    title: 'Coordinación dual',
+    description: 'Participa en 3 sesiones duales como instructor/líder',
+    icon: '🎛️',
+    category: 'presencial',
+    type: 'role',
+    requirements: { dualRole: 'dual_leader', count: 3 },
+    color: 'bg-sky-600 text-white'
+  },
+  DUAL_COLLABORATOR: {
+    id: 'dual_collaborator_3',
+    title: 'Participación dual',
+    description: 'Participa en 3 sesiones duales como alumno/equipo',
+    icon: '👥',
+    category: 'presencial',
+    type: 'role',
+    requirements: { dualRole: 'dual_collaborator', count: 3 },
+    color: 'bg-emerald-600 text-white'
   }
 };
 
@@ -131,39 +135,114 @@ export const BADGE_CATEGORIES = {
   online: { label: 'Simulaciones Online', icon: '💻', order: 1 },
   presencial: { label: 'Simulaciones Presenciales', icon: '🤝', order: 2 },
   achievement: { label: 'Logros de Rendimiento', icon: '🎖️', order: 3 },
-  special: { label: 'Reconocimientos Especiales', icon: '✨', order: 4 }
+  special: { label: 'Exploración y participación', icon: '✨', order: 4 }
 };
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function getTotalAttempts(userStats) {
+  return (userStats?.onlineAttempted || 0) + (userStats?.presencialAttempted || 0);
+}
+
+function getRolesPlayed(userStats) {
+  const fromRolesPlayed = Array.isArray(userStats?.rolesPlayed) ? userStats.rolesPlayed : [];
+  const fromProfileRole = userStats?.role ? [userStats.role] : [];
+  return [...fromRolesPlayed, ...fromProfileRole].map(normalizeText).filter(Boolean);
+}
+
+function countRoleMatches(userStats, roleKey) {
+  const roleAliases = ROLE_ALIASES[roleKey] || [];
+  const roles = getRolesPlayed(userStats);
+  return roles.filter((role) => roleAliases.some((alias) => role.includes(alias))).length;
+}
+
+function countDualRoleMatches(userStats, roleKey) {
+  const roleAliases = ROLE_ALIASES[roleKey] || [];
+  const roles = Array.isArray(userStats?.presencialRoles) ? userStats.presencialRoles : [];
+  return roles
+    .map(normalizeText)
+    .filter((role) => roleAliases.some((alias) => role.includes(alias)))
+    .length;
+}
+
+function getDistinctCategoryCount(userStats) {
+  const attempts = Array.isArray(userStats?.scenarioAttempts) ? userStats.scenarioAttempts : [];
+  const categories = new Set();
+
+  for (const attempt of attempts) {
+    const list = [
+      ...(Array.isArray(attempt?.categories) ? attempt.categories : []),
+      ...(Array.isArray(attempt?.scenario_categories) ? attempt.scenario_categories : []),
+      attempt?.category,
+      attempt?.scenario_category
+    ];
+    for (const value of list) {
+      const normalized = normalizeText(value);
+      if (normalized) categories.add(normalized);
+    }
+  }
+
+  return categories.size;
+}
+
+function getScoreStreak(userStats, minScore) {
+  const attempts = Array.isArray(userStats?.scenarioAttempts) ? [...userStats.scenarioAttempts] : [];
+  const withScore = attempts.filter((attempt) => Number.isFinite(Number(attempt?.score)));
+  if (withScore.length === 0) return 0;
+
+  withScore.sort((a, b) => {
+    const aTime = new Date(a?.started_at || a?.finished_at || 0).getTime();
+    const bTime = new Date(b?.started_at || b?.finished_at || 0).getTime();
+    return aTime - bTime;
+  });
+
+  let current = 0;
+  let best = 0;
+  for (const attempt of withScore) {
+    if (Number(attempt.score) >= minScore) {
+      current += 1;
+      best = Math.max(best, current);
+    } else {
+      current = 0;
+    }
+  }
+
+  return best;
+}
 
 // Badge Progress Calculator
 export function calculateBadgeProgress(userStats, userProfile) {
   const earnedBadges = [];
   const inProgressBadges = [];
 
-  Object.values(MEDICAL_BADGES).forEach(badge => {
+  Object.values(MEDICAL_BADGES).forEach((badge) => {
     const progress = getBadgeProgress(badge, userStats, userProfile);
-
     if (progress.earned) {
       earnedBadges.push({
         ...badge,
         earnedDate: progress.earnedDate,
         progressValue: 100
       });
-    } else {
-      inProgressBadges.push({
-        ...badge,
-        progressValue: Math.min(progress.progress * 100, 99),
-        remaining: progress.remaining
-      });
+      return;
     }
+
+    inProgressBadges.push({
+      ...badge,
+      progressValue: Math.min(progress.progress * 100, 99),
+      remaining: progress.remaining
+    });
   });
 
   return { earnedBadges, inProgressBadges };
 }
 
-function getBadgeProgress(badge, userStats, userProfile) {
-  const { requirements } = badge;
-
-  // Default progress structure
+function getBadgeProgress(badge, userStats) {
   const progress = {
     earned: false,
     progress: 0,
@@ -171,142 +250,100 @@ function getBadgeProgress(badge, userStats, userProfile) {
     earnedDate: null
   };
 
+  const totalAttempts = getTotalAttempts(userStats);
+  const avgScore = Number(userStats?.totalAvgScore || 0);
+
   switch (badge.id) {
-    case 'online_first_simulation':
-      progress.earned = userStats.onlineAttempted >= 1;
-      progress.progress = Math.min(userStats.onlineAttempted / 1, 1);
+    case 'online_first_attempt': {
+      const count = userStats?.onlineAttempted || 0;
+      progress.earned = count >= 1;
+      progress.progress = Math.min(count / 1, 1);
       if (!progress.earned) progress.remaining = ['Completa 1 simulación online'];
       break;
-
-    case 'online_emergency_response':
-      const emergencyCount = userStats.scenarioAttempts?.filter(a =>
-        a.scenario_mode?.includes('emergency') ||
-        a.title?.toLowerCase().includes('emergencia')
-      ).length || 0;
-      progress.earned = emergencyCount >= 3;
-      progress.progress = Math.min(emergencyCount / 3, 1);
-      if (!progress.earned) progress.remaining = [`Faltan ${3 - emergencyCount} casos de emergencia`];
+    }
+    case 'presencial_first_attempt': {
+      const count = userStats?.presencialAttempted || 0;
+      progress.earned = count >= 1;
+      progress.progress = Math.min(count / 1, 1);
+      if (!progress.earned) progress.remaining = ['Completa 1 simulación presencial'];
       break;
-
-    case 'online_critical_care':
-      const criticalCount = userStats.scenarioAttempts?.filter(a =>
-        a.scenario_mode?.includes('critical') ||
-        a.title?.toLowerCase().includes('uci')
-      ).length || 0;
-      progress.earned = criticalCount >= 5;
-      progress.progress = Math.min(criticalCount / 5, 1);
-      if (!progress.earned) progress.remaining = [`Faltan ${5 - criticalCount} casos críticos`];
+    }
+    case 'role_medico_first_case': {
+      const count = countRoleMatches(userStats, 'medico');
+      progress.earned = count >= 1;
+      progress.progress = Math.min(count / 1, 1);
+      if (!progress.earned) progress.remaining = ['Completa una simulación con rol médico'];
       break;
-
-    case 'presencial_team_leader':
-      const leaderRoles = userStats.presencialRoles?.filter(r =>
-        ['instructor', 'leader'].includes(r)
-      ).length || 0;
-      progress.earned = leaderRoles >= 3;
-      progress.progress = Math.min(leaderRoles / 3, 1);
-      if (!progress.earned) progress.remaining = [`Faltan ${3 - leaderRoles} sesiones como líder`];
+    }
+    case 'role_enfermeria_first_case': {
+      const count = countRoleMatches(userStats, 'enfermeria');
+      progress.earned = count >= 1;
+      progress.progress = Math.min(count / 1, 1);
+      if (!progress.earned) progress.remaining = ['Completa una simulación con rol enfermería'];
       break;
-
-    case 'presencial_med_safety':
-      const medSafetyCount = userStats.presencialAttempts || 0;
-      const avgAccuracy = userStats.presencialAvgAccuracy || 0;
-      const meetsAccuracy = avgAccuracy >= 90;
-      progress.earned = medSafetyCount >= 5 && meetsAccuracy;
-      progress.progress = meetsAccuracy ?
-        Math.min(medSafetyCount / 5, 1) :
-        Math.min(avgAccuracy / 90, 1);
-      if (!progress.earned) {
-        if (!meetsAccuracy) {
-          progress.remaining = [`Necesitas ${90 - avgAccuracy}% más de precisión`];
-        } else {
-          progress.remaining = [`Faltan ${5 - medSafetyCount} simulaciones presenciales`];
-        }
-      }
+    }
+    case 'role_farmacia_first_case': {
+      const count = countRoleMatches(userStats, 'farmacia');
+      progress.earned = count >= 1;
+      progress.progress = Math.min(count / 1, 1);
+      if (!progress.earned) progress.remaining = ['Completa una simulación con rol farmacia'];
       break;
-
-    case 'profesional_consistente':
-      const totalAttempts = (userStats.onlineAttempted || 0) + (userStats.presencialAttempted || 0);
-      const avgScore = userStats.totalAvgScore || 0;
+    }
+    case 'excellence_streak_3': {
+      const streak = getScoreStreak(userStats, 85);
+      progress.earned = streak >= 3;
+      progress.progress = Math.min(streak / 3, 1);
+      if (!progress.earned) progress.remaining = [`Lleva tu racha a 3 intentos seguidos con nota ≥85 (actual ${streak}/3)`];
+      break;
+    }
+    case 'clinical_consistency_10_80': {
       const meetsScore = avgScore >= 80;
       progress.earned = totalAttempts >= 10 && meetsScore;
-      progress.progress = meetsScore ?
-        Math.min(totalAttempts / 10, 1) :
-        Math.min(avgScore / 80, 1);
+      progress.progress = meetsScore ? Math.min(totalAttempts / 10, 1) : Math.min(avgScore / 80, 1);
       if (!progress.earned) {
-        if (!meetsScore) {
-          progress.remaining = [`Necesitas ${80 - avgScore}% más en tu promedio`];
-        } else {
-          progress.remaining = [`Faltan ${10 - totalAttempts} simulaciones totales`];
-        }
+        if (!meetsScore) progress.remaining = [`Sube tu promedio clínico a 80 (actual ${avgScore.toFixed(1)})`];
+        else progress.remaining = [`Faltan ${Math.max(10 - totalAttempts, 0)} simulaciones`];
       }
       break;
-
-    case 'maestro_interdisciplinar':
-      const uniqueRoles = new Set(userStats.rolesPlayed || []);
-      const roleDiversity = uniqueRoles.size;
-      const meetsRoles = roleDiversity >= 3;
-      const meetsPerformance = userStats.totalAvgScore >= 85;
-      progress.earned = meetsRoles && meetsPerformance;
-      progress.progress = meetsPerformance ?
-        Math.min(roleDiversity / 3, 1) :
-        Math.min((userStats.totalAvgScore || 0) / 85, 1);
+    }
+    case 'high_performance_20_85': {
+      const meetsScore = avgScore >= 85;
+      progress.earned = totalAttempts >= 20 && meetsScore;
+      progress.progress = meetsScore ? Math.min(totalAttempts / 20, 1) : Math.min(avgScore / 85, 1);
       if (!progress.earned) {
-        if (!meetsPerformance) {
-          progress.remaining = [`Necesitas ${85 - (userStats.totalAvgScore || 0)}% más rendimiento`];
-        } else {
-          progress.remaining = [`Necesitas ${3 - roleDiversity} rol(es) más diverso(s)`];
-        }
+        if (!meetsScore) progress.remaining = [`Sube tu promedio clínico a 85 (actual ${avgScore.toFixed(1)})`];
+        else progress.remaining = [`Faltan ${Math.max(20 - totalAttempts, 0)} simulaciones`];
       }
       break;
-
-    case 'pediatra_committed':
-      const totalComplete = (userStats.onlineAttempted || 0) + (userStats.presencialAttempted || 0);
-      const improvement = userStats.improvementRate || 0; // Percentage improvement over time
-      progress.earned = totalComplete >= 20 && improvement >= 5;
-      progress.progress = improvement >= 5 ?
-        Math.min(totalComplete / 20, 1) :
-        Math.min(improvement / 5, 1);
-      if (!progress.earned) {
-        if (improvement < 5) {
-          progress.remaining = [`Necesitas ${5 - improvement}% más mejora`];
-        } else {
-          progress.remaining = [`Faltan ${20 - totalComplete} simulaciones`];
-        }
-      }
+    }
+    case 'category_explorer_5': {
+      const count = getDistinctCategoryCount(userStats);
+      progress.earned = count >= 5;
+      progress.progress = Math.min(count / 5, 1);
+      if (!progress.earned) progress.remaining = [`Participa en ${Math.max(5 - count, 0)} categoría(s) más`];
       break;
-
-    case 'early_adopter':
-      const platformUser = userStats.platformAdopter || false;
-      const feedbackCount = userStats.feedbackCount || 0;
-      progress.earned = platformUser && feedbackCount >= 3;
-      progress.progress = platformUser ?
-        Math.min(feedbackCount / 3, 1) :
-        0; // Early adopters get binary platform access
-      if (!progress.earned) {
-        if (!platformUser) {
-          progress.remaining = ['No eres early adopter de la plataforma'];
-        } else {
-          progress.remaining = [`Necesitas dar ${3 - feedbackCount} feedback(s) más`];
-        }
-      }
+    }
+    case 'category_master_8': {
+      const count = getDistinctCategoryCount(userStats);
+      progress.earned = count >= 8;
+      progress.progress = Math.min(count / 8, 1);
+      if (!progress.earned) progress.remaining = [`Participa en ${Math.max(8 - count, 0)} categoría(s) más`];
       break;
-
-    case 'feedback_champion':
-      const totalFeedback = userStats.feedbackCount || 0;
-      const feedbackQuality = userStats.avgFeedbackRating || 0;
-      progress.earned = totalFeedback >= 10 && feedbackQuality >= 4.5;
-      progress.progress = feedbackQuality >= 4.5 ?
-        Math.min(totalFeedback / 10, 1) :
-        Math.min(feedbackQuality / 4.5, 1);
-      if (!progress.earned) {
-        if (feedbackQuality < 4.5) {
-          progress.remaining = [`Necesitas ${4.5 - feedbackQuality} puntos más en rating`];
-        } else {
-          progress.remaining = [`Necesitas dar ${10 - totalFeedback} feedback(s) más`];
-        }
-      }
+    }
+    case 'dual_leader_3': {
+      const count = countDualRoleMatches(userStats, 'dual_leader');
+      progress.earned = count >= 3;
+      progress.progress = Math.min(count / 3, 1);
+      if (!progress.earned) progress.remaining = [`Faltan ${Math.max(3 - count, 0)} sesión(es) dual como instructor/líder`];
       break;
-
+    }
+    case 'dual_collaborator_3': {
+      const count = countDualRoleMatches(userStats, 'dual_collaborator');
+      progress.earned = count >= 3;
+      progress.progress = Math.min(count / 3, 1);
+      if (!progress.earned) progress.remaining = [`Faltan ${Math.max(3 - count, 0)} sesión(es) dual como alumno/equipo`];
+      break;
+    }
     default:
       break;
   }
@@ -316,53 +353,47 @@ function getBadgeProgress(badge, userStats, userProfile) {
 
 // Badge Recommendations for User Engagement
 export function getBadgeRecommendations(earnedBadges, inProgressBadges) {
-  // Sort in-progress by completion percentage
   const sorted = [...inProgressBadges].sort((a, b) => b.progressValue - a.progressValue);
-
-  // Get next 3 most achievable badges
-  const nextBadges = sorted.slice(0, 3).map(badge => ({
+  return sorted.slice(0, 3).map((badge) => ({
     ...badge,
     nextSteps: getNextStepsForBadge(badge)
   }));
-
-  return nextBadges;
 }
 
 function getNextStepsForBadge(badge) {
   const tips = {
-    online_first_simulation: ['Inicia una simulación online desde la plataforma'],
-    online_emergency_response: ['Busca escenarios de "emergencia pediátrica"', 'Practica manejo de urgencias'],
-    online_critical_care: ['Enfócate en casos de UCI y cuidados intensivos', 'Revisa protocolos de ventilación'],
-    presencial_team_leader: ['Únete a sesiones como instructor', 'Ofrece liderazgo en equipos'],
-    presencial_med_safety: ['Mejora precisión en protocolos de medicación', 'Practica validación farmaceutica'],
-    profesional_consistente: ['Mantén promedio >80%', 'Revisa retroalimentación detallada'],
-    maestro_interdisciplinar: ['Participa en diferentes roles', 'Excel en todos los dominios'],
-    pediatra_committed: ['Completa más simulaciones', 'Busca mejora continua'],
-    early_adopter: ['Prueba nuevas funcionalidades', 'Da feedback temprano'],
-    feedback_champion: ['Proporciona feedback detallado', 'Califica estrellas altas']
+    online_first_attempt: ['Inicia una simulación online desde la plataforma'],
+    presencial_first_attempt: ['Inicia una simulación presencial'],
+    role_medico_first_case: ['Completa un caso con rol médico'],
+    role_enfermeria_first_case: ['Completa un caso con rol enfermería'],
+    role_farmacia_first_case: ['Completa un caso con rol farmacia'],
+    excellence_streak_3: ['Busca 3 intentos consecutivos con nota alta'],
+    clinical_consistency_10_80: ['Acumula más casos manteniendo promedio ≥80'],
+    high_performance_20_85: ['Aumenta volumen y sostén promedio ≥85'],
+    category_explorer_5: ['Explora escenarios de distintas categorías'],
+    category_master_8: ['Amplía tu cobertura de categorías clínicas'],
+    dual_leader_3: ['Participa como instructor/líder en sesiones duales'],
+    dual_collaborator_3: ['Participa como alumno/equipo en sesiones duales']
   };
 
   return tips[badge.id] || ['Continúa practicando'];
 }
 
-// Calculate user impact or contribution score
+// Calculate user impact score
 export function calculateUserImpact(userStats) {
   let impact = 0;
+  const totalAttempts = getTotalAttempts(userStats);
+  const roleDiversity = new Set(getRolesPlayed(userStats)).size;
+  const categoryDiversity = getDistinctCategoryCount(userStats);
+  const avgScore = Number(userStats?.totalAvgScore || 0);
 
-  // Base impact from attempts
-  const totalAttempts = (userStats.onlineAttempted || 0) + (userStats.presencialAttempted || 0);
   impact += totalAttempts * 10;
+  impact += roleDiversity * 20;
+  impact += categoryDiversity * 10;
 
-  // Bonus for high scores
-  if (userStats.totalAvgScore > 90) impact += 100;
-  else if (userStats.totalAvgScore > 80) impact += 50;
-
-  // Bonus for diverse roles
-  const roleDiversity = new Set(userStats.rolesPlayed || []).size;
-  impact += roleDiversity * 25;
-
-  // Feedback contribution
-  impact += (userStats.feedbackCount || 0) * 15;
+  if (avgScore >= 90) impact += 120;
+  else if (avgScore >= 85) impact += 80;
+  else if (avgScore >= 80) impact += 40;
 
   return Math.round(impact);
 }

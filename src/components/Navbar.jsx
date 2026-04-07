@@ -70,26 +70,24 @@ export default function Navbar({ variant = "auto" }) {
       <style>{navbarStyles}</style>
       <header className="fixed top-0 inset-x-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
         <div className="max-w-6xl mx-auto px-4 sm:px-5">
-          <div className="h-16 md:h-20 flex items-center justify-between gap-3">
+          <div className="h-14 md:h-16 flex items-center gap-4">
             {/* Brand */}
             <Link to="/" aria-label="Inicio SimuPed" className="flex items-center gap-2 shrink-0">
               <img
                 src={logo}
                 alt="SimuPed"
-                className="h-12 md:h-14 lg:h-16 w-auto object-contain"
+                className="h-9 md:h-10 w-auto object-contain"
               />
-              {/* Hacemos visible el nombre para mejor contraste/SEO */}
-              <span className="text-[#0F4C81] text-xl md:text-2xl font-bold tracking-tight">SimuPed</span>
+              <span className="text-[#0F4C81] text-lg md:text-xl font-bold tracking-tight">SimuPed</span>
             </Link>
 
-            {/* Desktop nav */}
+            {/* Desktop nav — links principales centrados */}
             <nav
-              className="hidden md:flex items-center justify-center gap-2 px-2 py-1 lg:gap-3 xl:gap-4"
+              className="hidden md:flex flex-1 items-center gap-1"
               aria-label="Navegacion principal"
             >
               <NavItem to="/" label="Inicio" />
 
-              {/* Enlaces a secciones públicas cuando NO hay sesión */}
               {!isPrivate && (
                 <>
                   <AnchorItem href="/#proyecto" label="Proyecto" />
@@ -112,22 +110,31 @@ export default function Navbar({ variant = "auto" }) {
               )}
               {isPrivate && <NavItem to="/evaluacion" label="Evaluación" />}
               {isAdmin && <NavItem to="/admin" label="Admin" emphasize />}
+            </nav>
 
+            {/* Derecha: perfil + salir (o registro + entrar) */}
+            <div className="hidden md:flex items-center gap-2 shrink-0 ml-auto pl-3 border-l border-slate-200">
               {isPrivate ? (
-                <div className="flex flex-wrap items-center gap-3 pl-1">
-                  <NavItem to="/perfil" label="Perfil" />
+                <>
+                  <NavLink
+                    to="/perfil"
+                    className={({ isActive }) =>
+                      `px-3 py-1.5 text-sm font-medium rounded-lg transition nav-link ${isActive ? "text-[#0A3D91] active" : "text-slate-600 hover:text-slate-900"}`
+                    }
+                  >
+                    Perfil
+                  </NavLink>
                   <LogoutButton onClick={handleSignOut} disabled={loggingOut} />
-                </div>
+                </>
               ) : (
-                <div className="flex flex-wrap items-center gap-3 pl-1">
+                <>
                   <NavItem to="/registro" label="Registro" isCTA />
-                  {/* Botón de login que lleva a la tarjeta de login */}
-                  <a href="#login" className="nav-cta inline-flex min-h-[42px] px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: '#0A3D91' }}>
+                  <a href="#login" className="nav-cta inline-flex px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: '#0A3D91' }}>
                     Entrar
                   </a>
-                </div>
+                </>
               )}
-            </nav>
+            </div>
 
             {/* Mobile toggle */}
             <button
@@ -135,7 +142,7 @@ export default function Navbar({ variant = "auto" }) {
               aria-label="Abrir menú"
               aria-expanded={open ? "true" : "false"}
               onClick={() => setOpen(v => !v)}
-              className="md:hidden inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-slate-700"
+              className="md:hidden ml-auto inline-flex items-center justify-center rounded-lg border border-slate-200 px-2.5 py-2 text-slate-600"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 {open ? (
@@ -219,13 +226,13 @@ export default function Navbar({ variant = "auto" }) {
       </header>
 
       {/* Spacer to avoid overlap with fixed header */}
-      <div className="h-16 md:h-20" />
+      <div className="h-14 md:h-16" />
     </>
   );
 }
 
 function NavItem({ to, label, emphasize = false, tag, isCTA = false }) {
-  const base = "inline-flex min-h-[42px] max-w-[120px] flex-col items-center justify-center gap-1 px-3 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg nav-link transition";
+  const base = "inline-flex max-w-[110px] flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg nav-link transition";
   
   if (isCTA) {
     return (
@@ -269,7 +276,7 @@ function LogoutButton({ onClick, disabled }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="nav-cta inline-flex min-h-[42px] items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+      className="nav-cta inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
       aria-label="Cerrar sesión"
       title="Cerrar sesión"
       style={{ background: '#0A3D91' }}

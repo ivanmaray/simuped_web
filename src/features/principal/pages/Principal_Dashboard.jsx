@@ -361,18 +361,21 @@ export default function Principal_Dashboard() {
 
   if (!ready || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-slate-600">Cargando panel…</div>
+      <div className="min-h-screen flex items-center justify-center" style={{background: '#f8f9fb'}}>
+        <div className="flex items-center gap-2 text-slate-400 text-sm">
+          <div className="h-4 w-4 border-2 border-slate-300 border-t-[#0A3D91]/60 rounded-full animate-spin" />
+          Cargando panel…
+        </div>
       </div>
     );
   }
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center" style={{background: '#f8f9fb'}}>
         <div className="text-center">
-          <h1 className="text-xl font-semibold text-slate-800">No has iniciado sesión</h1>
-          <p className="text-slate-600 mt-2">Por favor, vuelve a la página de inicio para acceder.</p>
-          <a href="/" className="inline-block mt-4 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-100">Ir al inicio</a>
+          <h1 className="text-xl font-semibold text-slate-800" style={{letterSpacing: '-0.02em'}}>No has iniciado sesión</h1>
+          <p className="text-slate-400 text-sm mt-2">Por favor, vuelve a la página de inicio para acceder.</p>
+          <a href="/" className="inline-block mt-4 px-4 py-2 rounded-lg text-sm border border-slate-200 hover:bg-slate-50 transition text-slate-600">Ir al inicio</a>
         </div>
       </div>
     );
@@ -382,7 +385,7 @@ export default function Principal_Dashboard() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="min-h-screen text-slate-900" style={{background: '#f8f9fb'}}>
         {errorMsg && (
           <div className="bg-amber-50 text-amber-800 border border-amber-200 px-4 py-2 text-sm">
             {errorMsg}
@@ -392,27 +395,51 @@ export default function Principal_Dashboard() {
         <Navbar />
         {/* Hero */}
         <section className="relative overflow-hidden border-b border-white/10">
+          {/* Fondo degradado enriquecido con noise sutil */}
           <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
           <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
-          <div className="max-w-6xl mx-auto px-5 py-12 text-white relative">
-            <p className="opacity-95">Bienvenido{nombre ? `, ${nombre}` : ""}</p>
-            <h1 className="text-3xl md:text-4xl font-semibold mt-1">Tu panel de simulación clínica</h1>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <span className="px-3 py-1 rounded-full bg-white/10 ring-1 ring-white/30 text-white/90">{email}</span>
+
+          <div className="max-w-6xl mx-auto px-5 py-14 text-white relative">
+            {/* Greeting */}
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm text-white/50 uppercase tracking-widest font-medium" style={{letterSpacing: '0.15em'}}>Panel</span>
+              <span className="text-white/20">·</span>
+              <span className="text-sm text-white/60">SimuPed</span>
+            </div>
+            <h1
+              className="text-4xl md:text-5xl font-semibold text-white leading-tight"
+              style={{letterSpacing: '-0.03em'}}
+            >
+              {nombre ? `Hola, ${nombre}` : "Tu panel clínico"}
+            </h1>
+            <p className="mt-2 text-white/60 text-lg" style={{letterSpacing: '-0.01em'}}>
+              Simulación clínica interprofesional pediátrica
+            </p>
+
+            {/* Pills de identidad */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="px-3 py-1 rounded-full text-xs bg-white/8 ring-1 ring-white/15 text-white/70 backdrop-blur-sm"
+                style={{background: 'rgba(255,255,255,0.08)'}}>
+                {email}
+              </span>
               {roleLabel ? (
-                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ring-1 bg-white/10 ring-white/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ring-1 text-white/90"
+                  style={{background: 'rgba(79,163,227,0.18)', borderColor: 'rgba(79,163,227,0.35)'}}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-300/80" />
                   {formatRole(roleLabel)}
                 </span>
               ) : null}
               {isAdmin ? (
-                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold ring-1 bg-white/10 ring-white/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ring-1"
+                  style={{background: 'rgba(250,204,21,0.15)', borderColor: 'rgba(250,204,21,0.35)', color: 'rgba(253,224,71,0.95)'}}>
                   Admin
                 </span>
               ) : null}
             </div>
-            <div className="mt-6 space-y-6">
+
+            <div className="mt-8">
             {/* Quick Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <MetricCard
                 icon={ChartBarIcon}
                 label="Online realizados"
@@ -442,14 +469,17 @@ export default function Principal_Dashboard() {
             </div>
 
 
-          </div>
+            </div>
           </div>
         </section>
 
-        <main className="max-w-6xl mx-auto px-5 py-8">
+        <main className="max-w-6xl mx-auto px-5 py-10">
           {/* Accesos rápidos */}
-          <h2 className="text-xl font-semibold mb-4 text-slate-800">Accesos rápidos</h2>
-          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          <div className="flex items-center gap-3 mb-5">
+            <h2 className="text-lg font-semibold text-slate-900" style={{letterSpacing: '-0.02em'}}>Accesos rápidos</h2>
+            <div className="flex-1 h-px bg-slate-100" />
+          </div>
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <Card
               title="Simulación online"
               description="Escoge un escenario y practica con casos interactivos."
@@ -490,45 +520,51 @@ export default function Principal_Dashboard() {
           </section>
 
           {/* Simulación presencial (modos + acciones) */}
-          <section id="presencial" className="mt-8">
-            <article className="relative rounded-[28px] border border-white/60 bg-white/70 backdrop-blur-xl p-6 shadow-[0_30px_60px_-40px_rgba(15,23,42,0.7)]">
-              <div className="absolute inset-0 rounded-[28px] border border-white/40 pointer-events-none" />
-              <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center md:justify-between">
+          <section id="presencial" className="mt-10">
+            <div className="flex items-center gap-3 mb-5">
+              <h2 className="text-lg font-semibold text-slate-900" style={{letterSpacing: '-0.02em'}}>Simulación presencial</h2>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            <article className="relative rounded-2xl border bg-white p-6 shadow-sm" style={{borderColor: 'rgba(0,0,0,0.08)', boxShadow: 'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 4px 16px, rgba(0,0,0,0.03) 0px 16px 32px -8px'}}>
+              <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="shrink-0 h-12 w-12 rounded-2xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/20 via-[#1E6ACB]/15 to-[#4FA3E3]/20 shadow-inner">
-                    <UsersIcon className="h-6 w-6 text-[#0A3D91]" />
+                  <div className="shrink-0 h-10 w-10 rounded-xl grid place-items-center" style={{background: 'rgba(10,61,145,0.08)'}}>
+                    <UsersIcon className="h-5 w-5 text-[#0A3D91]" />
                   </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Simulación presencial</h2>
-                    <p className="text-sm text-slate-600">Organiza y ejecuta tus sesiones duales o clásicas con un solo vistazo.</p>
-                  </div>
+                  <p className="text-sm text-slate-500">Organiza y ejecuta sesiones duales o clásicas con un solo vistazo.</p>
                 </div>
                 {isAdmin && (
-                  <span className="px-3 py-1 rounded-full text-xs font-medium ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">Versión instructor</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">Versión instructor</span>
                 )}
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-white/70 bg-white/75 backdrop-blur-sm p-4 shadow-[0_15px_30px_-25px_rgba(15,23,42,0.5)]">
-                    <div className="font-medium">Dual · 2 pantallas</div>
-                    <ul className="mt-2 list-disc ml-5 space-y-1 text-[15px] text-slate-600">
-                      <li>El instructor crea la sesión y comparte el <span className="font-medium">código</span> con el equipo.</li>
-                      <li>Los alumnos ven la sesión en una pantalla sincronizada en tiempo real.</li>
-                      <li>Checklist, cronómetro y variables se controlan desde la consola.</li>
+                <div className="space-y-3">
+                  <div className="rounded-xl border p-4" style={{borderColor: 'rgba(0,0,0,0.07)', background: '#fafafa'}}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-semibold text-slate-800">Dual</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-50 text-sky-700 ring-1 ring-sky-200">2 pantallas</span>
+                    </div>
+                    <ul className="space-y-1 text-sm text-slate-500">
+                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>El instructor crea la sesión y comparte el <span className="font-medium text-slate-600">código</span> con el equipo.</li>
+                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Los alumnos ven la sesión en una pantalla sincronizada en tiempo real.</li>
+                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Checklist, cronómetro y variables desde la consola.</li>
                     </ul>
                   </div>
 
-                  <div className="rounded-2xl border border-white/70 bg-white/75 backdrop-blur-sm p-4 shadow-[0_15px_30px_-25px_rgba(15,23,42,0.5)]">
-                    <div className="font-medium">Clásico · 1 pantalla</div>
-                    <ul className="mt-2 list-disc ml-5 space-y-1 text-[15px] text-slate-600">
-                      <li>Una consola central permite guiar la sesión sin dispositivos adicionales.</li>
-                      <li>No requiere códigos de acceso: ideal para formaciones rápidas.</li>
-                      <li>Genera checklist y notas para el debrief al finalizar.</li>
+                  <div className="rounded-xl border p-4" style={{borderColor: 'rgba(0,0,0,0.07)', background: '#fafafa'}}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-semibold text-slate-800">Clásico</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200">1 pantalla</span>
+                    </div>
+                    <ul className="space-y-1 text-sm text-slate-500">
+                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Consola central sin dispositivos adicionales.</li>
+                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Sin códigos de acceso, ideal para formaciones rápidas.</li>
+                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Genera checklist y notas para el debrief.</li>
                     </ul>
                   </div>
 
-                  <p className="text-[15px] mt-4 text-slate-600">Ambos modos generan un <span className="font-medium">informe detallado</span> con checklist, intervenciones y tiempos.</p>
+                  <p className="text-sm text-slate-400">Ambos modos generan un <span className="font-medium text-slate-500">informe detallado</span> con checklist, intervenciones y tiempos.</p>
                 </div>
 
                 <div className="space-y-4">
@@ -550,7 +586,7 @@ export default function Principal_Dashboard() {
                   </div>
 
                   {isAdmin ? (
-                    <div className="rounded-2xl border border-white/70 bg-white/80 backdrop-blur p-5 space-y-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.55)]">
+                    <div className="rounded-xl border p-4 space-y-3" style={{borderColor: 'rgba(0,0,0,0.08)'}}>
                       <Link
                         to="/presencial/flow/dual"
                         className="block w-full px-4 py-2.5 rounded-xl text-center font-semibold text-white bg-gradient-to-r from-[#0A3D91] to-[#1E6ACB] shadow hover:shadow-lg hover:-translate-y-0.5 transition"
@@ -608,76 +644,81 @@ export default function Principal_Dashboard() {
 
           {/* Perfil CTA */}
           <section className="mt-10">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold mb-1">Tu perfil</h2>
-                  <p className="text-slate-700">Gestiona tu nombre, unidad y rol.</p>
+            <div className="rounded-xl border bg-white p-5 flex items-center justify-between gap-4" style={{borderColor: 'rgba(0,0,0,0.08)', boxShadow: 'rgba(0,0,0,0.04) 0px 2px 8px'}}>
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl grid place-items-center shrink-0" style={{background: 'rgba(10,61,145,0.07)'}}>
+                  <AcademicCapIcon className="h-5 w-5 text-[#0A3D91]" />
                 </div>
-                <Link
-                  to="/perfil"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition"
-                >
-                  Ir a Perfil
-                </Link>
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Tu perfil</p>
+                  <p className="text-xs text-slate-400">Nombre, unidad y rol profesional</p>
+                </div>
               </div>
+              <Link
+                to="/perfil"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium border transition hover:bg-slate-50"
+                style={{borderColor: 'rgba(0,0,0,0.12)', color: '#334155'}}
+              >
+                Ir a Perfil <ChevronRightIcon className="h-3.5 w-3.5 opacity-50" />
+              </Link>
             </div>
           </section>
 
           {/* Tus escenarios (solo empezados/completados) */}
           {loadingEsc ? (
             <section className="mt-10">
-              <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600">Cargando escenarios…</div>
+              <div className="rounded-xl border bg-white p-6 text-slate-400 text-sm" style={{borderColor: 'rgba(0,0,0,0.08)'}}>Cargando escenarios…</div>
             </section>
           ) : escenarios.length > 0 ? (
             <section className="mt-10">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-slate-800">Tus escenarios recientes</h2>
-                <Link to="/simulacion" className="text-[#0A3D91] hover:underline text-sm">Ver todos</Link>
+              <div className="flex items-center gap-3 mb-5">
+                <h2 className="text-lg font-semibold text-slate-900" style={{letterSpacing: '-0.02em'}}>Escenarios recientes</h2>
+                <div className="flex-1 h-px bg-slate-100" />
+                <Link to="/simulacion" className="text-xs font-medium text-[#0A3D91]/70 hover:text-[#0A3D91] flex items-center gap-1 transition">
+                  Ver todos <ChevronRightIcon className="h-3.5 w-3.5" />
+                </Link>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {escenarios.slice(0, 6).map((sc) => (
-                  <article key={sc.id} className="group relative rounded-3xl border border-white/80 bg-white/95 p-5 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.6)] hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.6)] hover:-translate-y-1 transition">
-                    <Link to={`/simulacion/${sc.id}/confirm`} className="absolute inset-0" aria-hidden="true" tabIndex={-1} />
+                  <article key={sc.id} className="group relative rounded-xl border bg-white p-5 hover:-translate-y-0.5 transition-all duration-200"
+                    style={{borderColor: 'rgba(0,0,0,0.08)', boxShadow: 'rgba(0,0,0,0.06) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 8px'}}>
+                    <Link to={`/simulacion/${sc.id}/confirm`} className="absolute inset-0 rounded-xl" aria-hidden="true" tabIndex={-1} />
                     <div className="relative z-10">
-                      <header className="mb-3 flex items-start gap-3">
-                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#0A3D91]/15 via-[#1E6ACB]/10 to-[#4FA3E3]/15 grid place-items-center">
-                          <PlayCircleIcon className="h-5 w-5 text-[#0A3D91]" />
+                      <header className="mb-4 flex items-start gap-3">
+                        <div className="h-8 w-8 rounded-lg grid place-items-center shrink-0" style={{background: 'rgba(10,61,145,0.08)'}}>
+                          <PlayCircleIcon className="h-4 w-4 text-[#0A3D91]" />
                         </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-slate-800 line-clamp-2 leading-snug group-hover:text-[#0A3D91] transition-colors" style={{letterSpacing: '-0.01em'}}>
                             {sc.title}
                           </h3>
-                          <p className="text-sm text-slate-600 line-clamp-2">{sc.summary || ""}</p>
+                          {sc.summary && <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{sc.summary}</p>}
                         </div>
                       </header>
 
-                      <div className="flex flex-wrap items-center gap-2 mb-4 text-xs text-slate-600">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-4">
                         {sc.level ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-50 text-slate-500 ring-1 ring-slate-200">
                             {formatLevel(sc.level)}
                           </span>
                         ) : null}
                         {sc.estimated_minutes ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
-                            ~{sc.estimated_minutes} min
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-50 text-slate-500 ring-1 ring-slate-200">
+                            {sc.estimated_minutes} min
                           </span>
                         ) : null}
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
-                          Intentos: {sc.attempts_count ?? 0}{typeof sc.max_attempts === 'number' ? `/${sc.max_attempts}` : ''}
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-50 text-slate-500 ring-1 ring-slate-200">
+                          {sc.attempts_count ?? 0}{typeof sc.max_attempts === 'number' ? `/${sc.max_attempts}` : ''} intentos
                         </span>
                       </div>
 
-                      <footer className="flex items-center justify-between text-sm">
-                        <span className="inline-flex items-center gap-1 font-medium text-[#0A3D91]">
-                          Continuar
-                          <ChevronRightIcon className="h-4 w-4" />
+                      <footer className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-[#0A3D91]">
+                          Continuar <ChevronRightIcon className="h-3.5 w-3.5" />
                         </span>
                         {sc.last_started_at ? (
-                          <span className="text-xs text-slate-500">Último intento: {formatDateHuman(sc.last_started_at)}</span>
-                        ) : (
-                          <span className="text-xs text-slate-400">Sin intentos</span>
-                        )}
+                          <span className="text-[10px] text-slate-400">{formatDateHuman(sc.last_started_at)}</span>
+                        ) : null}
                       </footer>
                     </div>
                   </article>
@@ -686,13 +727,16 @@ export default function Principal_Dashboard() {
             </section>
           ) : (
             <section className="mt-10">
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
-                <p>Aún no has comenzado ningún escenario. Empieza en "Simulación online" para ver aquí tu progreso.</p>
+              <div className="rounded-xl border bg-white p-8 text-center" style={{borderColor: 'rgba(0,0,0,0.08)'}}>
+                <div className="h-12 w-12 rounded-xl grid place-items-center mx-auto mb-4" style={{background: 'rgba(10,61,145,0.07)'}}>
+                  <PlayCircleIcon className="h-6 w-6 text-[#0A3D91]" />
+                </div>
+                <p className="text-sm text-slate-500 mb-4">Aún no has comenzado ningún escenario. Empieza en "Simulación online" para ver aquí tu progreso.</p>
                 <Link
                   to="/simulacion"
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow-sm"
                 >
-                  Ir a simulaciones
+                  Ir a simulaciones <ChevronRightIcon className="h-4 w-4" />
                 </Link>
               </div>
             </section>
@@ -715,37 +759,40 @@ export default function Principal_Dashboard() {
 
 function Card({ title, description, to, stateObj, badge, badgeColor, secondaryBadge, secondaryBadgeColor, icon: Icon, titleAttr }) {
   const content = (
-    <div className="flex items-start gap-4">
-      <div className="shrink-0 h-12 w-12 rounded-xl grid place-items-center bg-gradient-to-br from-[#0A3D91]/15 via-[#1E6ACB]/10 to-[#4FA3E3]/15 shadow-inner">
-        {Icon ? <Icon className="h-6 w-6 text-[#0A3D91] drop-shadow-sm" /> : null}
+    <div className="flex flex-col h-full">
+      <div className="flex items-start gap-3 mb-3">
+        <div className="shrink-0 h-9 w-9 rounded-xl grid place-items-center" style={{background: 'rgba(10,61,145,0.08)'}}>
+          {Icon ? <Icon className="h-5 w-5 text-[#0A3D91]" /> : null}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-slate-800 group-hover:text-[#0A3D91] transition-colors leading-snug" style={{letterSpacing: '-0.01em'}}>{title}</h3>
+        </div>
       </div>
-      <div className="flex-1">
-        <h3 className="text-lg font-semibold group-hover:underline decoration-2 decoration-[#0A3D91]/40">{title}</h3>
-        <p className="text-slate-600 mt-1">{description}</p>
+      <p className="text-xs text-slate-400 leading-relaxed flex-1">{description}</p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
         {badge ? (
-          <span className={`mt-2 inline-flex w-fit rounded-full px-2 py-0.5 text-[8px] font-semibold uppercase tracking-[0.2em] whitespace-nowrap ring-1 ring-black/10 ${badgeColor}`}>
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider ring-1 ring-black/10 ${badgeColor}`}>
             {badge}
           </span>
         ) : null}
         {secondaryBadge ? (
-          <span className={`mt-2 ml-2 inline-flex w-fit flex-col items-center rounded-full px-2 py-0.5 text-center text-[8px] font-semibold uppercase leading-tight tracking-[0.2em] ring-1 ring-black/10 ${secondaryBadgeColor || "bg-slate-200 text-slate-700"}`}>
-            {typeof secondaryBadge === "string" && secondaryBadge.trim().toLowerCase() === "no disponible para alumnos"
-              ? (
-                <>
-                  <span>No disponible</span>
-                  <span>para alumnos</span>
-                </>
-              )
-              : secondaryBadge}
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider ring-1 ring-black/10 ${secondaryBadgeColor || "bg-slate-200 text-slate-700"}`}>
+            {typeof secondaryBadge === "string" && secondaryBadge.trim().toLowerCase() === "no disponible para alumnos" ? "Solo admin" : secondaryBadge}
           </span>
         ) : null}
+        {!badge && !secondaryBadge && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#0A3D91]/70 group-hover:text-[#0A3D91] transition-colors mt-1">
+            Acceder <ChevronRightIcon className="h-3 w-3" />
+          </span>
+        )}
       </div>
     </div>
   );
   if (!to) {
     return (
       <div
-        className="group block rounded-3xl border border-slate-200 bg-white p-6 shadow-sm opacity-70 cursor-not-allowed"
+        className="group flex rounded-xl border bg-white p-5 opacity-60 cursor-not-allowed"
+        style={{borderColor: 'rgba(0,0,0,0.08)'}}
         title={titleAttr || "Disponible próximamente"}
       >
         {content}
@@ -757,7 +804,8 @@ function Card({ title, description, to, stateObj, badge, badgeColor, secondaryBa
       to={to}
       state={stateObj}
       title={titleAttr || title}
-      className="group block rounded-3xl border border-transparent bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.4)] hover:shadow-[0_25px_45px_-25px_rgba(15,23,42,0.35)] hover:-translate-y-0.5 transition"
+      className="group flex rounded-xl border bg-white p-5 hover:-translate-y-0.5 transition-all duration-200"
+      style={{borderColor: 'rgba(0,0,0,0.08)', boxShadow: 'rgba(0,0,0,0.06) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 8px'}}
     >
       {content}
     </Link>
@@ -766,16 +814,17 @@ function Card({ title, description, to, stateObj, badge, badgeColor, secondaryBa
 
 function MetricCard({ icon: Icon, label, value, helper, chart }) {
   return (
-    <div className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm px-4 py-3 shadow-[0_10px_25px_-20px_rgba(15,23,42,0.6)]">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 shrink-0 rounded-xl bg-white/15 grid place-items-center">
-          {Icon ? <Icon className="h-5 w-5 text-white/90" /> : null}
+    <div className="rounded-xl px-4 py-3.5 backdrop-blur-sm"
+      style={{background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)'}}>
+      <div className="flex items-start gap-3">
+        <div className="h-8 w-8 shrink-0 rounded-lg grid place-items-center" style={{background: 'rgba(255,255,255,0.1)'}}>
+          {Icon ? <Icon className="h-4 w-4 text-white/80" /> : null}
         </div>
-        <div className="flex-1">
-          <p className="text-xs uppercase tracking-wide text-white/70">{label}</p>
-          <p className="text-lg font-semibold text-white leading-tight">{value}</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-1" style={{letterSpacing: '0.1em'}}>{label}</p>
+          <p className="text-base font-semibold text-white leading-tight truncate" style={{letterSpacing: '-0.02em'}}>{value}</p>
           {chart && <div className="mt-2">{chart}</div>}
-          {helper && <p className="text-[11px] text-white/70 mt-0.5">{helper}</p>}
+          {helper && <p className="text-[10px] text-white/40 mt-1 leading-relaxed">{helper}</p>}
         </div>
       </div>
     </div>
@@ -785,14 +834,14 @@ function MetricCard({ icon: Icon, label, value, helper, chart }) {
 // Progress Chart Component
 function ProgressChart({ progress }) {
   return (
-    <div className="space-y-1">
-      <div className="w-full bg-white/20 rounded-full h-1.5">
+    <div className="space-y-1 mt-1">
+      <div className="w-full rounded-full h-1" style={{background: 'rgba(255,255,255,0.12)'}}>
         <div
-          className="bg-white/70 h-1.5 rounded-full transition-all duration-300"
-          style={{ width: `${Math.min(progress, 100)}%` }}
+          className="h-1 rounded-full transition-all duration-500"
+          style={{ width: `${Math.min(progress, 100)}%`, background: 'rgba(255,255,255,0.55)' }}
         />
       </div>
-      <p className="text-[10px] text-white/60 text-right">{Math.round(progress)}%</p>
+      <p className="text-[9px] text-white/35 text-right">{Math.round(progress)}%</p>
     </div>
   );
 }

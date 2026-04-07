@@ -16,11 +16,11 @@ import {
 console.debug("[PresencialListado] componente cargado");
 
 const estadoStyles = {
-  "Disponible": { label: "Disponible", color: "bg-[#0A3D91]/10 text-[#0A3D91] font-medium", clickable: true },
-  "En construcción: en proceso": { label: "En construcción: en proceso", color: "bg-[#4FA3E3]/10 text-[#1E6ACB] font-medium", clickable: true },
+  "Disponible": { label: "Disponible", color: "bg-green-100 text-green-800", clickable: true },
+  "En construcción: en proceso": { label: "En construcción: en proceso", color: "bg-yellow-100 text-yellow-800", clickable: true },
   "En construcción: sin iniciar": {
     label: "En construcción: sin iniciar",
-    color: "bg-slate-200 text-slate-600 font-medium",
+    color: "bg-red-100 text-red-800",
     clickable: false
   },
 };
@@ -228,7 +228,7 @@ export default function Presencial_Listado() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
               <p className="text-white/70 text-sm uppercase tracking-wide">Simulación presencial</p>
-              <h1 className="text-3xl md:text-4xl font-semibold">{isDual ? 'Modo dual (instructor + alumnos)' : 'Consola presencial'}</h1>
+              <h1 className="text-3xl md:text-4xl font-semibold">{isDual ? 'Modo dual (instructor + alumnos)' : 'Simulación presencial'}</h1>
               <p className="opacity-95 max-w-2xl text-lg">
                 {isDual
                   ? 'Selecciona un escenario, genera el código dual y sincroniza pantallas para coordinar al equipo en tiempo real.'
@@ -373,8 +373,6 @@ export default function Presencial_Listado() {
               const estado = esc.status || "Disponible";
               const estadoStyle = estadoStyles[estado] || { label: estado, color: "bg-gray-100 text-gray-800", clickable: true };
               const isClickable = estadoStyle.clickable;
-              const modeArr = Array.isArray(esc.mode) ? esc.mode : (esc.mode ? [esc.mode] : []);
-
               const handleNavigate = () => {
                 if (!isClickable) return;
                 if (isDual) {
@@ -392,33 +390,20 @@ export default function Presencial_Listado() {
                 >
                   <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-br from-[#0A3D91]/8 via-transparent to-transparent" aria-hidden="true" />
                   <div className="relative z-10 flex flex-col h-full gap-4">
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
                       <div>
-                        <div className="inline-flex items-center gap-2 rounded-full bg-[#0A3D91]/10 px-3 py-1 text-xs font-medium text-[#0A3D91]">
-                          <AcademicCapIcon className="h-4 w-4" />
-                          Escenario presencial
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
+                            {esc.title || "Escenario sin título"}
+                          </h3>
+                          <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${estadoStyle.color}`}>
+                            {estadoStyle.label}
+                          </span>
                         </div>
-                        <h3 className="mt-3 text-lg font-semibold text-slate-900 group-hover:underline decoration-[#0A3D91]/40">
-                          {esc.title || "Escenario sin título"}
-                        </h3>
-                      </div>
-                      <div className="flex flex-wrap justify-end gap-1">
-                        {modeArr.map((m) => {
-                          const k = String(m || '').toLowerCase();
-                          const label = k === 'online' ? 'Online' : k === 'presencial' ? 'Presencial' : (m || '');
-                          return (
-                            <span
-                              key={label}
-                              className="px-2.5 py-0.5 rounded-full text-[11px] bg-white/80 ring-1 ring-slate-200 text-slate-700"
-                            >
-                              {label}
-                            </span>
-                          );
-                        })}
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-600 leading-relaxed max-h-20 overflow-hidden">
+                    <p className="text-sm text-slate-600 leading-relaxed">
                       {esc.summary || 'Escenario presencial con checklist y cronómetro integrado.'}
                     </p>
 
@@ -438,10 +423,6 @@ export default function Presencial_Listado() {
 
                     <div className="mt-auto space-y-3 pt-2">
                       <div className="flex items-center justify-between gap-3">
-                        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${estadoStyle.color}`}>
-                          <span className="inline-block h-2 w-2 rounded-full bg-current opacity-70" />
-                          {estadoStyle.label}
-                        </span>
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
