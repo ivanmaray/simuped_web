@@ -120,6 +120,13 @@ export default function Principal_Dashboard() {
   useEffect(() => {
     let mounted = true;
 
+    // Seguro anti-cuelgue: si algo tarda más de 12 s, limpia el spinner
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+        setErrorMsg("No se pudo cargar el panel. Comprueba tu conexión e intenta recargar.");
+      }
+    }, 12000);
 
     async function init() {
       if (!ready) return; // espera a que AuthProvider resuelva
@@ -157,6 +164,7 @@ export default function Principal_Dashboard() {
         reportError("Dashboard.init", e, { userId: session?.user?.id });
         setErrorMsg(e?.message || "Error inicializando el panel");
       } finally {
+        clearTimeout(safetyTimer);
         if (mounted) setLoading(false);
       }
     }
@@ -245,7 +253,8 @@ export default function Principal_Dashboard() {
             )
           `)
           .eq("user_id", session.user.id)
-          .order("started_at", { ascending: false });
+          .order("started_at", { ascending: false })
+          .abortSignal(AbortSignal.timeout(8000));
 
         if (attemptsError) {
           reportError("Dashboard.attempts", attemptsError);
@@ -305,7 +314,8 @@ export default function Principal_Dashboard() {
 
         const { data: totalScenarios, error: totalError } = await supabase
           .from("scenarios")
-          .select("id, mode");
+          .select("id, mode")
+          .abortSignal(AbortSignal.timeout(8000));
 
         if (totalError) {
           reportWarning("Dashboard.scenarioTotals", totalError);
@@ -336,6 +346,7 @@ export default function Principal_Dashboard() {
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
     };
   }, [ready, session, navigate]);
 
