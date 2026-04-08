@@ -97,186 +97,149 @@ export default function Online_Confirm() {
       setLoading(true);
       setErrorMsg("");
 
-      // 1) Sesión
-      const { data: sdata, error: sErr } = await supabase.auth.getSession();
-      if (sErr) console.error("[Confirm] getSession error:", sErr);
-      const sess = sdata?.session ?? null;
-
-      if (!mounted) return;
-      setSession(sess);
-
-      if (!sess) {
-        setLoading(false);
-        // No sesión: vuelve a landing
-        navigate("/", { replace: true });
-        return;
-      }
-
-      // 2) Perfil (para mostrar rol en cabecera)
-      const { data: prof, error: pErr } = await supabase
-        .from("profiles")
-        .select("nombre, rol, is_admin")
-        .eq("id", sess.user.id)
-        .maybeSingle();
-      if (pErr) {
-        console.warn("[Confirm] perfiles error (no bloqueante):", pErr);
-      } else {
-        setPerfil({
-          nombre: prof?.nombre ?? "",
-          rol: prof?.rol ?? (sess.user?.user_metadata?.rol ?? ""),
-        });
-        setEsAdmin(!!prof?.is_admin); // true si is_admin es true
-        // Normalizar y guardar el rol del usuario para filtrar objetivos
-        let r = (prof?.rol ?? (sess.user?.user_metadata?.rol ?? "")).toString().toLowerCase();
-        if (r.includes("medic")) r = "medico";
-        else if (r.includes("enfer")) r = "enfermeria";
-        else if (r.includes("farm")) r = "farmacia";
-        setUserRole(r);
-      }
-
-      // 3) Cargar escenario
-      // Cargar escenario (no solicitar `time_limit_minutes` porque puede no existir en algunas migraciones)
-      const { data: esc, error: eErr } = await supabase
-        .from("scenarios")
-        .select("id, title, summary, level, mode, status, estimated_minutes")
-        .eq("id", scenarioId)
-        .maybeSingle();
-
-      if (!mounted) return;
-
-      if (eErr) {
-        console.error("[Confirm] escenario error:", eErr);
-        setErrorMsg(eErr.message || "No se pudo cargar el escenario.");
-        setScenario(null);
-        setLoading(false);
-        return;
-      }
-      if (!esc) {
-        setErrorMsg("Escenario no encontrado.");
-        setScenario(null);
-        setLoading(false);
-        return;
-      }
-      setScenario(esc);
-
-      // 3b) Cargar case brief (pre-brief general)
-      const { data: b, error: bErr } = await supabase
-        .from("case_briefs")
-        .select("*")
-        .eq("scenario_id", scenarioId)
-        .maybeSingle();
-      if (bErr) {
-        console.warn("[Confirm] brief error (no bloqueante):", bErr);
-        setBrief(null);
-      } else {
-        setBrief(b || null);
-      }
-
-      // 3c) Cargar lecturas / bibliografía recomendada
       try {
+        // 1) Sesión
+        const { data: sdata, error: sErr } = await supabase.auth.getSession();
+        if (sErr) console.error("[Confirm] getSession error:", sErr);
+        const sess = sdata?.session ?? null;
+
+        if (!mounted) return;
+        setSession(sess);
+
+        if (!sess) {
+          navigate("/", { replace: true });
+          return;
+        }
+
+        // 2+3) Perfil + escenario + brief en paralelo
+        const [profRes, escRes, briefRes] = await Promise.all([
+          supabase.from("profiles").select("nombre, rol, is_admin").eq("id", sess.user.id).maybeSingle(),
+          supabase.from("scenarios").select("id, title, summary, level, mode, status, estimated_minutes").eq("id", scenarioId).maybeSingle(),
+          supabase.from("case_briefs").select("*").eq("scenario_id", scenarioId).maybeSingle(),
+        ]);
+
+        if (!mounted) return;
+
+        // Perfil
+        if (profRes.error) {
+          console.warn("[Confirm] perfiles error (no bloqueante):", profRes.error);
+        } else {
+          const prof = profRes.data;
+          setPerfil({
+            nombre: prof?.nombre ?? "",
+            rol: prof?.rol ?? (sess.user?.user_metadata?.rol ?? ""),
+          });
+          setEsAdmin(!!prof?.is_admin);
+          let r = (prof?.rol ?? (sess.user?.user_metadata?.rol ?? "")).toString().toLowerCase();
+          if (r.includes("medic")) r = "medico";
+          else if (r.includes("enfer")) r = "enfermeria";
+          else if (r.includes("farm")) r = "farmacia";
+          setUserRole(r);
+        }
+
+        // Escenario (bloqueante)
+        if (escRes.error) {
+          console.error("[Confirm] escenario error:", escRes.error);
+          setErrorMsg(escRes.error.message || "No se pudo cargar el escenario.");
+          setScenario(null);
+          return;
+        }
+        if (!escRes.data) {
+          setErrorMsg("Escenario no encontrado.");
+          setScenario(null);
+          return;
+        }
+        setScenario(escRes.data);
+
+        // Brief (no bloqueante)
+        if (briefRes.error) {
+          console.warn("[Confirm] brief error (no bloqueante):", briefRes.error);
+          setBrief(null);
+        } else {
+          setBrief(briefRes.data || null);
+        }
+
+        // 3c) Recursos — en paralelo con intentos
         setLoadingResources(true);
-        const { data: res, error: rErr } = await supabase
-          .from("case_resources")
-          .select("id, title, url, source, type, year, free_access")
-          .eq("scenario_id", scenarioId)
-          .order("title", { ascending: true })
-          .limit(12);
-        if (rErr) {
-          console.warn("[Confirm] resources error (no bloqueante):", rErr);
+        const [resRes, attCount] = await Promise.all([
+          supabase.from("case_resources").select("id, title, url, source, type, year, free_access").eq("scenario_id", scenarioId).order("title", { ascending: true }).limit(12),
+          supabase.from("attempts").select("id", { count: "exact", head: true }).eq("user_id", sess.user.id).eq("scenario_id", scenarioId),
+        ]);
+
+        if (!mounted) return;
+
+        // Recursos
+        setLoadingResources(false);
+        if (resRes.error) {
+          console.warn("[Confirm] resources error (no bloqueante):", resRes.error);
           setResources([]);
         } else {
-          setResources(res || []);
+          setResources(resRes.data || []);
         }
-      } finally {
-        setLoadingResources(false);
-      }
 
-      // 4) Contar intentos del usuario para este escenario
-      const { count, error: cErr } = await supabase
-        .from("attempts")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", sess.user.id)
-        .eq("scenario_id", scenarioId);
+        // Intentos count
+        if (attCount.error) {
+          console.error("[Confirm] attempts count error:", attCount.error);
+          setErrorMsg(attCount.error.message || "No se pudieron obtener los intentos.");
+          setAttemptsCount(0);
+        } else {
+          setAttemptsCount(attCount.count ?? 0);
+          setOpenAttemptId(null);
 
-      if (!mounted) return;
-
-      if (cErr) {
-        console.error("[Confirm] attempts count error:", cErr);
-        setErrorMsg(cErr.message || "No se pudieron obtener los intentos.");
-        setAttemptsCount(0);
-      } else {
-        setAttemptsCount(count ?? 0);
-
-        // 🔄 Reset por si venimos con estado previo en memoria
-        setOpenAttemptId(null);
-
-        // 🧹 Pre-clean: cerrar intentos "en curso" ya expirados (evita que aparezcan como activos)
-        try {
-          let nowRef = new Date();
-          try {
-            const { data: nowData } = await supabase.rpc("now_utc");
-            if (nowData) nowRef = new Date(nowData);
-          } catch { /* noop */ }
-          await supabase
-            .from("attempts")
+          // 🧹 Pre-clean intentos expirados (fire-and-forget, sin bloquear UI)
+          const nowRef = new Date();
+          supabase.from("attempts")
             .update({ status: "finalizado", finished_at: nowRef.toISOString() })
             .eq("user_id", sess.user.id)
             .eq("scenario_id", scenarioId)
             .eq("status", "en curso")
             .is("finished_at", null)
             .not("expires_at", "is", null)
-            .lte("expires_at", nowRef.toISOString());
-        } catch { /* noop */ }
-      }
+            .lte("expires_at", nowRef.toISOString())
+            .then(() => {}).catch(() => {});
+        }
 
-      // 5) Intento abierto (para reanudar) — solo si está realmente en curso y no expirado
-      const { data: openAttempt, error: oaErr } = await supabase
-        .from("attempts")
-        .select("id, status, started_at, expires_at, finished_at, time_limit")
-        .eq("user_id", sess.user.id)
-        .eq("scenario_id", scenarioId)
-        .in("status", ["en_curso", "en curso"])
-        .is("finished_at", null)
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        // 5) Intento abierto (para reanudar)
+        const { data: openAttempt, error: oaErr } = await supabase
+          .from("attempts")
+          .select("id, status, started_at, expires_at, finished_at, time_limit")
+          .eq("user_id", sess.user.id)
+          .eq("scenario_id", scenarioId)
+          .in("status", ["en_curso", "en curso"])
+          .is("finished_at", null)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (oaErr) {
-        console.warn("[Confirm] open attempt check error:", oaErr);
-        setOpenAttemptId(null);
-        setOpenAttemptLimitSecs(null);
-      } else if (openAttempt && openAttempt.id) {
-        // validar expiración con hora del servidor (si está disponible)
-        let nowRef = new Date();
-        try {
-          const { data: nowData } = await supabase.rpc("now_utc");
-          if (nowData) nowRef = new Date(nowData);
-        } catch { /* noop */ }
+        if (!mounted) return;
 
-        const exp = openAttempt.expires_at ? new Date(openAttempt.expires_at) : null;
-        const notExpired = !!(exp && nowRef < exp);
-        console.debug("[Confirm] openAttempt check:", {
-          id: openAttempt.id,
-          exp: openAttempt.expires_at,
-          now: nowRef.toISOString(),
-          notExpired,
-          time_limit: openAttempt.time_limit,
-        });
-
-        if (notExpired) {
-          setOpenAttemptId(openAttempt.id);   // reanudar solo si ya corría el tiempo
-          const tl = Number(openAttempt.time_limit);
-          setOpenAttemptLimitSecs(Number.isFinite(tl) && tl > 0 ? Math.floor(tl) : null);
+        if (oaErr) {
+          console.warn("[Confirm] open attempt check error:", oaErr);
+          setOpenAttemptId(null);
+          setOpenAttemptLimitSecs(null);
+        } else if (openAttempt && openAttempt.id) {
+          const nowRef = new Date();
+          const exp = openAttempt.expires_at ? new Date(openAttempt.expires_at) : null;
+          const notExpired = !!(exp && nowRef < exp);
+          if (notExpired) {
+            setOpenAttemptId(openAttempt.id);
+            const tl = Number(openAttempt.time_limit);
+            setOpenAttemptLimitSecs(Number.isFinite(tl) && tl > 0 ? Math.floor(tl) : null);
+          } else {
+            setOpenAttemptId(null);
+            setOpenAttemptLimitSecs(null);
+          }
         } else {
-          setOpenAttemptId(null);             // si expires_at es null o pasado, no mostrar reanudar
+          setOpenAttemptId(null);
           setOpenAttemptLimitSecs(null);
         }
-      } else {
-        setOpenAttemptId(null);
-        setOpenAttemptLimitSecs(null);
-      }
 
-      setLoading(false);
+      } catch (unexpectedErr) {
+        console.error("[Confirm] unexpected init error:", unexpectedErr);
+        setErrorMsg("Error inesperado al cargar. Recarga la página.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
     }
 
     init();

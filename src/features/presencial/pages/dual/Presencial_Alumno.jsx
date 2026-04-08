@@ -121,7 +121,7 @@ export default function Presencial_Alumno() {
   }, []);
 
   const categorizedVars = useMemo(() => {
-    const result = { vital: [], lab: [], images: [], others: [] };
+    const result = { vital: [], lab: [], lcr: [], gas: [], images: [], others: [] };
     for (const v of vars) {
       const meta = typeMeta(v.type);
       const richValue = parseRichValue(v.value);
@@ -131,6 +131,8 @@ export default function Presencial_Alumno() {
       if (isImage) result.images.push(item);
       else if (v.type === 'vital') result.vital.push(item);
       else if (v.type === 'lab') result.lab.push(item);
+      else if (v.type === 'lcr') result.lcr.push(item);
+      else if (v.type === 'gas') result.gas.push(item);
       else result.others.push(item);
     }
     return result;
@@ -475,11 +477,13 @@ export default function Presencial_Alumno() {
 
 function typeMeta(t) {
   switch (t) {
-    case 'vital':  return { label: 'Constante', badge: '⚡', ring: 'ring-sky-300',    chip: 'bg-sky-50 text-sky-700 ring-sky-200' };
-    case 'lab':    return { label: 'Analítica', badge: '🧪', ring: 'ring-emerald-300',chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200' };
-    case 'imagen': return { label: 'Imagen',    badge: '🖼️', ring: 'ring-violet-300', chip: 'bg-violet-50 text-violet-700 ring-violet-200' };
-    case 'texto':  return { label: 'Nota',      badge: '📝', ring: 'ring-amber-300',  chip: 'bg-amber-50 text-amber-700 ring-amber-200' };
-    default:       return { label: 'Dato',      badge: '•',  ring: 'ring-slate-300',  chip: 'bg-slate-50 text-slate-700 ring-slate-200' };
+    case 'vital':  return { label: 'Constante',   badge: '⚡', ring: 'ring-sky-300',    chip: 'bg-sky-50 text-sky-700 ring-sky-200' };
+    case 'lab':    return { label: 'Analítica',   badge: '🧪', ring: 'ring-emerald-300',chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200' };
+    case 'lcr':    return { label: 'LCR',         badge: '💉', ring: 'ring-cyan-300',   chip: 'bg-cyan-50 text-cyan-700 ring-cyan-200' };
+    case 'gas':    return { label: 'Gasometría',  badge: '🫁', ring: 'ring-orange-300', chip: 'bg-orange-50 text-orange-700 ring-orange-200' };
+    case 'imagen': return { label: 'Imagen',      badge: '🖼️', ring: 'ring-violet-300', chip: 'bg-violet-50 text-violet-700 ring-violet-200' };
+    case 'texto':  return { label: 'Nota',        badge: '📝', ring: 'ring-amber-300',  chip: 'bg-amber-50 text-amber-700 ring-amber-200' };
+    default:       return { label: 'Dato',        badge: '•',  ring: 'ring-slate-300',  chip: 'bg-slate-50 text-slate-700 ring-slate-200' };
   }
 }
 
@@ -1511,6 +1515,54 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                     >
                       <div className="text-xs font-medium text-slate-600 flex items-center gap-1 truncate">
                         <span aria-hidden>{meta.badge}</span>
+                        <span className="truncate">{v.label || meta.label}</span>
+                      </div>
+                      <div className="mt-1 text-lg font-medium text-slate-800">
+                        {v.value}
+                        {v.unit ? <span className="ml-1 text-slate-500 text-sm">{v.unit}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {categorizedVars.lcr.length > 0 && (
+              <div className="rounded-2xl border border-cyan-100 bg-white p-4 shadow-sm flex flex-col overflow-visible">
+                <h4 className="text-sm font-semibold text-cyan-700 mb-2">💉 LCR</h4>
+                <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(200px,1fr))] sm:overflow-y-auto sm:pr-1 sm:max-h-[30vh] md:max-h-none md:overflow-visible">
+                  {categorizedVars.lcr.map(({ v, meta, isFlash }) => (
+                    <div
+                      key={v.id}
+                      className={`rounded-xl border border-cyan-100 bg-cyan-50/40 px-2.5 py-2 shadow-sm ${
+                        isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
+                      }`}
+                    >
+                      <div className="text-xs font-medium text-cyan-700 flex items-center gap-1 truncate">
+                        <span className="truncate">{v.label || meta.label}</span>
+                      </div>
+                      <div className="mt-1 text-lg font-medium text-slate-800">
+                        {v.value}
+                        {v.unit ? <span className="ml-1 text-slate-500 text-sm">{v.unit}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {categorizedVars.gas.length > 0 && (
+              <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm flex flex-col overflow-visible">
+                <h4 className="text-sm font-semibold text-orange-700 mb-2">🫁 Gasometría</h4>
+                <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:[grid-template-columns:repeat(auto-fit,minmax(200px,1fr))] sm:overflow-y-auto sm:pr-1 sm:max-h-[30vh] md:max-h-none md:overflow-visible">
+                  {categorizedVars.gas.map(({ v, meta, isFlash }) => (
+                    <div
+                      key={v.id}
+                      className={`rounded-xl border border-orange-100 bg-orange-50/40 px-2.5 py-2 shadow-sm ${
+                        isFlash ? `ring-2 ${meta.ring} animate-pulse` : ''
+                      }`}
+                    >
+                      <div className="text-xs font-medium text-orange-700 flex items-center gap-1 truncate">
                         <span className="truncate">{v.label || meta.label}</span>
                       </div>
                       <div className="mt-1 text-lg font-medium text-slate-800">

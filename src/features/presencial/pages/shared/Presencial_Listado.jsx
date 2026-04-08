@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../../../supabaseClient";
 import Navbar from "../../../../components/Navbar.jsx";
+import { useAuth } from "../../../../auth.jsx";
 import {
   AdjustmentsHorizontalIcon,
   MagnifyingGlassIcon,
@@ -18,6 +19,7 @@ console.debug("[PresencialListado] componente cargado");
 const estadoStyles = {
   "Disponible": { label: "Disponible", color: "bg-green-100 text-green-800", clickable: true },
   "En construcción: en proceso": { label: "En construcción: en proceso", color: "bg-yellow-100 text-yellow-800", clickable: true },
+  "Pendiente de revisión": { label: "Pendiente de revisión", color: "bg-blue-100 text-blue-800", clickable: true },
   "En construcción: sin iniciar": {
     label: "En construcción: sin iniciar",
     color: "bg-red-100 text-red-800",
@@ -50,6 +52,7 @@ function HeroStat({ icon: Icon, label, value, helper }) {
 
 export default function Presencial_Listado() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const isDual = (searchParams.get('flow') || '').toLowerCase() === 'dual';
 
@@ -98,9 +101,21 @@ export default function Presencial_Listado() {
       const matchModo = modeArr.map(m => String(m).toLowerCase()).includes('presencial');
       const matchCat   = !categoria || cats.includes(categoria);
       const matchEstado = !estado || String(e.status || '').toLowerCase() === estado;
-      return matchQ && matchNivel && matchModo && matchCat && matchEstado;
+
+      // Role-based access control
+      const scenarioStatus = e.status || "Disponible";
+      let matchAcceso = true;
+      if (!isAdmin) {
+        // Non-admin users can only see "Disponible" scenarios
+        matchAcceso = scenarioStatus === "Disponible";
+      } else {
+        // Admin users can see everything except "sin iniciar"
+        matchAcceso = scenarioStatus !== "En construcción: sin iniciar";
+      }
+
+      return matchQ && matchNivel && matchModo && matchCat && matchEstado && matchAcceso;
     });
-  }, [escenarios, q, nivel, categoria, estado]);
+  }, [escenarios, q, nivel, categoria, estado, isAdmin]);
 
   async function fetchEquipmentForScenario(scenarioId) {
     if (!scenarioId) return;
@@ -148,8 +163,9 @@ export default function Presencial_Listado() {
         // Orden: status → título (misma estética que Simulacion.jsx)
         const statusPriority = {
           "Disponible": 1,
-          "En construcción: en proceso": 2,
-          "En construcción: sin iniciar": 3,
+          "Pendiente de revisión": 2,
+          "En construcción: en proceso": 3,
+          "En construcción: sin iniciar": 4,
         };
         const sorted = (data || []).slice().sort((a, b) => {
           const pa = statusPriority[a.status] ?? 99;

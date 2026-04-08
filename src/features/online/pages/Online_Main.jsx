@@ -23,6 +23,7 @@ const NEW_THRESHOLD_DAYS = 30;
 const estadoStyles = {
   "Disponible": { label: "Disponible", color: "bg-green-100 text-green-800", clickable: true },
   "En construcción: en proceso": { label: "En construcción: en proceso", color: "bg-yellow-100 text-yellow-800", clickable: true },
+  "Pendiente de revisión": { label: "Pendiente de revisión", color: "bg-blue-100 text-blue-800", clickable: true },
   "En construcción: sin iniciar": { label: "En construcción: sin iniciar", color: "bg-red-100 text-red-800", clickable: false },
 };
 
@@ -116,9 +117,21 @@ export default function Online_Main() {
       const matchNivel = !nivel || String(e.level || '').toLowerCase() === nivel;
       const matchCat   = !categoria || cats.includes(categoria);
       const matchEstado = !estado || String(e.status || '').toLowerCase() === estado;
-      return matchQ && matchNivel && matchCat && matchEstado;
+
+      // Role-based access control
+      const scenarioStatus = e.status || "Disponible";
+      let matchAcceso = true;
+      if (!isAdmin) {
+        // Non-admin users can only see "Disponible" scenarios
+        matchAcceso = scenarioStatus === "Disponible";
+      } else {
+        // Admin users can see everything except "sin iniciar"
+        matchAcceso = scenarioStatus !== "En construcción: sin iniciar";
+      }
+
+      return matchQ && matchNivel && matchCat && matchEstado && matchAcceso;
     });
-  }, [escenarios, q, nivel, categoria, estado]);
+  }, [escenarios, q, nivel, categoria, estado, isAdmin]);
 
   useEffect(() => {
     let mounted = true;
@@ -170,6 +183,15 @@ export default function Online_Main() {
       }
     }
 
+    // Safety timer: si algo tarda más de 12 s, limpia el spinner
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+        setLoadingEsc(false);
+        setErrorMsg("La carga tardó demasiado. Comprueba tu conexión y recarga.");
+      }
+    }, 12000);
+
     async function init() {
       try {
         const { data, error } = await supabase.auth.getSession();
@@ -180,42 +202,40 @@ export default function Online_Main() {
         }
         const sess = data?.session ?? null;
         setSession(sess);
-        if (sess) {
-          // Cargar el rol del perfil
-          try {
-            const { data: prof, error: perr } = await supabase
-              .from("profiles")
-              .select("rol")
-              .eq("id", sess.user.id)
-              .maybeSingle();
 
-            if (perr) {
-              console.error("[Simulacion] cargar rol error:", perr);
-            }
-            const r = (prof?.rol || "").toString().toLowerCase();
-            setRol(r);
-          } catch (e) {
-            console.error("[Simulacion] excepción cargando rol:", e);
-          } finally {
-            setRoleChecked(true);
+        if (sess) {
+          // Cargar perfil + escenarios + intentos en paralelo
+          const [profRes] = await Promise.all([
+            supabase.from("profiles").select("rol").eq("id", sess.user.id).maybeSingle(),
+          ]);
+          if (!mounted) return;
+          if (profRes.error) {
+            console.error("[Simulacion] cargar rol error:", profRes.error);
           }
+          const r = (profRes.data?.rol || "").toString().toLowerCase();
+          setRol(r);
+          setRoleChecked(true);
+
+          // Escenarios e intentos en paralelo
+          await Promise.all([
+            cargarEscenarios(),
+            cargarIntentos(sess.user.id),
+          ]);
         } else {
           setRoleChecked(true);
         }
-        if (!sess) return;
-
-        await cargarEscenarios();
-        await cargarIntentos(sess.user.id);
       } catch (e) {
         console.error("[Simulacion] excepción en init:", e);
         if (mounted) setErrorMsg("Error cargando la página. Recarga para intentarlo de nuevo.");
       } finally {
-        if (mounted) setLoading(false);
+        clearTimeout(safetyTimer);
+        if (mounted) { setLoading(false); setLoadingEsc(false); }
       }
     }
 
     async function cargarEscenarios() {
       setLoadingEsc(true);
+      try {
       const { data, error } = await supabase
         .from("scenarios")
         .select(`
@@ -224,7 +244,8 @@ export default function Online_Main() {
             categories ( name )
           )
         `)
-        .order("title", { ascending: true });
+        .order("title", { ascending: true })
+        .abortSignal(AbortSignal.timeout(10000));
 
       if (error) {
         console.error("[Simulacion] cargarEscenarios error:", error);
@@ -234,8 +255,9 @@ export default function Online_Main() {
         // Custom sort: status priority then title
         const statusPriority = {
           "Disponible": 1,
-          "En construcción: en proceso": 2,
-          "En construcción: sin iniciar": 3,
+          "Pendiente de revisión": 2,
+          "En construcción: en proceso": 3,
+          "En construcción: sin iniciar": 4,
         };
         const sorted = (data || []).slice().sort((a, b) => {
           const pa = statusPriority[a.status] ?? 99;
@@ -248,7 +270,12 @@ export default function Online_Main() {
         });
         setEscenarios(sorted);
       }
-      setLoadingEsc(false);
+      } catch (e) {
+        console.error("[Simulacion] excepción cargarEscenarios:", e);
+        if (mounted) setEscenarios([]);
+      } finally {
+        if (mounted) setLoadingEsc(false);
+      }
     }
 
     init();
@@ -258,6 +285,7 @@ export default function Online_Main() {
     });
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       try { listener?.subscription?.unsubscribe?.(); } catch {}
     };
   }, []);

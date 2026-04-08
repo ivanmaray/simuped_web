@@ -219,6 +219,18 @@ const VARIABLE_GROUP_CONFIG = {
     grid: 'grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
     maxHeight: 'max-h-[22rem]'
   },
+  lcr: {
+    title: 'LCR',
+    description: 'Resultados del líquido cefalorraquídeo.',
+    grid: 'grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    maxHeight: 'max-h-[22rem]'
+  },
+  gas: {
+    title: 'Gasometría',
+    description: 'Gasometría arterial o venosa (resultado inmediato).',
+    grid: 'grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    maxHeight: 'max-h-[18rem]'
+  },
   imagen: {
     title: 'Imágenes',
     description: 'Selecciona radiografías o imágenes para el alumnado.',
@@ -888,6 +900,8 @@ export default function Presencial_Instructor() {
     const groups = {
       vital: [],
       lab: [],
+      lcr: [],
+      gas: [],
       imagen: [],
       texto: [],
       otros: [],
@@ -896,6 +910,8 @@ export default function Presencial_Instructor() {
       const type = item?.type;
       if (type === 'vital') groups.vital.push(item);
       else if (type === 'lab') groups.lab.push(item);
+      else if (type === 'lcr') groups.lcr.push(item);
+      else if (type === 'gas') groups.gas.push(item);
       else if (type === 'imagen') groups.imagen.push(item);
       else if (type === 'texto') groups.texto.push(item);
       else groups.otros.push(item);
@@ -1172,6 +1188,10 @@ export default function Presencial_Instructor() {
 
   // Variables reveladas (para marcar botones activos)
   const [revealed, setRevealed] = useState(new Set());
+  // Presets de evolución del paciente
+  const [presets, setPresets] = useState([]);
+  const [activePresetId, setActivePresetId] = useState(null);
+  const [applyingPreset, setApplyingPreset] = useState(false);
   // Checklist
   const [checklist, setChecklist] = useState([]); // scenario_checklist
   const [checkStatus, setCheckStatus] = useState({}); // {item_id: 'ok'|'wrong'|'missed'|'na'}
@@ -1477,6 +1497,15 @@ export default function Presencial_Instructor() {
         if (s && s.id) {
           await refreshRevealed(s.id);
         }
+        // 4c) Presets de evolución del paciente
+        try {
+          const { data: presetsData } = await supabase
+            .from('scenario_presets')
+            .select('id, name, description, color, order_index, variable_values')
+            .eq('scenario_id', id)
+            .order('order_index', { ascending: true });
+          if (presetsData && mounted) setPresets(presetsData);
+        } catch {}
         // 5) Checklist (tolerante: si no existen tablas/vistas, se ignora)
         try {
           const { data: items } = await supabase
@@ -1741,6 +1770,52 @@ export default function Presencial_Instructor() {
     } catch (e) {
       console.error('[Instructor] publishValue error', e);
       setErrorMsg('No se pudo guardar el valor.');
+    }
+  }
+
+  // Aplicar un preset de evolución: actualiza y revela todas sus variables de golpe
+  async function applyPreset(preset) {
+    if (!sessionId || applyingPreset) return;
+    setApplyingPreset(true);
+    try {
+      const vals = preset.variable_values || {};
+      const entries = Object.entries(vals);
+      if (!entries.length) return;
+      const rows = entries.map(([varIdStr, value]) => ({
+        session_id: sessionId,
+        variable_id: Number(varIdStr),
+        value: String(value),
+        is_revealed: true,
+        updated_at: new Date().toISOString(),
+      }));
+      await supabase
+        .from('session_variables')
+        .upsert(rows, { onConflict: 'session_id,variable_id' });
+      // Actualizar estado local
+      const newVals = {};
+      const newRevealed = new Set(revealed);
+      for (const [varIdStr, value] of entries) {
+        const vid = Number(varIdStr);
+        newVals[vid] = String(value);
+        newRevealed.add(vid);
+      }
+      setSessionVarValues(prev => ({ ...prev, ...newVals }));
+      setRevealed(newRevealed);
+      setActivePresetId(preset.id);
+      // Log
+      try {
+        await supabase.from('session_actions').insert({
+          session_id: sessionId,
+          step_id: currentStepId || null,
+          action_key: 'preset.apply',
+          payload: { preset_id: preset.id, preset_name: preset.name }
+        });
+      } catch {}
+      playBeep({ freq: 660 });
+    } catch (e) {
+      console.error('[Instructor] applyPreset error', e);
+    } finally {
+      setApplyingPreset(false);
     }
   }
 
@@ -2780,6 +2855,47 @@ export default function Presencial_Instructor() {
                 ) : null}
               >
                 <div className="space-y-4 pt-2">
+                  {/* Panel de presets de evolución */}
+                  {presets.length > 0 && (
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-base">🎭</span>
+                        <h4 className="text-sm font-semibold text-slate-800">Estado del paciente</h4>
+                        <span className="text-xs text-slate-400 ml-1">— activa el estado según lo que haga el equipo</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {presets.map(preset => {
+                          const isActive = activePresetId === preset.id;
+                          const colorMap = {
+                            slate:  { btn: 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200',  active: 'bg-slate-700 text-white border-slate-700' },
+                            green:  { btn: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',   active: 'bg-green-600 text-white border-green-600' },
+                            yellow: { btn: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100', active: 'bg-yellow-500 text-white border-yellow-500' },
+                            amber:  { btn: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',   active: 'bg-amber-500 text-white border-amber-500' },
+                            orange: { btn: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100', active: 'bg-orange-500 text-white border-orange-500' },
+                            red:    { btn: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',           active: 'bg-red-600 text-white border-red-600' },
+                          };
+                          const cls = colorMap[preset.color] || colorMap.slate;
+                          return (
+                            <div key={preset.id} className="group relative">
+                              <button
+                                onClick={() => applyPreset(preset)}
+                                disabled={applyingPreset || !isRunning}
+                                title={preset.description || preset.name}
+                                className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all duration-150 disabled:opacity-50 ${isActive ? cls.active : cls.btn}`}
+                              >
+                                {applyingPreset && isActive ? '⏳' : isActive ? '✓ ' : ''}{preset.name}
+                              </button>
+                              {preset.description && (
+                                <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 hidden w-64 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-lg group-hover:block">
+                                  {preset.description}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <p className="text-sm text-slate-600 max-w-2xl">Introduce un valor provisional y, cuando toque mostrarlo, pulsa <span className="font-medium text-slate-800">Mostrar</span>. Si necesitas retirarlo, usa <span className="font-medium text-slate-800">Ocultar</span>.</p>
                   {variables.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
