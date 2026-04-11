@@ -116,6 +116,8 @@ export default function Principal_Dashboard() {
   const [scheduledSessions, setScheduledSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+  const [showPresencialModal, setShowPresencialModal] = useState(false);
+  const [levelStats, setLevelStats] = useState({ basico: { attempted: 0, total: 0 }, medio: { attempted: 0, total: 0 }, avanzado: { attempted: 0, total: 0 } });
 
   useEffect(() => {
     let mounted = true;
@@ -314,7 +316,7 @@ export default function Principal_Dashboard() {
 
         const { data: totalScenarios, error: totalError } = await supabase
           .from("scenarios")
-          .select("id, mode")
+          .select("id, mode, level")
           .abortSignal(AbortSignal.timeout(8000));
 
         if (totalError) {
@@ -324,6 +326,30 @@ export default function Principal_Dashboard() {
         const allScenarios = (totalScenarios || []).map((row) => normalizeMode(row.mode));
         const onlineTotal = allScenarios.filter((modes) => modes.includes('online')).length;
         const presencialTotal = allScenarios.filter((modes) => modes.includes('presencial')).length;
+
+        // Level stats
+        const normalizeLevel = (lvl) => {
+          const k = String(lvl || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          if (k === 'basico') return 'basico';
+          if (k === 'medio') return 'medio';
+          if (k === 'avanzado') return 'avanzado';
+          return null;
+        };
+        const levelTotals = { basico: 0, medio: 0, avanzado: 0 };
+        for (const row of totalScenarios || []) {
+          const lvl = normalizeLevel(row.level);
+          if (lvl) levelTotals[lvl]++;
+        }
+        const levelAttempted = { basico: 0, medio: 0, avanzado: 0 };
+        for (const sc of attemptsWithData) {
+          const lvl = normalizeLevel(sc.level);
+          if (lvl) levelAttempted[lvl]++;
+        }
+        setLevelStats({
+          basico:   { attempted: levelAttempted.basico,   total: levelTotals.basico   },
+          medio:    { attempted: levelAttempted.medio,    total: levelTotals.medio    },
+          avanzado: { attempted: levelAttempted.avanzado, total: levelTotals.avanzado },
+        });
 
         setStats({
           onlineAttempted,
@@ -410,45 +436,33 @@ export default function Principal_Dashboard() {
           <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
           <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
 
-          <div className="max-w-6xl mx-auto px-5 py-14 text-white relative">
-            {/* Greeting */}
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm text-white/50 uppercase tracking-widest font-medium" style={{letterSpacing: '0.15em'}}>Panel</span>
-              <span className="text-white/20">·</span>
-              <span className="text-sm text-white/60">SimuPed</span>
-            </div>
-            <h1
-              className="text-4xl md:text-5xl font-semibold text-white leading-tight"
-              style={{letterSpacing: '-0.03em'}}
-            >
-              {nombre ? `Hola, ${nombre}` : "Tu panel clínico"}
-            </h1>
-            <p className="mt-2 text-white/60 text-lg" style={{letterSpacing: '-0.01em'}}>
-              Simulación clínica interprofesional pediátrica
-            </p>
-
-            {/* Pills de identidad */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="px-3 py-1 rounded-full text-xs bg-white/8 ring-1 ring-white/15 text-white/70 backdrop-blur-sm"
-                style={{background: 'rgba(255,255,255,0.08)'}}>
-                {email}
-              </span>
-              {roleLabel ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ring-1 text-white/90"
-                  style={{background: 'rgba(79,163,227,0.18)', borderColor: 'rgba(79,163,227,0.35)'}}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-300/80" />
-                  {formatRole(roleLabel)}
-                </span>
-              ) : null}
-              {isAdmin ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ring-1"
-                  style={{background: 'rgba(250,204,21,0.15)', borderColor: 'rgba(250,204,21,0.35)', color: 'rgba(253,224,71,0.95)'}}>
-                  Admin
-                </span>
-              ) : null}
+          <div className="max-w-6xl mx-auto px-5 py-6 text-white relative">
+            {/* Greeting compacto */}
+            <div className="flex flex-wrap items-center gap-3 mb-5">
+              <div>
+                <p className="text-[11px] text-white/45 uppercase tracking-widest font-medium mb-0.5" style={{letterSpacing:'0.14em'}}>Panel · SimuPed</p>
+                <h1 className="text-2xl font-semibold text-white leading-tight" style={{letterSpacing:'-0.02em'}}>
+                  {nombre ? `Hola, ${nombre}` : "Tu panel clínico"}
+                </h1>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                {roleLabel ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium ring-1 text-white/90"
+                    style={{background:'rgba(79,163,227,0.18)', borderColor:'rgba(79,163,227,0.35)'}}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-300/80" />
+                    {formatRole(roleLabel)}
+                  </span>
+                ) : null}
+                {isAdmin ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ring-1"
+                    style={{background:'rgba(250,204,21,0.15)', borderColor:'rgba(250,204,21,0.35)', color:'rgba(253,224,71,0.95)'}}>
+                    Admin
+                  </span>
+                ) : null}
+              </div>
             </div>
 
-            <div className="mt-8">
+            <div className="mt-0">
             {/* Quick Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <MetricCard
@@ -487,44 +501,33 @@ export default function Principal_Dashboard() {
         <main className="max-w-6xl mx-auto px-5 py-10">
           {/* Accesos rápidos */}
           <div className="flex items-center gap-3 mb-5">
-            <h2 className="text-lg font-semibold text-slate-900" style={{letterSpacing: '-0.02em'}}>Accesos rápidos</h2>
+            <h2 className="text-lg font-semibold text-slate-900" style={{letterSpacing: '-0.02em'}}>Simulación online</h2>
             <div className="flex-1 h-px bg-slate-100" />
           </div>
-          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <Card
-              title="Simulación online"
-              description="Escoge un escenario y practica con casos interactivos."
+              title="Casos clínicos"
+              description="Elige un escenario pediátrico y practica la toma de decisiones a tu ritmo."
               to="/simulacion"
               icon={DevicePhoneMobileIcon}
             />
-            <Card
-              title="Evaluación del desempeño"
-              description="Consulta tus resultados y evolución por escenarios."
-              to="/evaluacion"
-              stateObj={{ forceSelf: true }}
-              icon={ChartBarIcon}
-            />
             {isAdmin ? (
               <Card
-                title="Entrenamiento rápido"
-                description="Microcasos interactivos con decisiones que impactan la evolución."
+                title="Casos rápidos"
+                description="Microcasos breves adaptados a tu rol profesional. Decisiones clínicas con feedback inmediato."
                 to="/entrenamiento-rapido"
                 badge="En desarrollo"
                 badgeColor="bg-amber-100 text-amber-700"
-                secondaryBadge="No disponible para alumnos"
-                secondaryBadgeColor="bg-slate-200 text-slate-600"
                 icon={ArrowsRightLeftIcon}
               />
             ) : null}
             {isAdmin ? (
               <Card
-                title="Entrenamiento interactivo"
-                description="Escenarios con motor 3D y evaluación paso a paso aún en construcción."
+                title="Simulación virtual"
+                description="Simulación completa por fases: exploración, hipótesis, intervenciones y alta. Con vitales y puntuación."
                 to="/entrenamiento-interactivo"
                 badge="En desarrollo"
                 badgeColor="bg-amber-100 text-amber-700"
-                secondaryBadge="No disponible para alumnos"
-                secondaryBadgeColor="bg-slate-200 text-slate-600"
                 icon={PlayCircleIcon}
               />
             ) : null}
@@ -537,143 +540,81 @@ export default function Principal_Dashboard() {
               <div className="flex-1 h-px bg-slate-100" />
             </div>
             <article className="relative rounded-2xl border bg-white p-6 shadow-sm" style={{borderColor: 'rgba(0,0,0,0.08)', boxShadow: 'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 4px 16px, rgba(0,0,0,0.03) 0px 16px 32px -8px'}}>
-              <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="shrink-0 h-10 w-10 rounded-xl grid place-items-center" style={{background: 'rgba(10,61,145,0.08)'}}>
-                    <UsersIcon className="h-5 w-5 text-[#0A3D91]" />
-                  </div>
-                  <p className="text-sm text-slate-500">Organiza y ejecuta sesiones duales o clásicas con un solo vistazo.</p>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="shrink-0 h-10 w-10 rounded-xl grid place-items-center" style={{background: 'rgba(10,61,145,0.08)'}}>
+                  <UsersIcon className="h-5 w-5 text-[#0A3D91]" />
                 </div>
-                {isAdmin && (
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">Versión instructor</span>
-                )}
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-700">Sesiones del mes</p>
+                  {isAdmin && (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">Instructor</span>
+                  )}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_310px] gap-6 items-start">
+                {/* Acciones */}
                 <div className="space-y-3">
-                  <div className="rounded-xl border p-4" style={{borderColor: 'rgba(0,0,0,0.07)', background: '#fafafa'}}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-semibold text-slate-800">Dual</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-50 text-sky-700 ring-1 ring-sky-200">2 pantallas</span>
-                    </div>
-                    <ul className="space-y-1 text-sm text-slate-500">
-                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>El instructor crea la sesión y comparte el <span className="font-medium text-slate-600">código</span> con el equipo.</li>
-                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Los alumnos ven la sesión en una pantalla sincronizada en tiempo real.</li>
-                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Checklist, cronómetro y variables desde la consola.</li>
-                    </ul>
-                  </div>
-
-                  <div className="rounded-xl border p-4" style={{borderColor: 'rgba(0,0,0,0.07)', background: '#fafafa'}}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-semibold text-slate-800">Clásico</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 ring-1 ring-slate-200">1 pantalla</span>
-                    </div>
-                    <ul className="space-y-1 text-sm text-slate-500">
-                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Consola central sin dispositivos adicionales.</li>
-                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Sin códigos de acceso, ideal para formaciones rápidas.</li>
-                      <li className="flex gap-2"><span className="text-slate-300 mt-0.5">—</span>Genera checklist y notas para el debrief.</li>
-                    </ul>
-                  </div>
-
-                  <p className="text-sm text-slate-400">Ambos modos generan un <span className="font-medium text-slate-500">informe detallado</span> con checklist, intervenciones y tiempos.</p>
-                </div>
-
-                <div className="space-y-4">
-                  <AdvancedCalendar
-                    sessions={scheduledSessions}
-                    compact={true}
-                    onDateClick={(date) => console.log('Date clicked:', date)}
-                    onEventClick={(session) => navigate('/sesiones-programadas')}
-                  />
-
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => setShowNotificationSettings(true)}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition text-sm"
-                    >
-                      <BellIcon className="w-4 h-4" />
-                      Configurar notificaciones
-                    </button>
-                  </div>
-
                   {isAdmin ? (
-                    <div className="rounded-xl border p-4 space-y-3" style={{borderColor: 'rgba(0,0,0,0.08)'}}>
+                    <>
                       <Link
                         to="/presencial/flow/dual"
                         className="block w-full px-4 py-2.5 rounded-xl text-center font-semibold text-white bg-gradient-to-r from-[#0A3D91] to-[#1E6ACB] shadow hover:shadow-lg hover:-translate-y-0.5 transition"
                       >
-                        Crear sesión dual
+                        Nueva simulación
                       </Link>
-                      <p className="text-sm text-slate-600">
-                        Configura fases, checklist y cronómetro. Al finalizar, comparte el informe desde la consola.
-                      </p>
-                      <div className="flex gap-3">
+                      <div className="flex flex-col gap-2">
                         <Link
                           to="/sesiones-programadas"
-                          className="flex-1 px-4 py-2 rounded-lg text-center font-medium text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow text-sm"
+                          className="w-full px-4 py-2 rounded-lg text-center font-medium text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow text-sm"
                         >
                           Gestión de sesiones
                         </Link>
                         <Link
                           to="/presencial"
-                          className="flex-1 px-4 py-2 rounded-lg text-center font-medium text-[#0A3D91] ring-1 ring-[#0A3D91]/20 bg-white hover:bg-[#0A3D91]/5 hover:-translate-y-0.5 transition text-sm"
+                          className="w-full px-4 py-2 rounded-lg text-center font-medium text-[#0A3D91] ring-1 ring-[#0A3D91]/20 bg-white hover:bg-[#0A3D91]/5 transition text-sm"
                         >
                           Consola clásica
                         </Link>
+                        <button
+                          onClick={() => setShowNotificationSettings(true)}
+                          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition text-sm text-slate-600"
+                        >
+                          <BellIcon className="w-4 h-4" />
+                          Notificaciones
+                        </button>
                       </div>
-                    </div>
+                    </>
                   ) : (
-                    <div className="space-y-4">
+                    <>
                       <Link
                         to="/sesiones-programadas"
                         className="block w-full px-4 py-2.5 rounded-lg text-center font-medium text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow"
                       >
                         Ver sesiones programadas
                       </Link>
-                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-slate-600 text-sm">
-                        Si deseas participar en simulaciones presenciales, avisa al equipo y te enviaremos el código cuando haya nuevas sesiones.
-                      </div>
-                    </div>
+                      <button
+                        type="button"
+                        onClick={handleNotify}
+                        className="w-full px-4 py-2 rounded-lg text-center font-medium text-[#0A3D91] ring-1 ring-[#0A3D91]/20 bg-white hover:bg-[#0A3D91]/5 transition text-sm"
+                        disabled={notifyLoading}
+                      >
+                        {notifyLoading ? "Activando aviso…" : "Avísame de nuevas sesiones"}
+                      </button>
+                    </>
                   )}
-                  {!isAdmin && (
-                    <button
-                      type="button"
-                      onClick={handleNotify}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-white bg-[#0A3D91] hover:bg-[#0A3D91]/90 transition shadow"
-                      disabled={notifyLoading}
-                    >
-                      {notifyLoading ? "Activando aviso…" : "Avísame de próximas sesiones"}
-                    </button>
-                  )}
-                  {notifyMsg && (
-                    <p className="text-sm text-slate-600">{notifyMsg}</p>
-                  )}
+                  {notifyMsg && <p className="text-xs text-slate-500">{notifyMsg}</p>}
                 </div>
+
+                {/* Calendario compacto */}
+                <MiniCalendar sessions={scheduledSessions} onEventClick={() => navigate('/sesiones-programadas')} />
               </div>
             </article>
           </section>
 
-          {/* Perfil CTA */}
-          <section className="mt-10">
-            <div className="rounded-xl border bg-white p-5 flex items-center justify-between gap-4" style={{borderColor: 'rgba(0,0,0,0.08)', boxShadow: 'rgba(0,0,0,0.04) 0px 2px 8px'}}>
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl grid place-items-center shrink-0" style={{background: 'rgba(10,61,145,0.07)'}}>
-                  <AcademicCapIcon className="h-5 w-5 text-[#0A3D91]" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">Tu perfil</p>
-                  <p className="text-xs text-slate-400">Nombre, unidad y rol profesional</p>
-                </div>
-              </div>
-              <Link
-                to="/perfil"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium border transition hover:bg-slate-50"
-                style={{borderColor: 'rgba(0,0,0,0.12)', color: '#334155'}}
-              >
-                Ir a Perfil <ChevronRightIcon className="h-3.5 w-3.5 opacity-50" />
-              </Link>
-            </div>
-          </section>
+
+          {/* Progreso por nivel */}
+          <LevelProgress levelStats={levelStats} />
 
           {/* Tus escenarios (solo empezados/completados) */}
           {loadingEsc ? (
@@ -765,6 +706,173 @@ export default function Principal_Dashboard() {
         )}
       </div>
     </ErrorBoundary>
+  );
+}
+
+/* ── MINI CALENDAR ── */
+function MiniCalendar({ sessions = [], onEventClick = () => {} }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay  = new Date(year, month + 1, 0);
+  // Start on Monday
+  const startOffset = (firstDay.getDay() + 6) % 7;
+  const totalDays = lastDay.getDate();
+
+  const monthName = firstDay.toLocaleString('es-ES', { month: 'long' });
+  const today = new Date();
+
+  // Days with sessions
+  const sessionDays = new Set(
+    sessions.map(s => {
+      const d = new Date(s.scheduled_at);
+      return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    })
+  );
+
+  const hasSession = (d) => sessionDays.has(`${year}-${month}-${d}`);
+
+  // Build grid cells
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+
+  const upcoming = sessions
+    .filter(s => new Date(s.scheduled_at) >= new Date(today.getFullYear(), today.getMonth(), today.getDate()))
+    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+    .slice(0, 3);
+
+  return (
+    <div className="rounded-xl border bg-white overflow-hidden" style={{borderColor:'rgba(0,0,0,0.08)', boxShadow:'rgba(0,0,0,0.04) 0px 2px 8px'}}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 pt-3 pb-2 border-b border-slate-100">
+        <span className="text-xs font-semibold text-slate-700 capitalize">{monthName} {year}</span>
+        <div className="flex gap-0.5">
+          <button
+            onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-slate-100 transition text-slate-400 text-xs"
+          >‹</button>
+          <button
+            onClick={() => setCurrentDate(new Date(year, month + 1, 1))}
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-slate-100 transition text-slate-400 text-xs"
+          >›</button>
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div className="px-3 pt-2 pb-1">
+        <div className="grid grid-cols-7 mb-0.5">
+          {['L','M','X','J','V','S','D'].map(d => (
+            <div key={d} className="text-center text-[9px] font-semibold text-slate-400 py-0.5">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {cells.map((d, i) => {
+            if (!d) return <div key={`e-${i}`} className="aspect-square" />;
+            const isToday = today.getDate() === d && today.getMonth() === month && today.getFullYear() === year;
+            const hasDot = hasSession(d);
+            return (
+              <div
+                key={d}
+                onClick={hasDot ? onEventClick : undefined}
+                className={`relative flex items-center justify-center aspect-square rounded text-xs font-medium transition
+                  ${isToday ? 'bg-[#0A3D91] text-white font-semibold' : hasDot ? 'cursor-pointer hover:bg-[#eff6ff] text-slate-700' : 'text-slate-500 hover:bg-slate-50'}
+                `}
+              >
+                {d}
+                {hasDot && !isToday && (
+                  <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#1E6ACB]" />
+                )}
+                {hasDot && isToday && (
+                  <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-white/70" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Upcoming */}
+      {upcoming.length > 0 && (
+        <div className="border-t border-slate-100 px-3 py-2 space-y-1">
+          <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Próximas sesiones</p>
+          {upcoming.map((s) => {
+            const dt = new Date(s.scheduled_at);
+            return (
+              <button
+                key={s.id}
+                onClick={onEventClick}
+                className="w-full flex items-center gap-2 text-left hover:bg-slate-50 rounded-lg px-1.5 py-1 transition group"
+              >
+                <div className="flex-shrink-0 w-7 h-7 rounded bg-[#eff6ff] flex flex-col items-center justify-center">
+                  <span className="text-[11px] font-bold text-[#0A3D91] leading-none">{dt.getDate()}</span>
+                  <span className="text-[7px] font-semibold text-slate-400 uppercase">{dt.toLocaleString('es-ES',{month:'short'})}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-slate-800 truncate group-hover:text-[#0A3D91] transition-colors">{s.title}</p>
+                  <p className="text-[9px] text-slate-400">
+                    {dt.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}{s.location ? ` · ${s.location}` : ''}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {upcoming.length === 0 && (
+        <div className="border-t border-slate-100 px-5 py-3">
+          <p className="text-xs text-slate-400">Sin sesiones programadas próximamente.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── LEVEL PROGRESS ── */
+function LevelProgress({ levelStats }) {
+  const levels = [
+    { key: 'basico',   label: 'Nivel 1 · Básico',    color: '#059669', track: '#d1fae5' },
+    { key: 'medio',    label: 'Nivel 2 · Medio',      color: '#d97706', track: '#fef3c7' },
+    { key: 'avanzado', label: 'Nivel 3 · Avanzado',   color: '#dc2626', track: '#fee2e2' },
+  ];
+
+  const hasAny = levels.some(l => (levelStats[l.key]?.total ?? 0) > 0);
+  if (!hasAny) return null;
+
+  return (
+    <section className="mt-10">
+      <div className="flex items-center gap-3 mb-5">
+        <h2 className="text-lg font-semibold text-slate-900" style={{letterSpacing:'-0.02em'}}>Mi progreso</h2>
+        <div className="flex-1 h-px bg-slate-100" />
+      </div>
+      <div className="rounded-2xl border bg-white p-6 shadow-sm" style={{borderColor:'rgba(0,0,0,0.08)', boxShadow:'rgba(0,0,0,0.06) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 8px'}}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {levels.map(({ key, label, color, track }) => {
+            const { attempted = 0, total = 0 } = levelStats[key] || {};
+            const pct = total > 0 ? Math.round((attempted / total) * 100) : 0;
+            return (
+              <div key={key}>
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="text-xs font-semibold text-slate-600">{label}</span>
+                  <span className="text-xs font-semibold" style={{color}}>
+                    {attempted}<span className="text-slate-400 font-normal">/{total}</span>
+                  </span>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden" style={{background: track}}>
+                  <div
+                    className="h-2 rounded-full transition-all duration-700"
+                    style={{width: `${pct}%`, background: color}}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5">{pct}% completado</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 

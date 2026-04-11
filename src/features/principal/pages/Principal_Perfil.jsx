@@ -6,10 +6,11 @@ import { TrophyIcon } from "@heroicons/react/24/outline";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
+import { useAuth } from "../../../auth.jsx";
 import { MEDICAL_BADGES, BADGE_CATEGORIES } from "../../../utils/badgeSystem.js";
 
 const COLORS = {
-  primary: "#1E6ACB",
+  primary: "#0A3D91",
 };
 
 const UNIDADES = ["Farmacia", "UCI", "Urgencias"];
@@ -222,6 +223,7 @@ function validarDNI(v) {
 export default function Principal_Perfil() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isAdmin } = useAuth();
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -849,13 +851,17 @@ export default function Principal_Perfil() {
                 href="/certificado"
                 className="inline-block px-3 py-2 rounded bg-slate-100 text-slate-700 text-sm border"
               >Ver certificado</a>
-              <a
-                href="/certificado?prueba=1"
-                className="inline-block px-3 py-2 rounded bg-white text-slate-600 text-sm border border-dashed"
-              >Descargar prueba</a>
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                En pruebas · pendiente optimizar PDF
-              </span>
+              {isAdmin && (
+                <>
+                  <a
+                    href="/certificado?prueba=1"
+                    className="inline-block px-3 py-2 rounded bg-white text-slate-600 text-sm border border-dashed"
+                  >Descargar prueba</a>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                    En pruebas · pendiente optimizar PDF
+                  </span>
+                </>
+              )}
             </div>
             <span className="text-sm text-slate-500">
               {loadingAchievements ? "Cargando logros…" : `${achievements.length} logro${achievements.length === 1 ? "" : "s"}`}

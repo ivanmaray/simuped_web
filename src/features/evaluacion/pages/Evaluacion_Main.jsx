@@ -793,7 +793,6 @@ export default function Evaluacion_Main() {
             >
               <SparklesIcon className="h-4 w-4" />
               Entrenamiento rápido
-              <span className="text-xs uppercase tracking-wide text-amber-600">(Dev)</span>
             </a>
           )}
           <a

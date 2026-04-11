@@ -169,7 +169,7 @@ useEffect(() => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 justify-all">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <style>{`
         .reveal { opacity: 0; transform: translateY(8px); transition: opacity .6s ease, transform .6s ease; }
         .reveal-in { opacity: 1; transform: none; }
@@ -201,12 +201,6 @@ useEffect(() => {
           box-shadow: 0 12px 24px rgba(10, 61, 145, 0.1);
         }
         
-        /* Justificar textos por defecto en áreas de contenido */
-        .justify-all p,
-        .justify-all .justify-text {
-          text-align: justify;
-          text-justify: inter-word;
-        }
       `}</style>
       {/* NAVBAR */}
       <Navbar variant="public" />

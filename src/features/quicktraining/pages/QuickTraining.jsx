@@ -63,150 +63,78 @@ function RoleSummary({ role }) {
   );
 }
 
+const DIFFICULTY_LABEL = { basico: "Básico", intermedio: "Intermedio", avanzado: "Avanzado" };
+const DIFFICULTY_COLOR = {
+  basico:    "bg-emerald-50 text-emerald-700",
+  intermedio:"bg-amber-50 text-amber-700",
+  avanzado:  "bg-red-50 text-red-700",
+};
+
 function CaseCard({ microCase, onSelect }) {
-  const EXCLUDED_TAGS = [
-    "pediatria",
-    "uci pediatrica",
-    "uci pediátrica",
-    "urgencias",
-    "emergencias"
-  ];
-
-  function normalizeText(t) {
-    if (!t) return "";
-    try {
-      return String(t).toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
-    } catch (err) {
-      // Fallback for environments without unicode property escapes
-      return String(t).toLowerCase().replace(/[áÁ]/g, "a").replace(/[éÉ]/g, "e").replace(/[íÍ]/g, "i").replace(/[óÓ]/g, "o").replace(/[úÚ]/g, "u");
-    }
-  }
-  // Clinical categories we want to highlight when present in tags
-  const CLINICAL_CATEGORIES = {
-    neurologico: "Neurológico",
-    neurologia: "Neurológico",
-    neurologica: "Neurológico",
-    infeccioso: "Infeccioso",
-    infectologico: "Infeccioso",
-    cardiaco: "Cardíaco",
-    respiratorio: "Respiratorio",
-    trauma: "Trauma",
-    hemodinamico: "Hemodinámico",
-    metabolico: "Metabólico",
-    toxico: "Tóxico",
-    pediatrico: "Pediátrico",
-    nefrologico: "Nefrológico",
-  };
-
-  function extractClinicalCategories(tags = []) {
-    const found = [];
-    for (const t of tags || []) {
-      const key = normalizeText(t);
-      if (CLINICAL_CATEGORIES[key] && !found.includes(CLINICAL_CATEGORIES[key])) {
-        found.push(CLINICAL_CATEGORIES[key]);
-      }
-    }
-    return found;
-  }
-
-  function teaser(text, wordLimit = 12) {
-    if (!text) return "";
-    // Remove directive clauses starting with verbs that give away actions
-    const forbiddenStarters = ["prioriza", "priorizar", "requiere", "se requiere", "evacuación", "evacuacion", "traslado", "traslada", "intubar", "intubación", "intubacion"];
-    const lower = text.toLowerCase();
-    for (const starter of forbiddenStarters) {
-      const idx = lower.indexOf(starter);
-      if (idx >= 0) {
-        // cut text before the directive phrase to avoid giving hints
-        text = text.substring(0, idx).trim();
-        break;
-      }
-    }
-    // Fallback to first N words
-    const words = text.split(/\s+/).filter(Boolean);
-    if (words.length <= wordLimit) return words.join(" ");
-    return words.slice(0, wordLimit).join(" ") + "...";
-  }
-  const DIFFICULTY_TONE = {
-    basico: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    intermedio: "bg-amber-50 text-amber-700 border-amber-200",
-    avanzado: "bg-red-50 text-red-700 border-red-200",
-  };
-
   const isPublished = microCase.is_published !== false;
-  const statusBadge = isPublished ? { label: "Disponible", tone: "bg-emerald-50 text-emerald-700 border-emerald-200", button: { label: "Iniciar microcaso", variant: "bg-[#0A3D91] text-white hover:bg-[#0A3D91]/90" } } : { label: "Bloqueado", tone: "bg-slate-100 text-slate-500 border-slate-200", button: { label: "Ver opciones", variant: "bg-slate-900 text-white hover:bg-slate-800" } };
+  const diffKey = String(microCase.difficulty || "").toLowerCase();
 
   return (
-    <article className="relative flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-[0_24px_48px_-32px_rgba(10,61,145,0.35)]">
-      { !isPublished ? (
-        <div className="absolute right-6 top-6 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">Bloqueado</div>
-      ) : null }
-
+    <article
+      className={`flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-sm transition
+        ${isPublished ? "hover:-translate-y-0.5 hover:shadow-md hover:border-[#0A3D91]/30 cursor-pointer" : "opacity-60"}`}
+      style={{ borderColor: "rgba(0,0,0,0.08)" }}
+      onClick={isPublished ? () => onSelect(microCase.id) : undefined}
+    >
       <div className="space-y-3">
-        <div className="flex flex-col gap-2">
-          <h3 className="text-xl font-semibold text-slate-900">{microCase.title}</h3>
-          {/* show a neutral teaser only (no action hints, truncated) */}
-          {microCase.summary ? <p className="text-sm text-slate-500">{teaser(microCase.summary)}</p> : null}
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-900 leading-snug">{microCase.title}</h3>
+          {!isPublished && (
+            <span className="flex-shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Bloqueado</span>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {microCase.difficulty ? (
-            <span className={`rounded-full border px-3 py-1 font-semibold ${DIFFICULTY_TONE[String(microCase.difficulty).toLowerCase()] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
-              {microCase.difficulty ? String(microCase.difficulty).charAt(0).toUpperCase() + String(microCase.difficulty).slice(1) : ''}
-            </span>
-          ) : null}
-          {microCase.estimated_minutes ? (
-            <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">{formatDuration(microCase.estimated_minutes)}</span>
-          ) : null}
-          <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${statusBadge.tone}`}>
-            {statusBadge.label}
-          </span>
-        </div>
-
-        {/* Clinical categories (derived from tags) */}
-        {extractClinicalCategories(microCase.tags).length ? (
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-            {extractClinicalCategories(microCase.tags).map((c) => (
-              <span key={`clin-${c}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium uppercase tracking-wider">{c}</span>
-            ))}
-          </div>
-        ) : (
-          /* fallback: show other tags (filtered) */
-          (microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).length ? (
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-              {(microCase.tags || []).filter((tag) => !EXCLUDED_TAGS.includes(normalizeText(tag))).map((tag) => (
-                <span key={`tag-${tag}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium uppercase tracking-wider">{tag}</span>
-              ))}
-            </div>
-          ) : null
+        {/* Summary */}
+        {microCase.summary && (
+          <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{microCase.summary}</p>
         )}
+
+        {/* Badges */}
+        <div className="flex flex-wrap gap-1.5">
+          {diffKey && DIFFICULTY_LABEL[diffKey] && (
+            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${DIFFICULTY_COLOR[diffKey]}`}>
+              {DIFFICULTY_LABEL[diffKey]}
+            </span>
+          )}
+          {microCase.estimated_minutes && (
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-500">
+              {formatDuration(microCase.estimated_minutes)}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="mt-5 space-y-3">
-        <button
-          type="button"
-          onClick={() => onSelect(microCase.id)}
-          className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${statusBadge.button.variant}`}
-        >
-          {statusBadge.button.label}
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M5 12h14" strokeLinecap="round" />
-            <path d="m12 5 7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      </div>
+      {/* CTA */}
+      {isPublished && (
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+          <span className="text-xs font-medium text-[#0A3D91]">Iniciar caso →</span>
+        </div>
+      )}
     </article>
   );
 }
 
 export default function QuickTraining() {
-  const { session, ready } = useAuth();
+  const { session, ready, profile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [cases, setCases] = useState(EMPTY_STATE);
   const [error, setError] = useState("");
   const [completedAttempts, setCompletedAttempts] = useState([]);
-  const [participantRole, setParticipantRole] = useState("medico");
+
+  // Rol del perfil del usuario, normalizado
+  const participantRole = useMemo(() => {
+    const raw = String(profile?.rol || "").toLowerCase();
+    if (raw.includes("enfer")) return "enfermeria";
+    if (raw.includes("farm"))  return "farmacia";
+    return "medico"; // default
+  }, [profile]);
 
   const token = useMemo(() => session?.access_token ?? null, [session]);
 
@@ -297,36 +225,20 @@ export default function QuickTraining() {
       <section className="relative overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 bg-gradient-to-r from-[#0A3D91] via-[#1E6ACB] to-[#4FA3E3]" />
         <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_15%_15%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_85%_0%,rgba(255,255,255,0.12),transparent_45%)]" />
-        <div className="max-w-6xl mx-auto px-5 py-12 text-white relative">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-6xl mx-auto px-5 py-8 text-white relative">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-white/70 text-sm uppercase tracking-wide">Entrenamiento rápido</p>
-              <span className="mt-2 inline-flex flex-col items-center rounded-full border border-white/40 bg-white/20 px-3 py-1 text-center text-xs font-semibold uppercase leading-tight tracking-[0.2em] text-white/80">
-                <span>No disponible</span>
-                <span>para alumnos</span>
-              </span>
-              <h1 className="text-3xl md:text-4xl font-semibold mt-1">Microcasos interactivos</h1>
-              <p className="opacity-95 mt-3 text-lg max-w-xl">
-                Cambia de rol para entrenar la coordinación entre equipos. Cada enfoque ofrece preguntas y respuestas adaptadas a tu responsabilidad.
+              <p className="text-white/60 text-xs uppercase tracking-widest mb-2">Casos rápidos</p>
+              <h1 className="text-2xl md:text-3xl font-semibold">Microcasos clínicos interactivos</h1>
+              <p className="opacity-80 mt-2 text-sm max-w-xl">
+                Casos breves de toma de decisiones. Cada opción tiene consecuencias clínicas reales.
               </p>
-              <div className="flex flex-wrap items-center gap-2 mt-4">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/70">Selecciona Rol</span>
-                <div className="inline-flex rounded-full border border-white/25 bg-white/10 p-1">
-                  {ROLE_OPTIONS.map((role) => {
-                    const isActive = participantRole === role;
-                    return (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => setParticipantRole(role)}
-                        className={`px-3 py-1 text-xs font-semibold rounded-full transition ${isActive ? 'bg-white text-[#0A3D91] shadow-sm' : 'text-white/85 hover:bg-white/15'}`}
-                      >
-                        {ROLE_LABELS[role]}
-                      </button>
-                    );
-                  })}
+              {participantRole && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/70" />
+                  Rol: {ROLE_LABELS[participantRole] || participantRole}
                 </div>
-              </div>
+              )}
             </div>
             <RoleSummary role={participantRole} />
           </div>

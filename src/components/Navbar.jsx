@@ -20,34 +20,21 @@ export default function Navbar({ variant = "auto" }) {
   // Inject navbar styles
   const navbarStyles = `
     .nav-link {
-      position: relative;
-      transition: color 0.3s ease;
+      transition: color 0.15s ease, background 0.15s ease;
     }
-    .nav-link::after {
-      content: '';
-      position: absolute;
-      bottom: -2px;
-      left: 0;
-      width: 0;
-      height: 2px;
-      background-color: #0A3D91;
-      transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    .nav-link:hover::after {
-      width: 100%;
+    .nav-link:hover {
+      background: #f1f5f9;
+      color: #0f172a;
     }
     .nav-link.active {
       color: #0A3D91;
-    }
-    .nav-link.active::after {
-      width: 100%;
+      background: #eff6ff;
     }
     .nav-cta {
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: all 0.15s ease;
     }
     .nav-cta:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(10, 61, 145, 0.15);
+      opacity: 0.9;
     }
   `;
 
@@ -78,7 +65,7 @@ export default function Navbar({ variant = "auto" }) {
                 alt="SimuPed"
                 className="h-9 md:h-10 w-auto object-contain"
               />
-              <span className="text-[#0F4C81] text-lg md:text-xl font-bold tracking-tight">SimuPed</span>
+              <span className="text-[#0A3D91] text-lg md:text-xl font-bold tracking-tight">SimuPed</span>
             </Link>
 
             {/* Desktop nav — links principales centrados */}
@@ -103,10 +90,7 @@ export default function Navbar({ variant = "auto" }) {
                 />
               )}
               {isPrivate && isAdmin && (
-                <NavItem to="/entrenamiento-rapido" label="Entrenamiento rápido" tag="En desarrollo" />
-              )}
-              {isPrivate && isAdmin && (
-                <NavItem to="/entrenamiento-interactivo" label="Entrenamiento interactivo" tag="En desarrollo" />
+                <EntrenamientoDropdown />
               )}
               {isPrivate && <NavItem to="/evaluacion" label="Evaluación" />}
               {isAdmin && <NavItem to="/admin" label="Admin" emphasize />}
@@ -119,7 +103,7 @@ export default function Navbar({ variant = "auto" }) {
                   <NavLink
                     to="/perfil"
                     className={({ isActive }) =>
-                      `px-3 py-1.5 text-sm font-medium rounded-lg transition nav-link ${isActive ? "text-[#0A3D91] active" : "text-slate-600 hover:text-slate-900"}`
+                      `px-3 py-1.5 text-sm font-medium rounded-lg border transition nav-link ${isActive ? "text-[#0A3D91] border-slate-200 bg-slate-50" : "text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900"}`
                     }
                   >
                     Perfil
@@ -179,7 +163,7 @@ export default function Navbar({ variant = "auto" }) {
               {isPrivate && isAdmin && (
                 <MobileItem
                   to="/entrenamiento-rapido"
-                  label="Entrenamiento rápido"
+                  label="Casos rápidos"
                   tag="En desarrollo"
                   onClick={() => setOpen(false)}
                 />
@@ -187,7 +171,7 @@ export default function Navbar({ variant = "auto" }) {
               {isPrivate && isAdmin && (
                 <MobileItem
                   to="/entrenamiento-interactivo"
-                  label="Entrenamiento interactivo"
+                  label="Simulación virtual"
                   tag="En desarrollo"
                   onClick={() => setOpen(false)}
                 />
@@ -231,38 +215,92 @@ export default function Navbar({ variant = "auto" }) {
   );
 }
 
+function EntrenamientoDropdown() {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const isActive = location.pathname.startsWith("/entrenamiento");
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium rounded-lg nav-link transition whitespace-nowrap ${isActive ? "active text-slate-900" : "text-slate-700"}`}
+      >
+        Entrenamiento
+        <svg className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-52 rounded-xl border border-slate-200 bg-white shadow-lg py-1 z-50">
+          <NavLink
+            to="/entrenamiento-rapido"
+            className={({ isActive }) =>
+              `flex flex-col px-4 py-2.5 text-sm hover:bg-slate-50 transition ${isActive ? "text-[#0A3D91] font-medium" : "text-slate-700"}`
+            }
+          >
+            <span>Casos rápidos</span>
+            <span className="text-xs text-amber-600 font-normal">En desarrollo</span>
+          </NavLink>
+          <NavLink
+            to="/entrenamiento-interactivo"
+            className={({ isActive }) =>
+              `flex flex-col px-4 py-2.5 text-sm hover:bg-slate-50 transition ${isActive ? "text-[#0A3D91] font-medium" : "text-slate-700"}`
+            }
+          >
+            <span>Simulación virtual</span>
+            <span className="text-xs text-amber-600 font-normal">En desarrollo</span>
+          </NavLink>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NavItem({ to, label, emphasize = false, tag, isCTA = false }) {
-  const base = "inline-flex max-w-[110px] flex-col items-center justify-center gap-0.5 px-2.5 py-1.5 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg nav-link transition";
-  
+  const base = "inline-flex px-2.5 py-1.5 text-sm font-medium leading-tight rounded-lg nav-link transition whitespace-nowrap";
+
   if (isCTA) {
     return (
       <NavLink
         to={to}
-        className="nav-cta inline-flex min-h-[42px] px-4 py-2 text-sm font-semibold text-white rounded-lg"
+        className="nav-cta inline-flex min-h-[36px] px-4 py-2 text-sm font-semibold text-white rounded-lg"
         style={{ background: '#0A3D91' }}
       >
         <span>{label}</span>
       </NavLink>
     );
   }
-  
+
+  if (emphasize) {
+    return (
+      <NavLink
+        to={to}
+        className={({ isActive }) =>
+          base + " font-semibold " + (isActive ? "text-[#0A3D91] active" : "text-[#0A3D91]")
+        }
+      >
+        {label}
+      </NavLink>
+    );
+  }
+
   return (
     <NavLink
       to={to}
-      className={({ isActive }) => base + (isActive ? " active text-slate-900" : " text-slate-700")}
+      className={({ isActive }) => base + (isActive ? " active text-[#0A3D91]" : " text-slate-600 hover:text-slate-900")}
     >
-      <span className="leading-tight">{label}</span>
-      {tag ? (
-        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.15em] text-amber-700 whitespace-nowrap">
-          {tag}
-        </span>
-      ) : null}
+      {label}
     </NavLink>
   );
 }
 
 function AnchorItem({ href, label }) {
-  const base = "inline-flex min-h-[42px] max-w-[110px] items-center justify-center px-3 py-2 text-sm font-medium leading-tight text-center whitespace-normal rounded-lg nav-link text-slate-700 transition";
+  const base = "inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg nav-link text-slate-700 transition whitespace-nowrap";
   return (
     <a href={href} className={base}>
       {label}
@@ -276,17 +314,17 @@ function LogoutButton({ onClick, disabled }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="nav-cta inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+      className="nav-cta inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
       aria-label="Cerrar sesión"
       title="Cerrar sesión"
       style={{ background: '#0A3D91' }}
     >
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M10 17l5-5-5-5" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M15 12H3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      <span className="ml-1">Salir</span>
+      Salir
     </button>
   );
 }

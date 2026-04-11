@@ -11,6 +11,7 @@ export default defineConfig({
   ],
   base: './',   // 👈 importante para Vercel, evita rutas rotas
   build: {
+    emptyOutDir: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

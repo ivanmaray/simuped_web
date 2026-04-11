@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SimuPed — Propuesta B: Briefing Room</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --warm-50:  #fafaf8;
+    --warm-100: #f5f4f0;
+    --warm-200: #e8e6e0;
+    --warm-300: #d1cfc8;
+    --text-900: #191917;
+    --text-700: #44433e;
+    --text-500: #7c7b76;
+    --text-400: #a3a29c;
+    --accent:   #0A3D91;
+    --accent-l: #eff6ff;
+    --green:    #15803d;
+    --green-l:  #dcfce7;
+    --amber:    #92400e;
+    --amber-l:  #fef3c7;
+    --red:      #991b1b;
+    --red-l:    #fee2e2;
+  }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--warm-50);
+    color: var(--text-900);
+    min-height: 100vh;
+  }
+
+  /* ── NAVBAR ── */
+  .navbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: var(--warm-50);
+    border-bottom: 1px solid var(--warm-200);
+    height: 52px;
+    display: flex; align-items: center; padding: 0 32px; gap: 0;
+  }
+  .navbar-brand {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--text-900); font-weight: 700; font-size: 15px; letter-spacing: -0.2px;
+    text-decoration: none; margin-right: 32px;
+  }
+  .brand-icon {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: var(--accent); display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: white; letter-spacing: -1px;
+  }
+  .navbar-sep { width: 1px; height: 20px; background: var(--warm-200); margin: 0 16px; }
+  .nav-crumb {
+    font-size: 13px; color: var(--text-500); font-weight: 400;
+  }
+  .navbar-links { display: flex; gap: 2px; margin-left: auto; }
+  .nav-link {
+    color: var(--text-500); font-size: 13px; font-weight: 500;
+    padding: 5px 10px; border-radius: 5px; text-decoration: none; transition: all 0.12s;
+  }
+  .nav-link:hover { color: var(--text-900); background: var(--warm-100); }
+  .nav-link.active { color: var(--text-900); background: var(--warm-100); }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 11px; font-weight: 700; margin-left: 12px;
+  }
+
+  /* ── LAYOUT ── */
+  .page {
+    max-width: 1080px; margin: 0 auto; padding: 76px 32px 60px;
+  }
+
+  /* ── DOSSIER HEADER ── */
+  .dossier-header {
+    padding-bottom: 28px; margin-bottom: 32px;
+    border-bottom: 1px solid var(--warm-200);
+  }
+  .dossier-eyebrow {
+    font-size: 11px; font-weight: 600; color: var(--text-400);
+    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .dossier-title {
+    font-size: 32px; font-weight: 700; letter-spacing: -0.8px; color: var(--text-900);
+    margin-bottom: 6px; line-height: 1.1;
+  }
+  .dossier-subtitle { font-size: 15px; color: var(--text-500); font-weight: 400; }
+  .dossier-meta {
+    display: flex; gap: 20px; margin-top: 16px; align-items: center;
+  }
+  .meta-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; color: var(--text-700); font-weight: 500;
+  }
+  .meta-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--warm-300); }
+
+  /* ── STAT CARDS ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 36px; }
+  .stat-card {
+    background: white; border: 1px solid var(--warm-200); border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .stat-label { font-size: 11px; font-weight: 600; color: var(--text-400); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
+  .stat-value { font-size: 28px; font-weight: 700; letter-spacing: -0.8px; color: var(--text-900); line-height: 1; margin-bottom: 4px; }
+  .stat-note { font-size: 11px; color: var(--text-500); }
+  .stat-change {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-left: 4px;
+  }
+  .stat-change.up { background: #dcfce7; color: #15803d; }
+  .stat-change.neutral { background: var(--warm-100); color: var(--text-500); }
+
+  /* ── MAIN GRID ── */
+  .main-grid { display: grid; grid-template-columns: 1fr 300px; gap: 32px; }
+
+  /* ── SECTION ── */
+  .section { margin-bottom: 32px; }
+  .section-title {
+    font-size: 13px; font-weight: 600; color: var(--text-700);
+    margin-bottom: 12px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--warm-200);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .see-all { font-size: 12px; color: var(--accent); font-weight: 500; cursor: pointer; }
+
+  /* ── SCENARIO TABLE ── */
+  .scenario-table { width: 100%; border-collapse: collapse; }
+  .scenario-table tr {
+    border-bottom: 1px solid var(--warm-100);
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  .scenario-table tr:hover { background: var(--warm-50); }
+  .scenario-table td { padding: 13px 8px; vertical-align: middle; }
+
+  .level-tag {
+    display: inline-flex; align-items: center;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 4px;
+  }
+  .level-tag.l1 { background: var(--green-l); color: var(--green); }
+  .level-tag.l2 { background: var(--amber-l); color: var(--amber); }
+  .level-tag.l3 { background: var(--red-l); color: var(--red); }
+
+  .sc-name { font-size: 14px; font-weight: 500; color: var(--text-900); }
+  .sc-sub { font-size: 12px; color: var(--text-400); margin-top: 2px; }
+  .sc-mode {
+    font-size: 11px; color: var(--text-500); font-weight: 500;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .btn-text {
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    cursor: pointer; white-space: nowrap; text-decoration: none;
+    padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(10,61,145,0.2);
+    transition: all 0.12s;
+  }
+  .btn-text:hover { background: var(--accent-l); }
+  .btn-done {
+    font-size: 12px; font-weight: 500; color: var(--text-400);
+    cursor: pointer; white-space: nowrap; padding: 5px 10px;
+    border-radius: 6px; border: 1px solid var(--warm-200);
+  }
+
+  /* ── AGENDA ── */
+  .agenda-panel { }
+  .agenda-date-group { margin-bottom: 20px; }
+  .agenda-date-label {
+    font-size: 11px; font-weight: 600; color: var(--text-400);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+  .agenda-item {
+    display: flex; gap: 12px; padding: 12px 0;
+    border-bottom: 1px solid var(--warm-100);
+    align-items: flex-start;
+  }
+  .agenda-time {
+    font-size: 12px; font-weight: 600; color: var(--text-400);
+    width: 44px; flex-shrink: 0; padding-top: 1px; font-variant-numeric: tabular-nums;
+  }
+  .agenda-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    margin-top: 4px; flex-shrink: 0;
+  }
+  .agenda-dot.green { background: var(--green); }
+  .agenda-content { flex: 1; }
+  .agenda-title { font-size: 13px; font-weight: 500; color: var(--text-900); }
+  .agenda-sub { font-size: 12px; color: var(--text-500); margin-top: 2px; }
+  .agenda-tag {
+    display: inline-flex; font-size: 10px; font-weight: 600;
+    padding: 2px 6px; border-radius: 4px; margin-top: 4px;
+  }
+  .agenda-tag.dual { background: var(--accent-l); color: var(--accent); }
+  .agenda-tag.done { background: var(--green-l); color: var(--green); }
+
+  /* ── CTA SECTION ── */
+  .cta-panel {
+    background: white; border: 1px solid var(--warm-200); border-radius: 12px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .cta-title { font-size: 13px; font-weight: 600; color: var(--text-900); margin-bottom: 4px; }
+  .cta-sub { font-size: 12px; color: var(--text-500); margin-bottom: 14px; }
+  .cta-btn {
+    display: block; width: 100%; padding: 10px; border-radius: 8px;
+    background: var(--accent); color: white; font-size: 13px; font-weight: 600;
+    text-align: center; cursor: pointer; border: none; transition: all 0.12s;
+  }
+  .cta-btn:hover { opacity: 0.9; }
+  .cta-links { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .cta-link {
+    font-size: 12px; color: var(--text-700); font-weight: 500; cursor: pointer;
+    padding: 7px 10px; border-radius: 6px; border: 1px solid var(--warm-200);
+    text-align: left; background: none; transition: all 0.12s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .cta-link:hover { background: var(--warm-100); }
+
+  /* ── PROGRESS ── */
+  .progress-panel {
+    background: white; border: 1px solid var(--warm-200); border-radius: 12px;
+    padding: 20px;
+  }
+  .prog-title { font-size: 13px; font-weight: 600; color: var(--text-900); margin-bottom: 14px; }
+  .prog-item { margin-bottom: 14px; }
+  .prog-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+  .prog-label { font-size: 12px; color: var(--text-700); font-weight: 500; }
+  .prog-val { font-size: 12px; color: var(--text-500); font-weight: 500; }
+  .prog-track { height: 4px; background: var(--warm-100); border-radius: 999px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 999px; transition: width 0.3s; }
+
+  /* ── NOTE ── */
+  .design-note {
+    text-align: center; padding: 24px;
+    font-size: 11px; color: var(--text-400); letter-spacing: 0.05em; text-transform: uppercase;
+    border-top: 1px solid var(--warm-200); margin-top: 40px;
+  }
+  .design-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--text-900); color: white; padding: 4px 12px;
+    border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <a href="#" class="navbar-brand">
+    <div class="brand-icon">SP</div>
+    SimuPed
+  </a>
+  <div class="navbar-sep"></div>
+  <span class="nav-crumb">Dashboard</span>
+  <div class="navbar-links">
+    <a href="#" class="nav-link active">Inicio</a>
+    <a href="#" class="nav-link">Simulación online</a>
+    <a href="#" class="nav-link">Sim. presencial</a>
+    <a href="#" class="nav-link">Entrenamiento</a>
+    <a href="#" class="nav-link">Evaluación</a>
+    <a href="#" class="nav-link" style="color:#0A3D91; font-weight:600;">Admin</a>
+    <div class="avatar">I</div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- DOSSIER HEADER -->
+  <div class="dossier-header">
+    <div class="dossier-eyebrow">Bienvenido de nuevo</div>
+    <div class="dossier-title">Iván</div>
+    <div class="dossier-subtitle">SimuPed · Plataforma de simulación pediátrica</div>
+    <div class="dossier-meta">
+      <span class="meta-chip"><div class="dot"></div>Curso 2025–2026</span>
+      <span class="meta-chip"><div class="dot"></div>Instructor</span>
+      <span class="meta-chip"><div class="dot"></div>Sábado, 11 de abril de 2026</span>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Escenarios</div>
+      <div class="stat-value">14 <span class="stat-change neutral">disponibles</span></div>
+      <div class="stat-note">Online y presencial</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Completados</div>
+      <div class="stat-value">6 <span class="stat-change up">+2</span></div>
+      <div class="stat-note">Este trimestre</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tiempo medio</div>
+      <div class="stat-value">18<span style="font-size:16px;font-weight:500"> min</span></div>
+      <div class="stat-note">Por sesión completada</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Alumnos activos</div>
+      <div class="stat-value">32</div>
+      <div class="stat-note">Esta semana</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+
+    <!-- LEFT -->
+    <div>
+      <!-- SCENARIOS -->
+      <div class="section">
+        <div class="section-title">
+          Escenarios online
+          <span class="see-all">Ver todos →</span>
+        </div>
+        <table class="scenario-table">
+          <tbody>
+            <tr>
+              <td style="width:60px;"><span class="level-tag l1">N1</span></td>
+              <td>
+                <div class="sc-name">Convulsión febril simple</div>
+                <div class="sc-sub">3 intentos disponibles</div>
+              </td>
+              <td><div class="sc-mode">🌐 Online</div></td>
+              <td style="text-align:right;"><a class="btn-text">Iniciar</a></td>
+            </tr>
+            <tr>
+              <td><span class="level-tag l2">N2</span></td>
+              <td>
+                <div class="sc-name">Anafilaxia pediátrica</div>
+                <div class="sc-sub">2 intentos restantes</div>
+              </td>
+              <td><div class="sc-mode">🌐 Online</div></td>
+              <td style="text-align:right;"><a class="btn-text">Iniciar</a></td>
+            </tr>
+            <tr>
+              <td><span class="level-tag l3">N3</span></td>
+              <td>
+                <div class="sc-name">Sepsis neonatal con shock</div>
+                <div class="sc-sub">1 intento restante</div>
+              </td>
+              <td><div class="sc-mode">🌐 Online</div></td>
+              <td style="text-align:right;"><a class="btn-text">Iniciar</a></td>
+            </tr>
+            <tr>
+              <td><span class="level-tag l1">N1</span></td>
+              <td>
+                <div class="sc-name">Sibilancias en lactante</div>
+                <div class="sc-sub">3 intentos disponibles</div>
+              </td>
+              <td><div class="sc-mode">🌐 Online</div></td>
+              <td style="text-align:right;"><a class="btn-text">Iniciar</a></td>
+            </tr>
+            <tr>
+              <td><span class="level-tag l2">N2</span></td>
+              <td>
+                <div class="sc-name">Traumatismo craneal leve</div>
+                <div class="sc-sub" style="color:#15803d;">✓ Completado</div>
+              </td>
+              <td><div class="sc-mode">🌐 Online</div></td>
+              <td style="text-align:right;"><a class="btn-done">Revisar</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PROGRESS -->
+      <div class="section">
+        <div class="section-title">Progreso por nivel</div>
+        <div class="progress-panel">
+          <div class="prog-item">
+            <div class="prog-row">
+              <span class="prog-label">Nivel 1 — Básico</span>
+              <span class="prog-val">4 / 5</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:80%; background:#10b981;"></div></div>
+          </div>
+          <div class="prog-item">
+            <div class="prog-row">
+              <span class="prog-label">Nivel 2 — Intermedio</span>
+              <span class="prog-val">2 / 6</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:33%; background:#f59e0b;"></div></div>
+          </div>
+          <div class="prog-item">
+            <div class="prog-row">
+              <span class="prog-label">Nivel 3 — Avanzado</span>
+              <span class="prog-val">0 / 3</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" style="width:0%; background:#ef4444;"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+
+      <!-- ACCIONES CTA -->
+      <div class="cta-panel">
+        <div class="cta-title">Simulación presencial</div>
+        <div class="cta-sub">Inicia una nueva sesión en modo dual para instructores y alumnos.</div>
+        <button class="cta-btn">Nueva simulación</button>
+        <div class="cta-links">
+          <button class="cta-link">📅 Gestión de sesiones</button>
+          <button class="cta-link">🖥 Consola clásica</button>
+          <button class="cta-link">🔔 Notificaciones</button>
+        </div>
+      </div>
+
+      <!-- AGENDA -->
+      <div class="section-title" style="margin-bottom:14px;">
+        Agenda
+        <span class="see-all">Ver completa →</span>
+      </div>
+
+      <div class="agenda-date-group">
+        <div class="agenda-date-label">Esta semana</div>
+        <div class="agenda-item">
+          <div class="agenda-time">16:00</div>
+          <div class="agenda-dot"></div>
+          <div class="agenda-content">
+            <div class="agenda-title">Simulación dual — Urgencias</div>
+            <div class="agenda-sub">Vie 17 · Quirófano 2</div>
+            <span class="agenda-tag dual">Modo dual</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="agenda-date-group">
+        <div class="agenda-date-label">Próximas semanas</div>
+        <div class="agenda-item">
+          <div class="agenda-time">10:00</div>
+          <div class="agenda-dot"></div>
+          <div class="agenda-content">
+            <div class="agenda-title">Sesión presencial — Neonatología</div>
+            <div class="agenda-sub">Lun 21 · Sala B</div>
+            <span class="agenda-tag dual">Modo dual</span>
+          </div>
+        </div>
+        <div class="agenda-item">
+          <div class="agenda-time">09:30</div>
+          <div class="agenda-dot green"></div>
+          <div class="agenda-content">
+            <div class="agenda-title">Revisión de casos — Trauma</div>
+            <div class="agenda-sub">Mié 30 · Online</div>
+            <span class="agenda-tag done">Registrado</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<div class="design-note">
+  <div>
+    <div class="design-badge">Propuesta B</div>
+    <br/>
+    Briefing Room · Inspirada en Notion + Apple · Cálida, limpia, tipografía protagonista
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,36 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-function usePreviousAttempts(caseId, token, version = 0) {
-  const [attempts, setAttempts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    if (!caseId || !token) return;
-    setLoading(true);
-    fetch(`/api/micro_cases?action=attempts&case_id=${caseId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          // If unauthorized, keep empty attempts; caller can decide messaging
-          return { attempts: [] };
-        }
-        return res.json();
-      })
-      .then((data) => {
-        setAttempts(Array.isArray(data.attempts) ? data.attempts : []);
-      })
-      .catch(() => setAttempts([]))
-      .finally(() => setLoading(false));
-  }, [caseId, token, version]);
-  return { attempts, loading };
-}
 import ReactMarkdown from "react-markdown";
 
 const ROLE_LABELS = {
   medico: "Medicina",
-  enfermeria: "Enfermeria",
+  enfermeria: "Enfermería",
   farmacia: "Farmacia"
 };
 
@@ -45,15 +19,24 @@ function useNodeGraph(microCase) {
   }, [microCase]);
 }
 
-function Toast({ message, tone = "info" }) {
-  const palette = tone === "success"
-    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-    : tone === "error"
-      ? "bg-red-50 border-red-200 text-red-700"
-      : "bg-slate-50 border-slate-200 text-slate-600";
-  return (
-    <div className={`rounded-xl border px-3 py-2 text-sm ${palette}`}>{message}</div>
-  );
+function usePreviousAttempts(caseId, token, version = 0) {
+  const [attempts, setAttempts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!caseId || !token) return;
+    setLoading(true);
+    fetch(`/api/micro_cases?action=attempts&case_id=${caseId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) return { attempts: [] };
+        return res.json();
+      })
+      .then((data) => setAttempts(Array.isArray(data.attempts) ? data.attempts : []))
+      .catch(() => setAttempts([]))
+      .finally(() => setLoading(false));
+  }, [caseId, token, version]);
+  return { attempts, loading };
 }
 
 const FEEDBACK_DELAY_MS = 400;
@@ -67,19 +50,10 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const [history, setHistory] = useState([]);
   const [lastFeedback, setLastFeedback] = useState(null);
   const [score, setScore] = useState(0);
-  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [startedAt] = useState(() => Date.now());
   const [isCompleted, setIsCompleted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [tick, setTick] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (isCompleted) return;
-    setTick(Date.now());
-    const interval = window.setInterval(() => {
-      setTick(Date.now());
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, [isCompleted]);
+  const [registered, setRegistered] = useState(false);
 
   useEffect(() => {
     setCurrentNodeId(startId);
@@ -87,20 +61,18 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setScore(0);
     setLastFeedback(null);
     setIsCompleted(false);
-    setStartedAt(Date.now());
-    setTick(Date.now());
+    setRegistered(false);
   }, [startId]);
 
   const currentNode = currentNodeId ? nodeMap.get(currentNodeId) : null;
   const roleLabel = participantRole ? (ROLE_LABELS[participantRole] || participantRole) : null;
-  // Nuevo: contar todos los nodos relevantes (decision, info, outcome no automáticos)
+
   const totalRelevantNodes = useMemo(() => {
     return (microCase?.nodes || []).filter(
       (node) => ["decision", "info", "outcome"].includes(node.kind)
     ).length || 0;
   }, [microCase]);
 
-  // Nodos visitados: historial + el nodo actual si no está en historial
   const visitedNodeIds = useMemo(() => {
     const ids = new Set(history.map((step) => step.nodeId));
     if (currentNode && !ids.has(currentNode.id)) ids.add(currentNode.id);
@@ -110,74 +82,53 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const progressRatio = totalRelevantNodes > 0 ? Math.min(1, visitedNodeIds.size / totalRelevantNodes) : 0;
   const hasNode = Boolean(currentNode);
   const isTerminalNode = hasNode ? currentNode.is_terminal : false;
+  const showSummary = !hasNode && isCompleted;
+  const showUnavailable = !hasNode && !isCompleted;
+  const progressPercent = showSummary || isTerminalNode ? 100 : Math.round(progressRatio * 100);
 
-  // Auto-advance non-decision nodes when a next step is specified so the user avoids extra clicks.
+  // Auto-advance
   useEffect(() => {
-    if (!currentNode || !currentNode.auto_advance_to || currentNode.kind === "decision" || currentNodeId === startId) {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      setCurrentNodeId(currentNode.auto_advance_to);
-    }, INFO_AUTO_ADVANCE_DELAY_MS);
-
+    if (!currentNode || !currentNode.auto_advance_to || currentNode.kind === "decision" || currentNodeId === startId) return;
+    const timer = window.setTimeout(() => setCurrentNodeId(currentNode.auto_advance_to), INFO_AUTO_ADVANCE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [currentNode, currentNodeId, startId]);
+
   const autoAdvanceActive = Boolean(
     currentNode && currentNode.auto_advance_to && currentNode.kind !== "decision" && currentNodeId !== startId
   );
 
   function handleOptionSelect(option) {
     const nextScore = score + (option.score_delta || 0);
-    const step = {
+    setHistory((prev) => [...prev, {
       nodeId: currentNode.id,
-      optionId: option.id,
-      outcomeLabel: option.feedback_md ? option.feedback_md.slice(0, 120) : null,
+      nodeBody: currentNode.body_md || "",
+      allOptions: currentNode.options || [],
+      chosenOptionId: option.id,
+      chosenLabel: option.label,
       scoreDelta: option.score_delta || 0,
-      elapsedMs: Date.now() - startedAt
-    };
-
-    setHistory((prev) => [...prev, step]);
+      feedback: option.feedback_md || null,
+    }]);
     setScore(nextScore);
-
-    if (option.feedback_md) {
-      setLastFeedback({ content: option.feedback_md, tone: option.score_delta >= 0 ? 'success' : 'error' });
-    } else {
-      setLastFeedback(null);
-    }
+    setLastFeedback(option.feedback_md ? { content: option.feedback_md, positive: (option.score_delta || 0) >= 0 } : null);
 
     const nextNodeId = option.next_node_id || currentNode?.auto_advance_to || null;
-
     if (!nextNodeId) {
       setIsCompleted(true);
       setCurrentNodeId(null);
-      setTick(Date.now());
     } else {
-      setTimeout(() => {
-        setCurrentNodeId(nextNodeId);
-      }, FEEDBACK_DELAY_MS);
+      setTimeout(() => setCurrentNodeId(nextNodeId), FEEDBACK_DELAY_MS);
     }
   }
 
   async function handleFinish() {
-    if (submitting) return;
-    if (!token) {
-      setLastFeedback({ content: 'Sesión no válida. Inicia sesión para registrar el resultado.', tone: 'error' });
-      return;
-    }
+    if (submitting || registered) return;
+    if (!token) return;
     setSubmitting(true);
     try {
-      const durationSeconds = Math.max(0, Math.ceil((tick - startedAt) / 1000));
-      const maybePromise = onSubmitAttempt?.({
-        caseId: microCase.id,
-        steps: history,
-        scoreTotal: score,
-        completed: true,
-        durationSeconds
-      });
-      if (maybePromise && typeof maybePromise.then === "function") {
-        await maybePromise;
-      }
+      const durationSeconds = Math.max(0, Math.ceil((Date.now() - startedAt) / 1000));
+      const maybePromise = onSubmitAttempt?.({ caseId: microCase.id, steps: history, scoreTotal: score, completed: true, durationSeconds });
+      if (maybePromise && typeof maybePromise.then === "function") await maybePromise;
+      setRegistered(true);
       setAttemptsVersion((v) => v + 1);
     } finally {
       setSubmitting(false);
@@ -190,266 +141,222 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setScore(0);
     setLastFeedback(null);
     setIsCompleted(false);
-    setStartedAt(Date.now());
-    setTick(Date.now());
+    setRegistered(false);
   }
 
-  if (!microCase) {
+  if (!microCase) return (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+      No se pudo cargar el microcaso.
+    </div>
+  );
+
+  if (showUnavailable) return (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+      Selecciona un punto de inicio válido para este microcaso.
+    </div>
+  );
+
+  // ── END SCREEN ──
+  if (showSummary || isTerminalNode) {
+    const isSuccess = currentNode?.metadata?.is_correct === true;
+    const isFailure = currentNode?.metadata?.is_correct === false;
+
     return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-        No se pudo cargar el microcaso.
-      </div>
-    );
-  }
-
-  const showSummary = !hasNode && isCompleted;
-  const showUnavailable = !hasNode && !isCompleted;
-  const elapsedSeconds = Math.max(0, Math.ceil((tick - startedAt) / 1000));
-
-  if (showUnavailable) {
-    return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-        Selecciona un punto de inicio válido para este microcaso.
-      </div>
-    );
-  }
-
-  // Solo mostrar 100% si el caso está completado (nodo terminal)
-  const progressPercent = showSummary || isTerminalNode ? 100 : Math.round(progressRatio * 100);
-  const progressBarWidth = `${Math.min(100, Math.max(0, progressPercent))}%`;
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-      <div className="space-y-4">
-        <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-5 py-5 text-white shadow-[0_26px_48px_-30px_rgba(15,23,42,0.8)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-white/60">Microcaso activo</p>
-              <h3 className="mt-1 text-lg font-semibold text-white">{microCase.title}</h3>
-              <p className="mt-1 text-xs text-white/65">
-                {showSummary ? 'Resumen final' : `Paso ${history.length + 1} de ${Math.max(totalRelevantNodes, history.length + 1)}`}
-                {` • ${elapsedSeconds}s`}
-              </p>
-            </div>
-            {roleLabel ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white/90">
-                {roleLabel}
-              </span>
-            ) : null}
+      <div className="max-w-2xl mx-auto space-y-6">
+        {/* Outcome */}
+        <div className={`rounded-2xl border-2 p-6 text-center ${isSuccess ? 'border-emerald-200 bg-emerald-50' : isFailure ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full ${isSuccess ? 'bg-emerald-100' : isFailure ? 'bg-amber-100' : 'bg-slate-100'}`}>
+            {isSuccess ? (
+              <svg className="h-7 w-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            ) : isFailure ? (
+              <svg className="h-7 w-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+            ) : (
+              <svg className="h-7 w-7 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            )}
           </div>
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-[11px] uppercase tracking-widest text-white/60">
-              <span>Progreso</span>
-              <span>{progressPercent}%</span>
+          <h3 className={`text-lg font-semibold ${isSuccess ? 'text-emerald-900' : isFailure ? 'text-amber-900' : 'text-slate-800'}`}>
+            {isSuccess ? 'Paciente estabilizado' : isFailure ? 'Escalada requerida' : 'Caso completado'}
+          </h3>
+          {currentNode?.body_md && (
+            <div className={`mt-2 text-sm prose prose-sm max-w-none ${isSuccess ? 'text-emerald-800' : isFailure ? 'text-amber-800' : 'text-slate-600'}`}>
+              <ReactMarkdown>{currentNode.body_md}</ReactMarkdown>
             </div>
-            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/15">
-              <div className="h-full rounded-full bg-white transition-all" style={{ width: progressBarWidth }}></div>
-            </div>
+          )}
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-1.5 text-sm font-semibold text-slate-700">
+            Puntuación final: <span className="text-[#0A3D91] font-bold">{score} pts</span>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
-          {showSummary ? (
+        {/* Revisión de decisiones */}
+        {history.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h4 className="text-sm font-semibold text-slate-800 mb-4">Revisión de tus decisiones</h4>
             <div className="space-y-4">
-              <Toast message="Has completado este microcaso." tone="success" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <p>Repasa tus decisiones en el panel lateral o vuelve a intentarlo para explorar otros desenlaces.</p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={handleFinish}
-                  disabled={submitting}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                >
-                  {submitting ? 'Guardando…' : 'Registrar resultado'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRestart}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  Reintentar microcaso
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="prose prose-sm max-w-none text-slate-800">
-                <ReactMarkdown>{currentNode.body_md || "Escenario sin descripción"}</ReactMarkdown>
-              </div>
-
-              {lastFeedback ? (
-                <div className="mt-4">
-                  <Toast
-                    message={<ReactMarkdown>{lastFeedback.content}</ReactMarkdown>}
-                    tone={lastFeedback.tone}
-                  />
-                </div>
-              ) : null}
-
-              {autoAdvanceActive ? (
-                <div className="mt-6 text-sm text-slate-500">
-                  Avanzando automáticamente al siguiente paso…
-                </div>
-              ) : currentNodeId === startId && currentNode.auto_advance_to ? (
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-6 py-3 text-sm font-semibold text-white hover:bg-[#0A3D91]/90"
-                  >
-                    Iniciar microcaso
-                  </button>
-                </div>
-              ) : !isTerminalNode ? (
-                <div className="mt-6 grid gap-3">
-                  {(currentNode.options || []).map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => handleOptionSelect(option)}
-                      className="text-left rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/5"
-                    >
-                      <ReactMarkdown>{option.label}</ReactMarkdown>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-6 space-y-4">
-                  <div className="rounded-2xl border-2 p-6 text-center">
-                    {currentNode.metadata?.is_correct === true ? (
-                      <div className="space-y-3">
-                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
-                          <svg className="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-semibold text-emerald-900">¡Paciente Estabilizado!</h3>
-                        <p className="text-sm text-emerald-700">
-                          El paciente ha respondido bien al tratamiento y presenta signos de recuperación.
-                        </p>
+              {history.map((step, idx) => {
+                const bestOption = [...(step.allOptions || [])].sort((a, b) => (b.score_delta || 0) - (a.score_delta || 0))[0];
+                const wasOptimal = bestOption?.id === step.chosenOptionId;
+                return (
+                  <div key={`${step.nodeId}-${idx}`} className="border border-slate-100 rounded-xl p-4">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Decisión {idx + 1}</p>
+                    {step.nodeBody && (
+                      <div className="text-xs text-slate-600 mb-3 prose prose-xs max-w-none line-clamp-2">
+                        <ReactMarkdown>{step.nodeBody}</ReactMarkdown>
                       </div>
-                    ) : currentNode.metadata?.is_correct === false ? (
-                      <div className="space-y-3">
-                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
-                          <svg className="h-8 w-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                          </svg>
-                        </div>
-                        <h3 className="text-lg font-semibold text-amber-900">Escalada Requerida</h3>
-                        <p className="text-sm text-amber-700">
-                          Se requiere intervención de un especialista superior o derivación a centro de mayor complejidad.
-                        </p>
+                    )}
+                    {/* Lo que elegiste */}
+                    <div className={`flex items-start gap-2 rounded-lg px-3 py-2 mb-2 ${wasOptimal ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                      <span className={`mt-0.5 flex-shrink-0 h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-bold ${wasOptimal ? 'bg-emerald-500 text-white' : 'bg-red-400 text-white'}`}>
+                        {wasOptimal ? '✓' : '✗'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-slate-700">Tu elección</p>
+                        <p className="text-xs text-slate-600 mt-0.5">{step.chosenLabel}</p>
+                        {step.feedback && (
+                          <p className="text-[11px] text-slate-500 mt-1 italic">{step.feedback.slice(0, 120)}{step.feedback.length > 120 ? '…' : ''}</p>
+                        )}
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                          <svg className="h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                      <span className={`text-xs font-semibold flex-shrink-0 ${step.scoreDelta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {step.scoreDelta >= 0 ? '+' : ''}{step.scoreDelta}
+                      </span>
+                    </div>
+                    {/* Opción óptima (si no la eligió) */}
+                    {!wasOptimal && bestOption && (
+                      <div className="flex items-start gap-2 rounded-lg px-3 py-2 bg-blue-50 border border-blue-100">
+                        <span className="mt-0.5 flex-shrink-0 h-4 w-4 rounded-full flex items-center justify-center bg-[#0A3D91] text-white text-[10px]">★</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-[#0A3D91]">Opción óptima</p>
+                          <p className="text-xs text-slate-600 mt-0.5">{bestOption.label}</p>
                         </div>
-                        <h3 className="text-lg font-semibold text-slate-900">Evolucion Critica</h3>
-                        <p className="text-sm text-slate-700">
-                          Este desenlace marca un punto de inflexion clinica. Analiza los detalles para identificar decisiones que pudieron cambiar la trayectoria del paciente.
-                        </p>
+                        <span className="text-xs font-semibold text-[#0A3D91] flex-shrink-0">
+                          +{bestOption.score_delta || 0}
+                        </span>
                       </div>
                     )}
                   </div>
-
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="prose prose-sm max-w-none text-slate-800">
-                      <ReactMarkdown>{currentNode.body_md || "Caso completado."}</ReactMarkdown>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={handleFinish}
-                      disabled={submitting}
-                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                    >
-                      {submitting ? 'Guardando…' : 'Registrar resultado'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRestart}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-                    >
-                      Reintentar microcaso
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      <aside className="space-y-4">
-        <div className="rounded-2xl border border-slate-200 bg-slate-900 px-4 py-5 text-white">
-          <h4 className="text-sm font-semibold tracking-wide uppercase text-slate-200">Progreso</h4>
-          <div className="mt-4 space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span>Decisiones tomadas</span>
-              <span className="font-semibold">{history.length}</span>
+                );
+              })}
             </div>
-            <div className="flex items-center justify-between">
-              <span>Puntuación</span>
-              <span className="font-semibold">{score}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Tiempo transcurrido</span>
-              <span className="font-semibold">{elapsedSeconds}s</span>
-            </div>
-          </div>
-        </div>
-
-        {history.length > 0 && (
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-5">
-            <h4 className="text-sm font-semibold text-slate-800">Historial actual</h4>
-            <ol className="mt-3 space-y-2 text-xs text-slate-600">
-              {history.map((step, index) => (
-                <li key={`${step.nodeId}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <span>Paso {index + 1}</span>
-                    <span className="font-semibold text-slate-700">{step.scoreDelta >= 0 ? `+${step.scoreDelta}` : step.scoreDelta} pts</span>
-                  </div>
-                  {step.outcomeLabel ? (
-                    <p className="mt-1 text-[0.7rem] text-slate-500 line-clamp-2">{step.outcomeLabel}</p>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-5">
-          <h4 className="text-sm font-semibold text-slate-800">Intentos previos</h4>
-          {loadingAttempts ? (
-            <div className="text-xs text-slate-500">Cargando intentos…</div>
-          ) : previousAttempts.length === 0 ? (
-            <div className="text-xs text-slate-500">No hay intentos previos registrados.</div>
-          ) : (
-            <ol className="mt-3 space-y-2 text-xs text-slate-600">
-              {previousAttempts.map((att) => (
-                <li key={att.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <span>{dayjs(att.completed_at || att.created_at).format("DD/MM/YYYY HH:mm")}</span>
-                    <span className="font-semibold text-slate-700">{att.score_total} pts</span>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span>Rol: {ROLE_LABELS[att.attempt_role] || att.attempt_role || "-"}</span>
-                    <span>{att.duration_seconds ? `${att.duration_seconds}s` : "-"}</span>
-                  </div>
-                  <span className="block mt-1 text-[0.7rem] text-slate-500">{att.status === "completed" ? "Completado" : "En progreso"}</span>
-                </li>
+        {/* Intentos previos */}
+        {previousAttempts.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <h4 className="text-sm font-semibold text-slate-800 mb-3">Intentos anteriores</h4>
+            <div className="space-y-2">
+              {previousAttempts.slice(0, 5).map((att) => (
+                <div key={att.id} className="flex items-center justify-between text-xs text-slate-600 py-1.5 border-b border-slate-100 last:border-0">
+                  <span>{dayjs(att.completed_at || att.created_at).format("DD/MM/YY HH:mm")}</span>
+                  <span className="font-semibold text-slate-800">{att.score_total} pts · {att.duration_seconds ? `${att.duration_seconds}s` : '—'}</span>
+                </div>
               ))}
-            </ol>
+            </div>
+          </div>
+        )}
+
+        {/* Acciones */}
+        <div className="flex flex-wrap gap-3">
+          {!registered ? (
+            <button
+              type="button"
+              onClick={handleFinish}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1E6ACB] disabled:opacity-60 transition"
+            >
+              {submitting ? 'Guardando…' : 'Registrar resultado'}
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm font-semibold text-emerald-700">
+              ✓ Resultado registrado
+            </span>
           )}
+          <button
+            type="button"
+            onClick={handleRestart}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
+          >
+            Reintentar
+          </button>
         </div>
-      </aside>
+      </div>
+    );
+  }
+
+  // ── PLAYER ──
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      {/* Header compacto */}
+      <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 px-5 py-4 text-white">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-white/50 mb-0.5">Paso {history.length + 1} de {Math.max(totalRelevantNodes, history.length + 1)}</p>
+            <h3 className="text-base font-semibold text-white leading-snug">{microCase.title}</h3>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {roleLabel && (
+              <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80">
+                {roleLabel}
+              </span>
+            )}
+            <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80">
+              {score} pts
+            </span>
+          </div>
+        </div>
+        {/* Barra de progreso */}
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/15">
+          <div className="h-full rounded-full bg-white/70 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+        </div>
+      </div>
+
+      {/* Contenido del nodo */}
+      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
+        <div className="prose prose-sm max-w-none text-slate-800 leading-relaxed">
+          <ReactMarkdown>{currentNode.body_md || "Sin descripción"}</ReactMarkdown>
+        </div>
+
+        {/* Feedback de la decisión anterior */}
+        {lastFeedback && (
+          <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${lastFeedback.positive ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+            <div className="prose prose-sm max-w-none">
+              <ReactMarkdown>{lastFeedback.content}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+
+        {/* Opciones / controles */}
+        <div className="mt-6">
+          {autoAdvanceActive ? (
+            <p className="text-sm text-slate-400 italic">Continuando…</p>
+          ) : currentNodeId === startId && currentNode.auto_advance_to ? (
+            <button
+              type="button"
+              onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-6 py-3 text-sm font-semibold text-white hover:bg-[#1E6ACB] transition"
+            >
+              Empezar caso →
+            </button>
+          ) : !isTerminalNode ? (
+            <div className="grid gap-2.5">
+              {(currentNode.options || []).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => handleOptionSelect(option)}
+                  className="text-left rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/4 transition group"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex-shrink-0 h-5 w-5 rounded-full border-2 border-slate-300 group-hover:border-[#0A3D91] transition" />
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>{option.label}</ReactMarkdown>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
