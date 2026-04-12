@@ -752,6 +752,44 @@ export default function Presencial_Instructor() {
     }
   };
 
+  // Enviar resultado de laboratorio
+  const sendLabResult = async (result) => {
+    if (!sessionId || sentLabResults.has(result.id)) return;
+    setSendingLab(result.id);
+    try {
+      await supabase.from('session_events').insert({
+        session_id: sessionId,
+        at: new Date().toISOString(),
+        kind: 'lab_result',
+        payload: { result_id: result.id, result }
+      });
+      setSentLabResults(prev => new Set([...prev, result.id]));
+    } catch (e) {
+      console.warn('[Instructor] sendLabResult error:', e);
+    } finally {
+      setSendingLab(null);
+    }
+  };
+
+  // Revelar ítem de anamnesis
+  const revealAnamnesisItem = async (itemId) => {
+    if (!sessionId || revealedItems.has(itemId)) return;
+    setRevealingItem(itemId);
+    try {
+      await supabase.from('session_events').insert({
+        session_id: sessionId,
+        at: new Date().toISOString(),
+        kind: 'anamnesis_reveal',
+        payload: { item_id: itemId }
+      });
+      setRevealedItems(prev => new Set([...prev, itemId]));
+    } catch (e) {
+      console.warn('[Instructor] revealAnamnesis error:', e);
+    } finally {
+      setRevealingItem(null);
+    }
+  };
+
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -766,6 +804,7 @@ export default function Presencial_Instructor() {
   const bannerRef = useRef(null);
   const variablesRef = useRef(null);
   const checklistRef = useRef(null);
+  const briefRef = useRef(null);
   const shareRef = useRef(null);
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
@@ -816,6 +855,15 @@ export default function Presencial_Instructor() {
   const [ventState, setVentState] = useState(null);
   const [isPublishingVent, setIsPublishingVent] = useState(false);
   const [patientInfo, setPatientInfo] = useState({ chips: [], weightKg: null });
+  const [presencialMeta, setPresencialMeta] = useState(null);
+  const [triggeredMinutes, setTriggeredMinutes] = useState(new Set());
+  const [triggerAlert, setTriggerAlert] = useState(null); // { message, minute }
+  const [revealedItems, setRevealedItems] = useState(new Set()); // item ids revelados
+  const [revealingItem, setRevealingItem] = useState(null); // id en proceso
+  const anamnesisRef = useRef(null);
+  const labRef = useRef(null);
+  const [sentLabResults, setSentLabResults] = useState(new Set()); // result ids enviados
+  const [sendingLab, setSendingLab] = useState(null); // id en proceso
   const weightKg = patientInfo.weightKg;
   const [selectedTemplateKey, setSelectedTemplateKey] = useState(initialTemplate?.key || null);
   const patientOverviewRich = useMemo(() => parsePatientOverviewRich(scenario?.patient_overview || ''), [scenario?.patient_overview]);
@@ -1398,6 +1446,18 @@ export default function Presencial_Instructor() {
 
         if (mounted) setScenario(sc ? { ...sc, patient_overview: overview || "" } : null);
 
+        // 1b) Metadatos presenciales (brief instructor, triggers, etc.)
+        try {
+          const { data: meta } = await supabase
+            .from('scenario_presencial_meta')
+            .select('instructor_brief, student_brief, triggers, room_layout, roles_required, anamnesis_items, lab_results')
+            .eq('scenario_id', id)
+            .maybeSingle();
+          if (mounted) setPresencialMeta(meta || null);
+        } catch (e) {
+          reportWarning('PresencialInstructor.presencialMeta', e, { scenarioId: id });
+        }
+
         // 2) Sesión (ahora también banner_text y current_step_id)
         const loadSessionWithRetry = async () => {
           let attempt = 0;
@@ -1530,6 +1590,33 @@ export default function Presencial_Instructor() {
         } catch {
           console.debug('[Instructor] checklist no disponible (ok)');
         }
+
+        // 6) Anamnesis ya revelados (por si recarga)
+        try {
+          const { data: anamEvents } = await supabase
+            .from('session_events')
+            .select('payload')
+            .eq('session_id', sessionId)
+            .eq('kind', 'anamnesis_reveal');
+          if (anamEvents && mounted) {
+            const ids = new Set(anamEvents.map(e => e.payload?.item_id).filter(Boolean));
+            setRevealedItems(ids);
+          }
+        } catch { /* opcional */ }
+
+        // 7) Resultados de lab ya enviados (por si recarga)
+        try {
+          const { data: labEvents } = await supabase
+            .from('session_events')
+            .select('payload')
+            .eq('session_id', sessionId)
+            .eq('kind', 'lab_result');
+          if (labEvents && mounted) {
+            const ids = new Set(labEvents.map(e => e.payload?.result_id).filter(Boolean));
+            setSentLabResults(ids);
+          }
+        } catch { /* opcional */ }
+
       } catch (e) {
         console.error("[Instructor] init error:", e);
         setErrorMsg(e?.message || "No se pudo cargar la sesión (reintentar)");
@@ -1619,6 +1706,21 @@ export default function Presencial_Instructor() {
       }
     };
   }, [timerStartAt, startedAt, endedAt]);
+
+  // ── Triggers automáticos ─────────────────────────────────────────
+  useEffect(() => {
+    if (!presencialMeta?.triggers || !Array.isArray(presencialMeta.triggers)) return;
+    if (!startedAt || endedAt) return;
+    const elapsedMin = Math.floor(elapsedSec / 60);
+    for (const trigger of presencialMeta.triggers) {
+      const tMin = Number(trigger.minutes);
+      if (!Number.isFinite(tMin)) continue;
+      if (elapsedMin >= tMin && !triggeredMinutes.has(tMin)) {
+        setTriggeredMinutes(prev => new Set([...prev, tMin]));
+        setTriggerAlert({ message: trigger.message, minute: tMin });
+      }
+    }
+  }, [elapsedSec, presencialMeta, startedAt, endedAt, triggeredMinutes]);
 
   function fmtDuration(sec) {
     const s = Math.max(0, Number(sec) || 0);
@@ -2576,6 +2678,39 @@ export default function Presencial_Instructor() {
           <nav className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 shadow-sm ring-1 ring-slate-200/60">
             <span className="text-sm font-semibold text-slate-700">Accesos rápidos</span>
             <div className="flex flex-wrap gap-2">
+              {presencialMeta?.instructor_brief && (
+                <button
+                  type="button"
+                  onClick={() => scrollToSection(briefRef, { expandKey: 'brief' })}
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm text-amber-800 transition hover:bg-amber-100"
+                >
+                  📋 Brief instructor
+                </button>
+              )}
+              {presencialMeta?.anamnesis_items?.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => scrollToSection(anamnesisRef, { expandKey: 'anamnesis' })}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800 transition hover:bg-emerald-100"
+                >
+                  🩺 Anamnesis
+                  <span className="rounded-full bg-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                    {revealedItems.size}/{presencialMeta.anamnesis_items.filter(i => !i.always_visible).length}
+                  </span>
+                </button>
+              )}
+              {presencialMeta?.lab_results?.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => scrollToSection(labRef, { expandKey: 'lab' })}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm text-violet-800 transition hover:bg-violet-100"
+                >
+                  🧪 Resultados
+                  <span className="rounded-full bg-violet-200 px-1.5 py-0.5 text-[10px] font-bold text-violet-800">
+                    {sentLabResults.size}/{presencialMeta.lab_results.length}
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => scrollToSection(scriptRef, { expandKey: 'script' })}
@@ -2723,6 +2858,193 @@ export default function Presencial_Instructor() {
           </div>
           <div className="p-6">
             <div className="space-y-8">
+              {/* ── Brief del instructor ── */}
+              {presencialMeta?.instructor_brief && (
+                <CollapsibleCard
+                  ref={briefRef}
+                  id="brief"
+                  icon="📋"
+                  title="Brief del instructor"
+                  collapsed={collapsedCards.brief ?? false}
+                  onToggle={() => toggleCard('brief')}
+                  bodyClassName="px-6 pb-6"
+                  headerExtra={
+                    <span className="text-xs rounded-full bg-amber-100 border border-amber-200 text-amber-700 px-2.5 py-0.5">
+                      Solo visible para el instructor
+                    </span>
+                  }
+                >
+                  <div className="mt-3 space-y-4">
+                    {/* Triggers programados */}
+                    {Array.isArray(presencialMeta?.triggers) && presencialMeta.triggers.length > 0 && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                          ⏱ Avisos automáticos ({presencialMeta.triggers.length})
+                        </p>
+                        <div className="space-y-1.5">
+                          {presencialMeta.triggers.map((t, i) => (
+                            <div key={i} className={`flex items-start gap-3 text-sm ${triggeredMinutes.has(Number(t.minutes)) ? 'opacity-40 line-through' : ''}`}>
+                              <span className="flex-shrink-0 w-12 font-mono text-xs font-semibold text-slate-500 pt-0.5">
+                                {t.minutes} min
+                              </span>
+                              <span className="text-slate-700">{t.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Texto del brief */}
+                    <pre className="whitespace-pre-wrap text-sm text-slate-800 font-sans leading-relaxed">
+                      {presencialMeta.instructor_brief}
+                    </pre>
+                  </div>
+                </CollapsibleCard>
+              )}
+
+              {/* ── Panel Anamnesis ── */}
+              {presencialMeta?.anamnesis_items?.length > 0 && (
+                <CollapsibleCard
+                  ref={anamnesisRef}
+                  id="anamnesis"
+                  icon="🩺"
+                  title="Anamnesis progresiva"
+                  collapsed={collapsedCards.anamnesis ?? true}
+                  onToggle={() => toggleCard('anamnesis')}
+                  bodyClassName="px-6 pb-6"
+                  headerExtra={
+                    <span className="text-xs rounded-full bg-emerald-100 border border-emerald-200 text-emerald-700 px-2.5 py-0.5">
+                      {revealedItems.size} de {presencialMeta.anamnesis_items.filter(i => !i.always_visible).length} revelados
+                    </span>
+                  }
+                >
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-slate-500 mb-3">
+                      Los ítems marcados como <strong>siempre visible</strong> ya aparecen en la pantalla del alumno. Pulsa <strong>Revelar</strong> cuando el equipo pregunte por el resto.
+                    </p>
+                    {presencialMeta.anamnesis_items.map(item => {
+                      const isRevealed = item.always_visible || revealedItems.has(item.id);
+                      return (
+                        <div
+                          key={item.id}
+                          className={`rounded-xl border px-4 py-3 flex items-start gap-3 transition ${
+                            isRevealed
+                              ? 'border-emerald-200 bg-emerald-50'
+                              : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold text-slate-700">{item.label}</span>
+                              {item.always_visible && (
+                                <span className="text-[10px] rounded-full bg-slate-100 border border-slate-200 text-slate-500 px-2 py-0.5">
+                                  Siempre visible
+                                </span>
+                              )}
+                              {!item.always_visible && isRevealed && (
+                                <span className="text-[10px] rounded-full bg-emerald-100 border border-emerald-200 text-emerald-600 px-2 py-0.5">
+                                  ✓ Revelado
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-sm text-slate-600 leading-snug">{item.content}</p>
+                          </div>
+                          {!item.always_visible && !isRevealed && (
+                            <button
+                              onClick={() => revealAnamnesisItem(item.id)}
+                              disabled={revealingItem === item.id || !isRunning}
+                              title={!isRunning ? 'Inicia la sesión primero' : 'Mostrar en pantalla del alumno'}
+                              className="flex-shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                            >
+                              {revealingItem === item.id ? '…' : 'Revelar'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsibleCard>
+              )}
+
+              {/* ── Panel Resultados de laboratorio ── */}
+              {presencialMeta?.lab_results?.length > 0 && (
+                <CollapsibleCard
+                  ref={labRef}
+                  id="lab"
+                  icon="🧪"
+                  title="Resultados de laboratorio"
+                  collapsed={collapsedCards.lab ?? true}
+                  onToggle={() => toggleCard('lab')}
+                  bodyClassName="px-6 pb-6"
+                  headerExtra={
+                    <span className="text-xs rounded-full bg-violet-100 border border-violet-200 text-violet-700 px-2.5 py-0.5">
+                      {sentLabResults.size} de {presencialMeta.lab_results.length} enviados
+                    </span>
+                  }
+                >
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-slate-500">
+                      Pulsa <strong>Enviar resultado</strong> cuando quieras que aparezca en la pantalla del alumno. Cada resultado se envía una sola vez.
+                    </p>
+                    {presencialMeta.lab_results.map(result => {
+                      const isSent = sentLabResults.has(result.id);
+                      const isSending = sendingLab === result.id;
+                      const categoryColors = {
+                        lcr:          'border-blue-200 bg-blue-50',
+                        sangre:       'border-rose-200 bg-rose-50',
+                        microbiologia:'border-amber-200 bg-amber-50',
+                        orina:        'border-yellow-200 bg-yellow-50',
+                      };
+                      const catCls = categoryColors[result.category] || 'border-slate-200 bg-white';
+                      return (
+                        <div key={result.id} className={`rounded-xl border px-4 py-3 transition ${isSent ? 'opacity-60' : catCls}`}>
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-slate-800">{result.name}</span>
+                                {result.timing_hint && (
+                                  <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">
+                                    ⏱ {result.timing_hint}
+                                  </span>
+                                )}
+                                {isSent && (
+                                  <span className="text-[10px] rounded-full bg-violet-100 border border-violet-200 text-violet-600 px-2 py-0.5">
+                                    ✓ Enviado
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                                {result.items.map((item, i) => {
+                                  const flagCls = item.flag === 'critical' ? 'text-rose-700 font-semibold' :
+                                                  item.flag === 'warning'  ? 'text-amber-700 font-medium' :
+                                                  item.flag === 'high'     ? 'text-orange-700' :
+                                                  item.flag === 'low'      ? 'text-blue-700' : 'text-slate-600';
+                                  return (
+                                    <div key={i} className="flex items-baseline gap-1.5 text-xs">
+                                      <span className="text-slate-500 flex-shrink-0">{item.label}:</span>
+                                      <span className={flagCls}>{item.value}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            {!isSent && (
+                              <button
+                                onClick={() => sendLabResult(result)}
+                                disabled={isSending || !isRunning}
+                                title={!isRunning ? 'Inicia la sesión primero' : 'Mostrar en pantalla del alumno'}
+                                className="flex-shrink-0 self-center rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                              >
+                                {isSending ? '…' : 'Enviar resultado'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsibleCard>
+              )}
+
               <CollapsibleCard
                 ref={scriptRef}
                 id="script"
@@ -3507,6 +3829,28 @@ export default function Presencial_Instructor() {
           </div>
         </div>
       ) : null}
+
+      {/* ── Alerta de trigger automático ── */}
+      {triggerAlert && (
+        <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center p-4 pointer-events-none">
+          <div className="pointer-events-auto max-w-lg w-full rounded-2xl bg-amber-50 border-2 border-amber-400 shadow-2xl px-5 py-4 flex items-start gap-4">
+            <span className="text-2xl flex-shrink-0">⏱</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 mb-1">
+                Aviso automático — {triggerAlert.minute} min
+              </p>
+              <p className="text-sm text-amber-900 leading-snug">{triggerAlert.message}</p>
+            </div>
+            <button
+              onClick={() => setTriggerAlert(null)}
+              className="flex-shrink-0 text-amber-500 hover:text-amber-700 text-xl leading-none font-bold"
+              title="Cerrar aviso"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

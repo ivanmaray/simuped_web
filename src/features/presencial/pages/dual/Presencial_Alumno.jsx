@@ -22,6 +22,11 @@ export default function Presencial_Alumno() {
   const [currentStepId, setCurrentStepId] = useState(null);   // ← NUEVO
   const [, setScenarioTitle] = useState('');
   const [patientOverview, setPatientOverview] = useState('');
+  const [studentBrief, setStudentBrief] = useState('');
+  const [briefOpen, setBriefOpen] = useState(false);
+  const [anamnesisItems, setAnamnesisItems] = useState([]); // todos los ítems del escenario
+  const [revealedAnamnesisIds, setRevealedAnamnesisIds] = useState(new Set()); // revelados en esta sesión
+  const [receivedLabResults, setReceivedLabResults] = useState([]); // [{result_id, result, at}]
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [ended, setEnded] = useState(false);
@@ -837,6 +842,47 @@ function buildSvgPath(values = [], width = 260, height = 140) {
           } catch (error) {
             reportWarning('PresencialAlumno.loadScenarioMeta', error, { scenarioId: s.scenario_id });
           }
+
+          // Brief + anamnesis del participante
+          try {
+            const { data: meta } = await supabase
+              .from('scenario_presencial_meta')
+              .select('student_brief, anamnesis_items')
+              .eq('scenario_id', s.scenario_id)
+              .maybeSingle();
+            if (mounted) {
+              if (meta?.student_brief) setStudentBrief(meta.student_brief);
+              if (Array.isArray(meta?.anamnesis_items)) setAnamnesisItems(meta.anamnesis_items);
+            }
+          } catch (e) {
+            reportWarning('PresencialAlumno.studentBrief', e, { scenarioId: s.scenario_id });
+          }
+
+          // Ítems de anamnesis ya revelados (por si recarga)
+          try {
+            const { data: anamEvents } = await supabase
+              .from('session_events')
+              .select('payload')
+              .eq('session_id', s.id)
+              .eq('kind', 'anamnesis_reveal');
+            if (anamEvents && mounted) {
+              const ids = new Set(anamEvents.map(e => e.payload?.item_id).filter(Boolean));
+              setRevealedAnamnesisIds(ids);
+            }
+          } catch { /* opcional */ }
+
+          // Resultados de lab ya enviados (por si recarga)
+          try {
+            const { data: labEvents } = await supabase
+              .from('session_events')
+              .select('payload, at')
+              .eq('session_id', s.id)
+              .eq('kind', 'lab_result')
+              .order('at', { ascending: true });
+            if (labEvents && mounted) {
+              setReceivedLabResults(labEvents.map(e => ({ ...e.payload, at: e.at })));
+            }
+          } catch { /* opcional */ }
         }
 
         // Variables reveladas
@@ -1038,6 +1084,17 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                     setBannerText(txt);
                     playAlert('banner');
                   }
+                }
+                if (ev.kind === 'anamnesis_reveal' && ev.payload?.item_id) {
+                  setRevealedAnamnesisIds(prev => new Set([...prev, ev.payload.item_id]));
+                  playAlert('banner');
+                }
+                if (ev.kind === 'lab_result' && ev.payload?.result) {
+                  setReceivedLabResults(prev => {
+                    if (prev.some(r => r.result_id === ev.payload.result_id)) return prev;
+                    return [...prev, { ...ev.payload, at: ev.at || new Date().toISOString() }];
+                  });
+                  playAlert('banner');
                 }
               } catch (e) {
                 console.warn('[Alumno] evento session_events no procesado:', e);
@@ -1402,6 +1459,23 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                 ))}
               </div>
             )}
+
+            {/* Brief del caso en el hero */}
+            {studentBrief && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setBriefOpen(o => !o)}
+                  className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white ring-1 ring-white/30 hover:bg-white/25 transition"
+                >
+                  📄 {briefOpen ? 'Ocultar brief' : 'Ver brief del caso'}
+                </button>
+                {briefOpen && (
+                  <div className="mt-2 rounded-2xl bg-white/10 backdrop-blur border border-white/20 px-4 py-3 text-sm text-white/90 leading-relaxed whitespace-pre-wrap max-w-2xl">
+                    {studentBrief}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -1446,7 +1520,31 @@ function buildSvgPath(values = [], width = 260, height = 140) {
 
         <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(420px,520px)] xl:grid-cols-[minmax(0,0.7fr)_minmax(480px,600px)]">
          <section className="flex flex-col gap-4 overflow-visible">
-            {patientOverview ? (() => {
+            {/* Anamnesis dinámica (si el escenario la tiene) */}
+            {anamnesisItems.length > 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col overflow-hidden">
+                <div className="text-sm font-semibold text-slate-700 mb-3">Anamnesis</div>
+                <div className="space-y-2 overflow-auto pr-1 max-h-[40vh]">
+                  {anamnesisItems
+                    .filter(item => item.always_visible || revealedAnamnesisIds.has(item.id))
+                    .map(item => (
+                      <div key={item.id} className={`rounded-xl px-3 py-2.5 border ${
+                        item.always_visible
+                          ? 'border-slate-200 bg-slate-50'
+                          : 'border-emerald-200 bg-emerald-50 animate-[fadeIn_0.4s_ease]'
+                      }`}>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">{item.label}</p>
+                        <p className="text-sm text-slate-800 leading-snug">{item.content}</p>
+                      </div>
+                    ))}
+                  {anamnesisItems.filter(i => !i.always_visible && !revealedAnamnesisIds.has(i.id)).length > 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400 text-center">
+                      {anamnesisItems.filter(i => !i.always_visible && !revealedAnamnesisIds.has(i.id)).length} ítems pendientes de preguntar…
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : patientOverview ? (() => {
               const { chips, bullets, paragraphs } = parsePatientOverview(patientOverview);
               return (
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col overflow-hidden">
@@ -1475,6 +1573,45 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                 </div>
               );
             })() : null}
+            ) : null}
+
+            {/* Resultados de laboratorio recibidos */}
+            {receivedLabResults.length > 0 && receivedLabResults.map(r => {
+              const result = r.result;
+              if (!result) return null;
+              const catColors = {
+                lcr:           { border: 'border-blue-200',   bg: 'bg-blue-50',   title: 'text-blue-900',   badge: 'bg-blue-100 text-blue-700 border-blue-200' },
+                sangre:        { border: 'border-rose-200',   bg: 'bg-rose-50',   title: 'text-rose-900',   badge: 'bg-rose-100 text-rose-700 border-rose-200' },
+                microbiologia: { border: 'border-amber-200',  bg: 'bg-amber-50',  title: 'text-amber-900',  badge: 'bg-amber-100 text-amber-700 border-amber-200' },
+                orina:         { border: 'border-yellow-200', bg: 'bg-yellow-50', title: 'text-yellow-900', badge: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+              };
+              const c = catColors[result.category] || { border: 'border-slate-200', bg: 'bg-white', title: 'text-slate-800', badge: 'bg-slate-100 text-slate-600 border-slate-200' };
+              return (
+                <div key={r.result_id} className={`rounded-2xl border ${c.border} ${c.bg} p-4 shadow-sm`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-base">🧪</span>
+                    <span className={`text-sm font-bold ${c.title}`}>{result.name}</span>
+                    <span className={`ml-auto text-[10px] rounded-full border px-2 py-0.5 font-medium ${c.badge}`}>
+                      {result.category?.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-6">
+                    {(result.items || []).map((item, i) => {
+                      const flagCls = item.flag === 'critical' ? 'text-rose-700 font-bold'   :
+                                      item.flag === 'warning'  ? 'text-amber-700 font-semibold' :
+                                      item.flag === 'high'     ? 'text-orange-700 font-medium' :
+                                      item.flag === 'low'      ? 'text-blue-700 font-medium'   : 'text-slate-800';
+                      return (
+                        <div key={i} className="flex items-baseline justify-between gap-2 border-b border-black/5 pb-1 last:border-0 last:pb-0">
+                          <span className="text-xs text-slate-500 flex-shrink-0">{item.label}</span>
+                          <span className={`text-xs text-right ${flagCls}`}>{item.value}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
 
             {categorizedVars.vital.length > 0 && (
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col overflow-visible">
