@@ -52,6 +52,8 @@ const AdminScenarios = React.lazy(() => import("./features/admin/pages/Admin_Sce
 const AdminScenarioEditor = React.lazy(() => import("./features/admin/pages/Admin_ScenarioEditor.jsx"));
 const AdminScenariosPresenciales = React.lazy(() => import("./features/admin/pages/Admin_ScenariosPresenciales.jsx"));
 const AdminScenarioPresencialEditor = React.lazy(() => import("./features/admin/pages/Admin_ScenarioPresencialEditor.jsx"));
+const AdminCasosRapidos = React.lazy(() => import("./features/admin/pages/Admin_CasosRapidos.jsx"));
+const AdminCasoRapidoEditor = React.lazy(() => import("./features/admin/pages/Admin_CasoRapidoEditor.jsx"));
 
 import { useAuth } from "./auth";
 
@@ -216,6 +218,8 @@ export default function MainRouter() {
               <Route path="/admin/escenarios-presenciales" element={<Suspense fallback={<Spinner centered />}><AdminScenariosPresenciales /></Suspense>} />
               <Route path="/admin/escenarios-presenciales/:scenarioId" element={<Suspense fallback={<Spinner centered />}><AdminScenarioPresencialEditor /></Suspense>} />
             <Route path="/admin/escenarios/:scenarioId" element={<Suspense fallback={<Spinner centered />}><AdminScenarioEditor /></Suspense>} />
+            <Route path="/admin/casos-rapidos" element={<Suspense fallback={<Spinner centered />}><AdminCasosRapidos /></Suspense>} />
+            <Route path="/admin/casos-rapidos/:caseId" element={<Suspense fallback={<Spinner centered />}><AdminCasoRapidoEditor /></Suspense>} />
           </Route>
         </Route>
 

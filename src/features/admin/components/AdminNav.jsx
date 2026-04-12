@@ -4,6 +4,7 @@ const tabs = [
   { to: "/admin", label: "Usuarios", end: true },
   { to: "/admin/escenarios", label: "Escenarios online" },
   { to: "/admin/escenarios-presenciales", label: "Escenarios presenciales" },
+  { to: "/admin/casos-rapidos", label: "Casos rápidos" },
 ];
 
 function tabClasses(isActive) {

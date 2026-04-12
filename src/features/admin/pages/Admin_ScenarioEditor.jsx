@@ -26,11 +26,9 @@ function getSupabaseAuthKey() {
 
 const statusOptions = [
   { value: "Disponible", label: "Disponible" },
+  { value: "Pendiente de revisión", label: "Pendiente de revisión" },
   { value: "En construcción: en proceso", label: "En construcción: en proceso" },
   { value: "En construcción: sin iniciar", label: "En construcción: sin iniciar" },
-  { value: "Borrador", label: "Borrador" },
-  { value: "Archivado", label: "Archivado" },
-  { value: "Publicado", label: "Publicado" },
 ];
 
 const levelOptions = [

@@ -52,9 +52,87 @@ const KEYFRAMES = `
 .star-2 { animation:starPop 0.45s 0.35s both, starGlow 1.5s 0.8s ease-in-out infinite; }
 .star-3 { animation:starPop 0.45s 0.65s both, starGlow 1.5s 1.1s ease-in-out infinite; }
 .node-pop { animation:nodePop 0.3s ease-out both; }
+@keyframes slideInRight {
+  from { transform:translateX(20px); opacity:0; }
+  to   { transform:translateX(0);    opacity:1; }
+}
+@keyframes toastPop {
+  0%   { transform:translateX(24px) scale(0.88); opacity:0; }
+  18%  { transform:translateX(-3px)  scale(1.05); opacity:1; }
+  85%  { transform:translateX(0)     scale(1);    opacity:1; }
+  100% { transform:translateX(8px)   scale(0.92); opacity:0; }
+}
+@keyframes streakBounce {
+  0%,100% { transform:scale(1); }
+  40%     { transform:scale(1.35) rotate(-5deg); }
+  70%     { transform:scale(0.92) rotate(3deg); }
+}
+.opt-enter { animation:slideInRight 0.24s ease-out both; }
+.toast-pop { animation:toastPop 1.8s ease-in-out both; }
+.streak-hot { animation:streakBounce 0.6s ease-in-out; }
+@keyframes screenFlashRed {
+  0%,100% { opacity:0; }
+  20%,60% { opacity:0.18; }
+}
+@keyframes screenFlashGreen {
+  0%,100% { opacity:0; }
+  20%,60% { opacity:0.14; }
+}
+@keyframes hpDrain {
+  0%   { transform:scaleX(1); }
+  50%  { transform:scaleX(1.03); }
+  100% { transform:scaleX(1); }
+}
+@keyframes hpShake {
+  0%,100% { transform:translateX(0); }
+  20%     { transform:translateX(-5px); }
+  50%     { transform:translateX(5px); }
+  80%     { transform:translateX(-3px); }
+}
+@keyframes coinSpin {
+  0%   { transform:scale(1) rotate(0deg); }
+  50%  { transform:scale(1.5) rotate(180deg); }
+  100% { transform:scale(1) rotate(360deg); }
+}
+@keyframes missionIn {
+  0%   { transform:scale(0.85) translateY(10px); opacity:0; }
+  60%  { transform:scale(1.03) translateY(-2px); opacity:1; }
+  100% { transform:scale(1) translateY(0); opacity:1; }
+}
+.hp-shake  { animation:hpShake  0.35s ease-out; }
+.coin-spin { animation:coinSpin 0.4s ease-out; }
+.mission-in { animation:missionIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
 `;
 
 const ROLE_LABELS = { medico:"Medicina", enfermeria:"Enfermería", farmacia:"Farmacia" };
+
+/* ─── ScreenFlash ──────────────────────────────────────────────── */
+function ScreenFlash({ type }) {
+  if (!type) return null;
+  return (
+    <div className="pointer-events-none fixed inset-0 z-40"
+      style={{
+        background: type === 'red' ? '#ef4444' : '#22c55e',
+        animation: type === 'red' ? 'screenFlashRed 0.45s ease-out' : 'screenFlashGreen 0.4s ease-out',
+      }} />
+  );
+}
+
+/* ─── Toast ──────────────────────────────────────────────────── */
+function Toast({ toast }) {
+  if (!toast) return null;
+  const { text, positive, key } = toast;
+  return (
+    <div key={key}
+      className={`fixed top-16 right-4 z-50 rounded-2xl px-5 py-3 text-sm font-black shadow-2xl toast-pop pointer-events-none select-none
+        ${positive
+          ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 text-white'
+          : 'bg-gradient-to-br from-red-400 to-red-600 text-white'}`}
+    >
+      {text}
+    </div>
+  );
+}
 
 /* ─── Confetti ───────────────────────────────────────────────── */
 const CONFETTI_COLORS = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4'];
@@ -121,6 +199,18 @@ function getGrade(score, maxPossible) {
   return                  { label:"Mejorable",  stars:0, colorText:"text-red-700",     colorBg:"bg-red-50",     colorBorder:"border-red-300",     bar:"bg-red-400"     };
 }
 
+/* ─── Auto-format info node text into paragraphs ────────────── */
+function formatInfoBody(text) {
+  if (!text) return text;
+  // Insert blank line before sentences starting with uppercase after a period
+  // but skip abbreviations like "SatO₂", "mmHg", etc.
+  return text
+    // Break before common clinical section starters
+    .replace(/\.\s+(FC\s|TA\s|SatO|T\s\d|Temp|GCS|Exploración|Analítica|Antecedentes|Historia|En urgencias|En domicilio|Padres|Ahora|Actualmente|Acude|Llega|Monitor|Dispositivo|Vía |Sin |Presenta|Signos|Síntomas)/g, '.\n\n$1')
+    // Break before any new sentence starting with capital letter (not mid-abbreviation)
+    .replace(/\.\s+([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ])/g, '.\n\n$1');
+}
+
 function formatTime(secs) {
   if (!secs || secs < 0) return '0:00';
   const m = Math.floor(secs / 60);
@@ -179,6 +269,11 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   /* Gamification */
   const [selectedOptionId, setSelectedOptionId] = useState(null);
   const [isLocked, setIsLocked]                 = useState(false);
+  const [toast, setToast]                       = useState(null);
+  const [hp, setHp]                 = useState(100);
+  const [hpShaking, setHpShaking]   = useState(false);
+  const [screenFlash, setScreenFlash] = useState(null); // 'red'|'green'|null
+  const [coinAnim, setCoinAnim]     = useState(false);
   const [streak, setStreak]                     = useState(0);
   const [deltaAnim, setDeltaAnim]               = useState(null);
   const [flashKey, setFlashKey]                 = useState(0);
@@ -270,6 +365,29 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setDeltaAnim({ value: delta, key: Date.now() });
     setFlashKey(k => k + 1);
 
+    // Game effects
+    if (delta < 0) {
+      const damage = Math.abs(delta) * 10;
+      setHp(prev => Math.max(0, prev - damage));
+      setHpShaking(true);
+      setScreenFlash('red');
+      setTimeout(() => { setHpShaking(false); setScreenFlash(null); }, 500);
+    } else if (delta >= 4) {
+      setCoinAnim(true);
+      setScreenFlash('green');
+      setTimeout(() => { setCoinAnim(false); setScreenFlash(null); }, 450);
+    }
+
+    // Toast
+    const toastMsg =
+      delta >= 4 ? `🎯 ¡Perfecto! +${delta}` :
+      delta >= 2 ? `✓ ¡Bien! +${delta}` :
+      delta >= 1 ? `👍 Correcto +${delta}` :
+      delta === 0 ? `➡ Neutral` :
+      `✗ Incorrecto ${delta}`;
+    setToast({ text: toastMsg, positive: delta >= 1, key: Date.now() });
+    setTimeout(() => setToast(null), 1900);
+
     setHistory(prev => [...prev, {
       nodeId: currentNode.id,
       nodeBody: currentNode.body_md || "",
@@ -297,18 +415,35 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     }, FEEDBACK_DELAY_MS);
   }
 
-  /* ── Handle terminal node reached ────────────────────────── */
+  /* ── Handle terminal node reached — auto-register ──────────── */
   useEffect(() => {
     if (!isTerminalNode && !showSummary) return;
+
     const t = Math.floor((Date.now() - startedAt) / 1000);
     setFinalTime(t);
-    // Check grade for confetti
+
+    // Confetti
     const g = getGrade(score, maxPossibleScore);
     if (g && g.stars >= 2) {
       setShowConfetti(true);
       const off = setTimeout(() => setShowConfetti(false), 3800);
-      return () => clearTimeout(off);
+      // cleanup handled below
     }
+
+    // Auto-submit — always, regardless of score
+    if (!token || registered || submitting) return;
+    setSubmitting(true);
+    const durationSeconds = Math.max(0, t);
+    Promise.resolve(
+      onSubmitAttempt?.({ caseId: microCase.id, steps: history, scoreTotal: score, completed: true, durationSeconds })
+    )
+      .then(() => {
+        setRegistered(true);
+        setAttemptsVersion(v => v + 1);
+      })
+      .catch(() => {}) // silent — no bloquea la UI
+      .finally(() => setSubmitting(false));
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTerminalNode, showSummary]);
 
@@ -360,124 +495,100 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     const grade = getGrade(score, maxPossibleScore);
     const pct   = maxPossibleScore > 0 ? Math.round((score / maxPossibleScore) * 100) : null;
     const timeDisplay = finalTime ?? Math.floor((Date.now() - startedAt) / 1000);
+    const isVictory = grade && grade.stars >= 1;
 
     return (
       <>
         <style>{KEYFRAMES}</style>
         {showConfetti && <Confetti />}
 
-        <div className="max-w-2xl mx-auto space-y-5">
+        <div className="max-w-2xl mx-auto space-y-4">
+          {/* ── Game Over / Victory header ── */}
+          <div className="rounded-xl overflow-hidden shadow-2xl text-center mission-in"
+            style={{background: isVictory
+              ? 'linear-gradient(135deg,#0f2027,#203a43,#2c5364)'
+              : 'linear-gradient(135deg,#1a0000,#3d0000,#1f0010)'}}>
+            {/* Banner */}
+            <div className="py-5 px-4" style={{background: isVictory
+                ? 'linear-gradient(90deg,#06402a44,#065f4644,#06402a44)'
+                : 'linear-gradient(90deg,#7f1d1d44,#991b1b44,#7f1d1d44)'}}>
+              <p className={`text-2xl font-black tracking-widest mb-1 ${isVictory ? 'text-emerald-300' : 'text-red-400'}`}
+                style={{textShadow: isVictory ? '0 0 20px #4ade8099' : '0 0 20px #f8717199'}}>
+                {grade?.stars === 3 ? '✓ Caso resuelto' : grade?.stars === 2 ? '✓ Buen resultado' : grade?.stars === 1 ? '△ Resultado correcto' : '✗ Resultado mejorable'}
+              </p>
+              {/* Stars */}
+              {grade && <Stars count={grade.stars} />}
+              {grade && (
+                <div className={`inline-block mt-2 rounded border px-4 py-1 text-xs font-black tracking-widest uppercase ${grade.colorBg} ${grade.colorBorder} ${grade.colorText}`}>
+                  {grade.label}
+                </div>
+              )}
+            </div>
 
-          {/* ── Score hero ── */}
-          <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 text-center shadow-sm">
-            {/* Outcome text if terminal node */}
+            {/* Outcome text */}
             {currentNode?.body_md && (
-              <div className="mb-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-left prose prose-sm max-w-none text-slate-700">
+              <div className="mx-4 my-3 rounded border border-white/10 bg-black/30 px-4 py-3 text-xs text-left text-slate-300 prose prose-xs max-w-none [&_p]:text-slate-300 [&_strong]:text-white [&_h3]:text-slate-200 [&_h3]:font-black">
                 <ReactMarkdown>{currentNode.body_md}</ReactMarkdown>
               </div>
             )}
 
-            {/* Stars */}
-            {grade && <Stars count={grade.stars} />}
-
-            {/* Grade label */}
-            {grade && (
-              <div className={`inline-block mt-1 mb-3 rounded-full border px-5 py-1.5 text-sm font-bold ${grade.colorBg} ${grade.colorBorder} ${grade.colorText}`}>
-                {grade.label}
+            {/* Stats */}
+            <div className="flex items-center justify-center gap-3 px-4 pb-5 flex-wrap">
+              <div className="rounded border border-yellow-500/40 bg-yellow-950/50 px-5 py-3 min-w-[90px]">
+                <p className="text-xl font-black text-yellow-400">💰 {score}</p>
+                <p className="text-[9px] font-black text-yellow-600/80 uppercase tracking-widest mt-0.5">/ {maxPossibleScore} XP</p>
               </div>
-            )}
-
-            {/* Score */}
-            <div className="flex items-center justify-center gap-4 mt-2 flex-wrap">
-              <div className="rounded-xl bg-[#0A3D91] px-6 py-3 text-white">
-                <p className="text-2xl font-black leading-none">{score} <span className="text-base font-semibold opacity-70">/ {maxPossibleScore}</span></p>
-                <p className="text-[10px] font-semibold opacity-60 uppercase tracking-wider mt-0.5">Puntos</p>
+              <div className="rounded border border-slate-500/40 bg-slate-900/50 px-5 py-3 min-w-[90px]">
+                <p className="text-xl font-black text-slate-300">⏱ {formatTime(timeDisplay)}</p>
+                <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-0.5">TIEMPO</p>
               </div>
-              <div className="rounded-xl bg-slate-100 px-5 py-3 text-slate-700">
-                <p className="text-2xl font-black leading-none">⏱ {formatTime(timeDisplay)}</p>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Tiempo</p>
+              {pct !== null && (
+                <div className="rounded border border-purple-500/40 bg-purple-950/50 px-5 py-3 min-w-[90px]">
+                  <p className="text-xl font-black text-purple-300">{pct}%</p>
+                  <p className="text-[9px] font-black text-purple-600/80 uppercase tracking-widest mt-0.5">PRECISIÓN</p>
+                </div>
+              )}
+              <div className={`rounded border px-5 py-3 min-w-[90px] ${hp > 30 ? 'border-emerald-500/40 bg-emerald-950/50' : 'border-red-500/40 bg-red-950/50'}`}>
+                <p className={`text-xl font-black ${hp > 30 ? 'text-emerald-400' : 'text-red-400'}`}>❤ {hp}</p>
+                <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-0.5">HP FINAL</p>
               </div>
             </div>
-
-            {/* Score bar */}
-            {pct !== null && (
-              <div className="mt-4 mx-auto max-w-xs">
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${grade?.bar || 'bg-slate-400'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <p className="text-xs text-slate-400 text-right mt-1">{pct}% del máximo</p>
-              </div>
-            )}
-
-            {/* Decision path summary */}
-            {decisionNodes.length > 0 && (
-              <div className="mt-5 flex items-center justify-center gap-2 flex-wrap">
-                {decisionNodes.map((dn, idx) => {
-                  const step = history.find(h => h.nodeId === dn.id);
-                  const good = step ? step.scoreDelta >= 1 : null;
-                  return (
-                    <div key={dn.id} className="flex flex-col items-center gap-1">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold
-                        ${good === true ? 'bg-emerald-100 border-2 border-emerald-400 text-emerald-700'
-                          : good === false ? 'bg-red-100 border-2 border-red-400 text-red-700'
-                          : 'bg-slate-100 border-2 border-slate-200 text-slate-400'}`}>
-                        {good === true ? '✓' : good === false ? '✗' : idx+1}
-                      </div>
-                      {step && (
-                        <span className={`text-[9px] font-bold ${step.scoreDelta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {step.scoreDelta >= 0 ? '+' : ''}{step.scoreDelta}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
           {/* ── Revisión de decisiones ── */}
           {history.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h4 className="text-sm font-semibold text-slate-800 mb-4">Revisión de tus decisiones</h4>
-              <div className="space-y-4">
+            <div className="rounded-xl overflow-hidden shadow-lg" style={{background:'linear-gradient(135deg,#060e1c,#0a1830)'}}>
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
+                <span className="text-purple-400 text-xs">📜</span>
+                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">Revisión de decisiones</h4>
+              </div>
+              <div className="p-4 space-y-3">
                 {history.map((step, idx) => {
                   const bestOption = [...(step.allOptions||[])].sort((a,b)=>(b.score_delta||0)-(a.score_delta||0))[0];
                   const wasOptimal = bestOption?.id === step.chosenOptionId;
                   const positive   = step.scoreDelta >= 0;
                   return (
-                    <div key={`${step.nodeId}-${idx}`} className="border border-slate-100 rounded-xl p-4">
-                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Decisión {idx + 1}</p>
-                      {step.nodeBody && (
-                        <div className="text-xs text-slate-600 mb-3 prose prose-xs max-w-none line-clamp-2">
-                          <ReactMarkdown>{step.nodeBody}</ReactMarkdown>
-                        </div>
-                      )}
-                      <div className={`flex items-start gap-2 rounded-lg px-3 py-2 mb-2 ${positive ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                        <span className={`mt-0.5 flex-shrink-0 h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-bold ${positive ? 'bg-emerald-500 text-white' : 'bg-red-400 text-white'}`}>
+                    <div key={`${step.nodeId}-${idx}`} className={`rounded border px-3 py-2.5 ${positive ? 'border-emerald-700/40 bg-emerald-950/30' : 'border-red-700/40 bg-red-950/30'}`}>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Decisión {idx + 1}</p>
+                      <div className="flex items-start gap-2">
+                        <span className={`flex-shrink-0 h-4 w-4 rounded flex items-center justify-center text-[9px] font-black mt-0.5 ${positive ? 'bg-emerald-600 text-white' : 'bg-red-700 text-white'}`}>
                           {positive ? '✓' : '✗'}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-slate-700">Tu elección</p>
-                          <p className="text-xs text-slate-600 mt-0.5">{step.chosenLabel}</p>
+                          <p className="text-xs text-slate-300 leading-snug">{step.chosenLabel}</p>
                           {step.feedback && (
-                            <p className="text-[11px] text-slate-500 mt-1 italic">{step.feedback.slice(0,140)}{step.feedback.length>140?'…':''}</p>
+                            <p className="text-[11px] text-slate-500 mt-1 italic leading-snug">{step.feedback.slice(0,140)}{step.feedback.length>140?'…':''}</p>
                           )}
                         </div>
-                        <span className={`text-xs font-semibold flex-shrink-0 ${positive ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {step.scoreDelta>=0?'+':''}{step.scoreDelta}
+                        <span className={`flex-shrink-0 text-xs font-black ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {step.scoreDelta >= 0 ? '+' : ''}{step.scoreDelta}
                         </span>
                       </div>
                       {!wasOptimal && bestOption && (
-                        <div className="flex items-start gap-2 rounded-lg px-3 py-2 bg-blue-50 border border-blue-100">
-                          <span className="mt-0.5 flex-shrink-0 h-4 w-4 rounded-full flex items-center justify-center bg-[#0A3D91] text-white text-[10px]">★</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-[#0A3D91]">Opción óptima</p>
-                            <p className="text-xs text-slate-600 mt-0.5">{bestOption.label}</p>
-                          </div>
-                          <span className="text-xs font-semibold text-[#0A3D91] flex-shrink-0">+{bestOption.score_delta||0}</span>
+                        <div className="mt-2 flex items-start gap-2 rounded border border-yellow-700/30 bg-yellow-950/30 px-2 py-1.5">
+                          <span className="text-yellow-500 text-[9px]">⭐</span>
+                          <p className="text-[10px] text-yellow-400/80 leading-snug flex-1">{bestOption.label.slice(0,80)}{bestOption.label.length>80?'…':''}</p>
+                          <span className="text-[10px] font-black text-yellow-400">+{bestOption.score_delta}</span>
                         </div>
                       )}
                     </div>
@@ -489,17 +600,20 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
           {/* ── Intentos previos ── */}
           {previousAttempts.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <h4 className="text-sm font-semibold text-slate-800 mb-3">Intentos anteriores</h4>
-              <div className="space-y-2">
+            <div className="rounded-xl overflow-hidden" style={{background:'linear-gradient(135deg,#060e1c,#0a1830)'}}>
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
+                <span className="text-slate-500 text-xs">🕐</span>
+                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Intentos anteriores</h4>
+              </div>
+              <div className="p-4 space-y-2">
                 {previousAttempts.slice(0, 5).map(att => {
                   const g = getGrade(att.score_total, maxPossibleScore);
                   return (
-                    <div key={att.id} className="flex items-center justify-between text-xs text-slate-600 py-1.5 border-b border-slate-100 last:border-0">
+                    <div key={att.id} className="flex items-center justify-between text-[10px] text-slate-500 py-1 border-b border-white/5 last:border-0 font-mono">
                       <span>{dayjs(att.completed_at || att.created_at).format("DD/MM/YY HH:mm")}</span>
                       <div className="flex items-center gap-2">
-                        {g && <span className={`text-[10px] font-semibold ${g.colorText}`}>{'⭐'.repeat(g.stars)} {g.label}</span>}
-                        <span className="font-semibold text-slate-800">{att.score_total} pts</span>
+                        {g && <span className={`font-black ${g.colorText}`}>{'⭐'.repeat(g.stars)}</span>}
+                        <span className="font-black text-slate-300">💰{att.score_total}</span>
                       </div>
                     </div>
                   );
@@ -509,20 +623,18 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
           )}
 
           {/* ── Acciones ── */}
-          <div className="flex flex-wrap gap-3">
-            {!registered ? (
-              <button type="button" onClick={handleFinish} disabled={submitting}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1E6ACB] disabled:opacity-60 transition">
-                {submitting ? 'Guardando…' : 'Registrar resultado'}
-              </button>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm font-semibold text-emerald-700">
-                ✓ Resultado registrado
+          <div className="flex flex-wrap items-center gap-3">
+            {submitting ? (
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
+                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                GUARDANDO...
               </span>
-            )}
+            ) : registered ? (
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-black font-mono">✓ GUARDADO</span>
+            ) : null}
             <button type="button" onClick={handleRestart}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
-              🔄 Reintentar
+              className="inline-flex items-center gap-2 rounded border-2 border-blue-500 bg-blue-700/80 hover:bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 tracking-wide">
+              🔄 Repetir caso
             </button>
           </div>
         </div>
@@ -536,167 +648,221 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   return (
     <>
       <style>{KEYFRAMES}</style>
+      <Toast toast={toast} />
+      <ScreenFlash type={screenFlash} />
       <div className="max-w-2xl mx-auto space-y-4">
 
-        {/* ── Header ── */}
-        <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 px-5 py-4 text-white">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="min-w-0">
-              <h3 className="text-base font-semibold text-white leading-snug truncate">{microCase.title}</h3>
+        {/* ── HUD ── */}
+        <div className="rounded-xl overflow-hidden shadow-2xl" style={{background:'linear-gradient(135deg,#060e1c,#0a1e38,#0d2347)'}}>
+          {/* Top strip */}
+          <div className="flex items-center justify-between px-4 pt-3 pb-1 border-b border-white/10">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-purple-300 text-base">⚕</span>
+              <h3 className="text-xs font-black text-white/90 leading-snug truncate tracking-wide uppercase">{microCase.title}</h3>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Timer */}
-              <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-mono font-semibold text-white/70">
-                ⏱ {formatTime(elapsed)}
-              </span>
-              {/* Streak */}
-              {streak >= 2 && (
-                <span className="rounded-full border border-orange-400/40 bg-orange-500/25 px-2.5 py-1 text-[11px] font-bold text-orange-300 animate-pulse">
-                  🔥 {streak}
-                </span>
-              )}
               {roleLabel && (
-                <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80">
-                  {roleLabel}
-                </span>
+                <span className="rounded border border-blue-500/40 bg-blue-500/15 px-2 py-0.5 text-[9px] font-black text-blue-300 uppercase tracking-widest">{roleLabel}</span>
               )}
-              {/* Score + delta */}
-              <div className="relative">
-                <span key={flashKey} className="anim-flash rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white inline-block">
-                  {score} pts
+              <span className="font-mono text-[10px] text-slate-400">⏱ {formatTime(elapsed)}</span>
+            </div>
+          </div>
+          {/* HP + Score bars */}
+          <div className="px-4 py-3 space-y-2">
+            {/* HP */}
+            <div className={`flex items-center gap-2 ${hpShaking ? 'hp-shake' : ''}`}>
+              <span className="text-[9px] font-black w-5 text-red-400 font-mono">HP</span>
+              <div className="flex-1 h-3 rounded-sm overflow-hidden bg-black/40 border border-white/10">
+                <div className="h-full rounded-sm transition-all duration-700 ease-out"
+                  style={{
+                    width: `${hp}%`,
+                    background: hp > 60 ? 'linear-gradient(90deg,#16a34a,#4ade80)' : hp > 30 ? 'linear-gradient(90deg,#ca8a04,#facc15)' : 'linear-gradient(90deg,#b91c1c,#f87171)',
+                    boxShadow: hp > 60 ? '0 0 6px #4ade8066' : hp > 30 ? '0 0 6px #facc1566' : '0 0 8px #f8717166',
+                  }} />
+              </div>
+              <span className="font-mono text-[9px] text-slate-500 w-12 text-right">{hp}/100</span>
+            </div>
+            {/* XP/Score */}
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-black w-5 text-yellow-400 font-mono">XP</span>
+              <div className="flex-1 h-2 rounded-sm overflow-hidden bg-black/40 border border-white/10">
+                <div className="h-full rounded-sm transition-all duration-500"
+                  style={{
+                    width: `${maxPossibleScore > 0 ? Math.min(100,(score/maxPossibleScore)*100) : 0}%`,
+                    background: 'linear-gradient(90deg,#92400e,#fbbf24)',
+                    boxShadow: '0 0 5px #fbbf2455',
+                  }} />
+              </div>
+              <div className="relative flex-shrink-0">
+                <span key={flashKey} className={`font-mono text-[10px] font-black text-yellow-400 ${coinAnim ? 'coin-spin inline-block' : ''}`}>
+                  💰 {score}
                 </span>
                 {deltaAnim && (
                   <span key={deltaAnim.key}
-                    className={`anim-delta absolute -top-5 -right-1 text-xs font-black pointer-events-none select-none ${deltaAnim.value >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                    className={`anim-delta absolute -top-4 -right-0 text-xs font-black pointer-events-none select-none ${deltaAnim.value >= 0 ? 'text-yellow-300' : 'text-red-400'}`}>
                     {deltaAnim.value >= 0 ? '+' : ''}{deltaAnim.value}
                   </span>
                 )}
               </div>
             </div>
           </div>
-
-          {/* Decision-node progress dots */}
-          {decisionNodes.length > 0 ? (
-            <div className="flex items-center gap-1.5">
-              {decisionNodes.map((dn, idx) => {
-                const step      = history.find(h => h.nodeId === dn.id);
-                const isCurrent = currentNodeId === dn.id;
-                const good      = step ? step.scoreDelta >= 1 : null;
-                return (
-                  <div key={dn.id} className="flex items-center gap-1.5">
-                    <div className={`flex items-center justify-center rounded-full text-[9px] font-bold transition-all duration-300
-                      ${isCurrent ? 'h-6 w-6 bg-white text-slate-900 shadow-lg shadow-white/30 node-pop'
-                        : good === true  ? 'h-5 w-5 bg-emerald-400 text-white node-pop'
-                        : good === false ? 'h-5 w-5 bg-red-400 text-white node-pop'
-                        : 'h-4 w-4 bg-white/20 text-white/50'}`}>
-                      {isCurrent ? idx+1 : good === true ? '✓' : good === false ? '✗' : ''}
-                    </div>
-                    {idx < decisionNodes.length - 1 && (
-                      <div className={`h-px flex-1 min-w-[8px] transition-colors duration-300 ${good !== null ? (good ? 'bg-emerald-400/60' : 'bg-red-400/60') : 'bg-white/20'}`} />
-                    )}
-                  </div>
-                );
-              })}
-              {/* Overall progress fill */}
-              <div className="flex-1 h-px bg-white/20 ml-1" />
-            </div>
-          ) : (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/15">
-              <div className="h-full rounded-full bg-white/70 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
-            </div>
-          )}
-        </div>
-
-        {/* ── Nodo ── */}
-        <div className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm">
-          <div className="prose prose-sm max-w-none text-slate-800 leading-relaxed">
-            <ReactMarkdown>{currentNode.body_md || "Sin descripción"}</ReactMarkdown>
-          </div>
-
-          {/* Feedback de la decisión anterior */}
-          {lastFeedback && (
-            <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${lastFeedback.positive ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-              <div className="prose prose-sm max-w-none">
-                <ReactMarkdown>{lastFeedback.content}</ReactMarkdown>
-              </div>
-            </div>
-          )}
-
-          {/* Opciones */}
-          <div className="mt-6">
-            {autoAdvanceActive ? (
-              <p className="text-sm text-slate-400 italic">Continuando…</p>
-            ) : currentNodeId === startId && currentNode.auto_advance_to ? (
-              <button type="button"
-                onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] px-6 py-3 text-sm font-semibold text-white hover:bg-[#1E6ACB] transition">
-                Empezar caso →
-              </button>
-            ) : !isTerminalNode ? (
-              <div className="grid gap-2.5">
-                {(currentNode.options || []).map((option) => {
-                  const isChosen      = selectedOptionId === option.id;
-                  const isBest        = option.id === bestOptionId;
-                  const chosenDelta   = selectedOptionId
-                    ? (currentNode.options.find(o => o.id === selectedOptionId)?.score_delta || 0)
-                    : 0;
-                  const chosenPositive = chosenDelta >= 0;
-
-                  let btnClass = "text-left rounded-xl border px-4 py-3.5 text-sm font-medium transition-all duration-200 ";
-                  let indClass = "mt-0.5 flex-shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition-all ";
-                  let indContent = "";
-
-                  if (!selectedOptionId) {
-                    btnClass += "border-slate-200 bg-white text-slate-700 hover:border-[#0A3D91] hover:bg-[#0A3D91]/4 cursor-pointer group";
-                    indClass += "border-slate-300 group-hover:border-[#0A3D91]";
-                  } else if (isChosen) {
-                    if (chosenPositive) {
-                      btnClass += "border-emerald-400 bg-emerald-50 text-emerald-900 anim-correct";
-                      indClass += "border-emerald-400 bg-emerald-400 text-white";
-                      indContent = "✓";
-                    } else {
-                      btnClass += "border-red-400 bg-red-50 text-red-900 anim-wrong";
-                      indClass += "border-red-400 bg-red-400 text-white";
-                      indContent = "✗";
-                    }
-                  } else if (isBest && !chosenPositive) {
-                    btnClass += "border-blue-300 bg-blue-50 text-blue-800 opacity-90";
-                    indClass += "border-blue-400 bg-blue-400 text-white";
-                    indContent = "★";
-                  } else {
-                    btnClass += "border-slate-100 bg-white text-slate-400 opacity-40 cursor-default";
-                    indClass += "border-slate-200";
-                  }
-
+          {/* Stage progress */}
+          <div className="px-4 pb-3">
+            {decisionNodes.length > 0 ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[8px] text-slate-500 font-black mr-1 tracking-widest uppercase">PROGRESO</span>
+                {decisionNodes.map((dn, idx) => {
+                  const step      = history.find(h => h.nodeId === dn.id);
+                  const isCurrent = currentNodeId === dn.id;
+                  const good      = step ? step.scoreDelta >= 1 : null;
                   return (
-                    <button key={option.id} type="button"
-                      onClick={() => handleOptionSelect(option)}
-                      disabled={isLocked}
-                      className={btnClass}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span className={indClass}>{indContent}</span>
-                        <div className="prose prose-sm max-w-none flex-1">
-                          <ReactMarkdown>{option.label}</ReactMarkdown>
-                        </div>
-                        {isChosen && (
-                          <span className={`flex-shrink-0 text-sm font-black ${chosenPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {chosenDelta >= 0 ? '+' : ''}{chosenDelta}
-                          </span>
-                        )}
-                        {isBest && !isChosen && selectedOptionId && !chosenPositive && (
-                          <span className="flex-shrink-0 text-xs font-semibold text-blue-600">
-                            +{option.score_delta || 0}
-                          </span>
-                        )}
+                    <div key={dn.id} className="flex items-center gap-1.5">
+                      <div className={`flex items-center justify-center text-[8px] font-black transition-all duration-300
+                        ${isCurrent ? 'h-6 w-6 rounded border-2 border-purple-400 bg-purple-500/30 text-purple-300 node-pop shadow-lg shadow-purple-500/30'
+                          : good === true  ? 'h-5 w-5 rounded border border-emerald-500 bg-emerald-500/20 text-emerald-400 node-pop'
+                          : good === false ? 'h-5 w-5 rounded border border-red-500 bg-red-500/20 text-red-400 node-pop'
+                          : 'h-4 w-4 rounded border border-white/15 bg-white/5 text-white/25'}`}>
+                        {isCurrent ? idx+1 : good === true ? '✓' : good === false ? '✗' : ''}
                       </div>
-                    </button>
+                      {idx < decisionNodes.length - 1 && (
+                        <div className={`h-px w-4 transition-colors duration-300 ${good === true ? 'bg-emerald-500/50' : good === false ? 'bg-red-500/50' : 'bg-white/15'}`} />
+                      )}
+                    </div>
                   );
                 })}
+                <div className="flex-1 h-px bg-white/10 ml-1" />
+                {streak >= 2 && (
+                  <span key={streak} className={`text-[10px] font-black ml-2 ${streak >= 4 ? 'text-orange-300 streak-hot' : 'text-orange-400 animate-pulse'}`}>
+                    {'🔥'.repeat(streak >= 4 ? 2 : 1)}×{streak}
+                  </span>
+                )}
               </div>
-            ) : null}
+            ) : (
+              <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-purple-500/70 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+              </div>
+            )}
           </div>
         </div>
+
+        {/* ── INFO node ── */}
+        {currentNode.kind === 'info' && (
+          <div className="rounded-xl overflow-hidden shadow-xl mission-in" style={{background:'linear-gradient(135deg,#060e1c,#0a1830,#0d2040)'}}>
+            <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b border-blue-500/20">
+              <span className="text-blue-400 text-sm">🩺</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">Caso clínico</span>
+            </div>
+            <div className="px-4 py-4">
+              <div className="prose prose-sm max-w-none text-slate-200 [&>p]:leading-7 [&>p]:mb-3 [&>p:last-child]:mb-0 [&>p]:text-[0.88rem] [&_strong]:text-white [&_h3]:text-blue-300 [&_h3]:text-sm [&_h3]:font-black [&_h3]:tracking-wide [&_ul]:text-slate-300 [&_li]:text-[0.85rem]">
+                <ReactMarkdown>{formatInfoBody(currentNode.body_md) || ""}</ReactMarkdown>
+              </div>
+              {currentNodeId === startId && currentNode.auto_advance_to && (
+                <div className="mt-5 pt-4 border-t border-blue-500/20">
+                  <button type="button"
+                    onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
+                    className="inline-flex items-center gap-2 rounded border-2 border-blue-500 bg-blue-700 hover:bg-blue-600 px-6 py-2.5 text-sm font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 tracking-wide">
+                    ▶ Comenzar caso
+                  </button>
+                </div>
+              )}
+              {autoAdvanceActive && (
+                <p className="mt-3 text-[10px] text-blue-400/70 font-mono animate-pulse">CARGANDO...</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── DECISION node ── */}
+        {currentNode.kind === 'decision' && (
+          <div className="rounded-xl overflow-hidden shadow-xl mission-in" style={{background:'linear-gradient(135deg,#060e1c,#0c1a30,#0f1f3a)'}}>
+            {/* Decision header */}
+            <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-amber-500/25" style={{background:'linear-gradient(90deg,#78350f22,transparent)'}}>
+              <span className="text-amber-400 text-xs">⚡</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-400">Decisión clínica</span>
+            </div>
+            {/* Feedback anterior */}
+            {lastFeedback && (
+              <div className={`mx-4 mt-3 rounded border px-3 py-2.5 text-xs ${lastFeedback.positive ? 'border-emerald-500/40 bg-emerald-950/60 text-emerald-300' : 'border-red-500/40 bg-red-950/60 text-red-300'}`}>
+                <div className="prose prose-xs max-w-none [&_p]:text-inherit [&_strong]:text-white [&_p]:mb-1 [&_p:last-child]:mb-0">
+                  <ReactMarkdown>{lastFeedback.content}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+            {/* Question */}
+            <div className="px-4 pt-3 pb-1">
+              <div className="prose prose-sm max-w-none text-slate-100 font-medium leading-relaxed [&>p]:mb-0 [&>p]:text-[0.9rem] [&_strong]:text-yellow-300">
+                <ReactMarkdown>{currentNode.body_md || ""}</ReactMarkdown>
+              </div>
+            </div>
+            {/* Opciones */}
+            <div key={currentNodeId} className="px-4 pb-4 pt-3 grid gap-2">
+              {(currentNode.options || []).map((option, idx) => {
+                const isChosen     = selectedOptionId === option.id;
+                const isBest       = option.id === bestOptionId;
+                const optDelta     = option.score_delta || 0;
+                const isSelected   = !!selectedOptionId;
+                const chosenDelta  = isSelected
+                  ? (currentNode.options.find(o => o.id === selectedOptionId)?.score_delta || 0)
+                  : 0;
+                const chosenPositive = chosenDelta >= 1;
+
+                const letters = ['A','B','C','D','E'];
+
+                let btnStyle = {};
+                let letterClass = "flex-shrink-0 w-7 h-7 rounded flex items-center justify-center text-xs font-black border-2 transition-all ";
+                let wrapClass = "w-full text-left rounded border-2 px-3 py-3 text-sm font-medium transition-all duration-200 opt-enter flex items-start gap-3 ";
+                let scoreBadge = null;
+
+                if (!isSelected) {
+                  wrapClass += "border-slate-600/50 bg-slate-800/30 text-slate-200 hover:border-blue-500/80 hover:bg-blue-900/25 hover:scale-[1.01] hover:shadow-md hover:shadow-blue-900/30 cursor-pointer group";
+                  letterClass += "border-slate-500 bg-slate-700/50 text-slate-300 group-hover:border-blue-400 group-hover:bg-blue-800/50 group-hover:text-blue-200";
+                } else if (isChosen) {
+                  if (chosenPositive) {
+                    wrapClass += "border-emerald-500 bg-emerald-950/70 text-emerald-200 anim-correct";
+                    letterClass += "border-emerald-400 bg-emerald-600 text-white";
+                  } else {
+                    wrapClass += "border-red-500 bg-red-950/70 text-red-200 anim-wrong";
+                    letterClass += "border-red-400 bg-red-700 text-white";
+                  }
+                  scoreBadge = (
+                    <span className={`flex-shrink-0 text-sm font-black ${chosenPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {chosenDelta >= 0 ? '+' : ''}{chosenDelta}
+                    </span>
+                  );
+                } else {
+                  if (isBest && !chosenPositive) {
+                    wrapClass += "border-yellow-500/80 bg-yellow-950/50 text-yellow-200 opacity-95";
+                    letterClass += "border-yellow-400 bg-yellow-700/70 text-yellow-200";
+                    scoreBadge = <span className="flex-shrink-0 text-xs font-black text-yellow-400">⭐+{optDelta}</span>;
+                  } else if (optDelta >= 1) {
+                    wrapClass += "border-emerald-700/50 bg-emerald-950/30 text-emerald-300/70 opacity-70";
+                    letterClass += "border-emerald-600/60 bg-emerald-900/40 text-emerald-400/70";
+                    scoreBadge = <span className="flex-shrink-0 text-[10px] font-semibold text-emerald-500/70">+{optDelta}</span>;
+                  } else {
+                    wrapClass += "border-slate-700/30 bg-slate-900/30 text-slate-500/50 opacity-30 cursor-default";
+                    letterClass += "border-slate-600/30 bg-slate-800/30 text-slate-500/40";
+                    scoreBadge = <span className="flex-shrink-0 text-[10px] text-slate-600/50">{optDelta}</span>;
+                  }
+                }
+
+                return (
+                  <button key={option.id} type="button"
+                    onClick={() => handleOptionSelect(option)}
+                    disabled={isLocked}
+                    className={wrapClass}
+                    style={{ animationDelay: `${idx * 0.07}s` }}
+                  >
+                    <span className={letterClass}>{isChosen ? (chosenPositive ? '✓' : '✗') : (isSelected && isBest && !chosenPositive) ? '★' : letters[idx]}</span>
+                    <div className="prose prose-sm max-w-none flex-1 [&_p]:mb-0 [&_p]:text-inherit [&_strong]:text-yellow-300">
+                      <ReactMarkdown>{option.label}</ReactMarkdown>
+                    </div>
+                    {scoreBadge}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

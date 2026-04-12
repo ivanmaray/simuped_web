@@ -78,11 +78,9 @@ async function fetchScenarioList() {
 function statusBadge(status) {
   const palette = {
     "disponible": "bg-emerald-100 text-emerald-700 border-emerald-200",
+    "pendiente de revisión": "bg-violet-100 text-violet-700 border-violet-200",
     "en construcción: en proceso": "bg-amber-100 text-amber-800 border-amber-200",
     "en construcción: sin iniciar": "bg-rose-100 text-rose-700 border-rose-200",
-    "borrador": "bg-slate-100 text-slate-700 border-slate-200",
-    "archivado": "bg-slate-100 text-slate-400 border-slate-200",
-    "publicado": "bg-emerald-100 text-emerald-700 border-emerald-200",
   };
   const key = (status || "").trim().toLowerCase();
   const cls = palette[key] || "bg-slate-100 text-slate-600 border-slate-200";
@@ -252,24 +250,26 @@ export default function Admin_Scenarios() {
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return scenarios.filter((scenario) => {
-      if (statusFilter !== "all") {
-        const statusValue = (scenario.status || "").trim().toLowerCase();
-        if (statusValue !== statusFilter) return false;
-      }
-      if (!query) return true;
-      const levelLabel = formatLevel(scenario.level);
-      const haystack = [
-        scenario.title,
-        scenario.summary,
-  scenario.level,
-        levelLabel,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
+    return scenarios
+      .filter((scenario) => {
+        if (statusFilter !== "all") {
+          const statusValue = (scenario.status || "").trim().toLowerCase();
+          if (statusValue !== statusFilter) return false;
+        }
+        if (!query) return true;
+        const levelLabel = formatLevel(scenario.level);
+        const haystack = [
+          scenario.title,
+          scenario.summary,
+          scenario.level,
+          levelLabel,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(query);
+      })
+      .sort((a, b) => (a.title || "").localeCompare(b.title || "", "es", { sensitivity: "base" }));
   }, [scenarios, search, statusFilter]);
 
   const busy = loading || refreshing || creating;
@@ -344,11 +344,9 @@ export default function Admin_Scenarios() {
                 >
                   <option value="all">Todos</option>
                   <option value="disponible">Disponible</option>
+                  <option value="pendiente de revisión">Pendiente de revisión</option>
                   <option value="en construcción: en proceso">En construcción: en proceso</option>
                   <option value="en construcción: sin iniciar">En construcción: sin iniciar</option>
-                  <option value="borrador">Borrador</option>
-                  <option value="archivado">Archivado</option>
-                  <option value="publicado">Publicado</option>
                 </select>
               </div>
               <div className="ml-auto text-xs text-slate-500">

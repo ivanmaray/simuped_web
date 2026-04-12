@@ -125,8 +125,8 @@ export default function Online_Main() {
         // Non-admin users can only see "Disponible" scenarios
         matchAcceso = scenarioStatus === "Disponible";
       } else {
-        // Admin users can see everything except "sin iniciar"
-        matchAcceso = scenarioStatus !== "En construcción: sin iniciar";
+        // Admin users can see all scenarios
+        matchAcceso = true;
       }
 
       return matchQ && matchNivel && matchCat && matchEstado && matchAcceso;
