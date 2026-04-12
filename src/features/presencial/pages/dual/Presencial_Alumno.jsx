@@ -23,10 +23,11 @@ export default function Presencial_Alumno() {
   const [, setScenarioTitle] = useState('');
   const [patientOverview, setPatientOverview] = useState('');
   const [studentBrief, setStudentBrief] = useState('');
-  const [briefOpen, setBriefOpen] = useState(false);
+  const [briefOpen, setBriefOpen] = useState(true);
   const [anamnesisItems, setAnamnesisItems] = useState([]); // todos los ítems del escenario
   const [revealedAnamnesisIds, setRevealedAnamnesisIds] = useState(new Set()); // revelados en esta sesión
   const [receivedLabResults, setReceivedLabResults] = useState([]); // [{result_id, result, at}]
+  const [hiddenLabResults, setHiddenLabResults] = useState(new Set()); // result_ids ocultos por el alumno
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [ended, setEnded] = useState(false);
@@ -1460,22 +1461,6 @@ function buildSvgPath(values = [], width = 260, height = 140) {
               </div>
             )}
 
-            {/* Brief del caso en el hero */}
-            {studentBrief && (
-              <div className="mt-3">
-                <button
-                  onClick={() => setBriefOpen(o => !o)}
-                  className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white ring-1 ring-white/30 hover:bg-white/25 transition"
-                >
-                  📄 {briefOpen ? 'Ocultar brief' : 'Ver brief del caso'}
-                </button>
-                {briefOpen && (
-                  <div className="mt-2 rounded-2xl bg-white/10 backdrop-blur border border-white/20 px-4 py-3 text-sm text-white/90 leading-relaxed whitespace-pre-wrap max-w-2xl">
-                    {studentBrief}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </section>
       )}
@@ -1520,6 +1505,23 @@ function buildSvgPath(values = [], width = 260, height = 140) {
 
         <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(420px,520px)] xl:grid-cols-[minmax(0,0.7fr)_minmax(480px,600px)]">
          <section className="flex flex-col gap-4 overflow-visible">
+            {/* Brief del caso */}
+            {studentBrief && (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-blue-600">📄 Brief del caso</span>
+                  <button
+                    onClick={() => setBriefOpen(o => !o)}
+                    className="text-xs text-blue-400 hover:text-blue-600 transition"
+                  >
+                    {briefOpen ? 'Ocultar ▲' : 'Ver ▼'}
+                  </button>
+                </div>
+                {briefOpen && (
+                  <p className="text-sm text-blue-900 leading-relaxed whitespace-pre-wrap">{studentBrief}</p>
+                )}
+              </div>
+            )}
             {/* Anamnesis dinámica (si el escenario la tiene) */}
             {anamnesisItems.length > 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col overflow-hidden">
@@ -1573,12 +1575,17 @@ function buildSvgPath(values = [], width = 260, height = 140) {
                 </div>
               );
             })() : null}
-            ) : null}
 
             {/* Resultados de laboratorio recibidos */}
             {receivedLabResults.length > 0 && receivedLabResults.map(r => {
               const result = r.result;
               if (!result) return null;
+              const isHidden = hiddenLabResults.has(r.result_id);
+              const toggleHide = () => setHiddenLabResults(prev => {
+                const next = new Set(prev);
+                if (next.has(r.result_id)) next.delete(r.result_id); else next.add(r.result_id);
+                return next;
+              });
               const catColors = {
                 lcr:           { border: 'border-blue-200',   bg: 'bg-blue-50',   title: 'text-blue-900',   badge: 'bg-blue-100 text-blue-700 border-blue-200' },
                 sangre:        { border: 'border-rose-200',   bg: 'bg-rose-50',   title: 'text-rose-900',   badge: 'bg-rose-100 text-rose-700 border-rose-200' },
@@ -1588,27 +1595,35 @@ function buildSvgPath(values = [], width = 260, height = 140) {
               const c = catColors[result.category] || { border: 'border-slate-200', bg: 'bg-white', title: 'text-slate-800', badge: 'bg-slate-100 text-slate-600 border-slate-200' };
               return (
                 <div key={r.result_id} className={`rounded-2xl border ${c.border} ${c.bg} p-4 shadow-sm`}>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-1">
                     <span className="text-base">🧪</span>
                     <span className={`text-sm font-bold ${c.title}`}>{result.name}</span>
-                    <span className={`ml-auto text-[10px] rounded-full border px-2 py-0.5 font-medium ${c.badge}`}>
+                    <span className={`text-[10px] rounded-full border px-2 py-0.5 font-medium ${c.badge}`}>
                       {result.category?.toUpperCase()}
                     </span>
+                    <button
+                      onClick={toggleHide}
+                      className="ml-auto text-xs text-slate-400 hover:text-slate-600 transition px-1.5 py-0.5 rounded"
+                    >
+                      {isHidden ? 'Mostrar ▼' : 'Ocultar ▲'}
+                    </button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-6">
-                    {(result.items || []).map((item, i) => {
-                      const flagCls = item.flag === 'critical' ? 'text-rose-700 font-bold'   :
-                                      item.flag === 'warning'  ? 'text-amber-700 font-semibold' :
-                                      item.flag === 'high'     ? 'text-orange-700 font-medium' :
-                                      item.flag === 'low'      ? 'text-blue-700 font-medium'   : 'text-slate-800';
-                      return (
-                        <div key={i} className="flex items-baseline justify-between gap-2 border-b border-black/5 pb-1 last:border-0 last:pb-0">
-                          <span className="text-xs text-slate-500 flex-shrink-0">{item.label}</span>
-                          <span className={`text-xs text-right ${flagCls}`}>{item.value}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {!isHidden && (
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-6">
+                      {(result.items || []).map((item, i) => {
+                        const flagCls = item.flag === 'critical' ? 'text-rose-700 font-bold'   :
+                                        item.flag === 'warning'  ? 'text-amber-700 font-semibold' :
+                                        item.flag === 'high'     ? 'text-orange-700 font-medium' :
+                                        item.flag === 'low'      ? 'text-blue-700 font-medium'   : 'text-slate-800';
+                        return (
+                          <div key={i} className="flex items-baseline justify-between gap-2 border-b border-black/5 pb-1 last:border-0 last:pb-0">
+                            <span className="text-xs text-slate-500 flex-shrink-0">{item.label}</span>
+                            <span className={`text-xs text-right ${flagCls}`}>{item.value}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}

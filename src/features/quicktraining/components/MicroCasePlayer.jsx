@@ -78,17 +78,6 @@ const KEYFRAMES = `
   0%,100% { opacity:0; }
   20%,60% { opacity:0.14; }
 }
-@keyframes hpDrain {
-  0%   { transform:scaleX(1); }
-  50%  { transform:scaleX(1.03); }
-  100% { transform:scaleX(1); }
-}
-@keyframes hpShake {
-  0%,100% { transform:translateX(0); }
-  20%     { transform:translateX(-5px); }
-  50%     { transform:translateX(5px); }
-  80%     { transform:translateX(-3px); }
-}
 @keyframes coinSpin {
   0%   { transform:scale(1) rotate(0deg); }
   50%  { transform:scale(1.5) rotate(180deg); }
@@ -99,7 +88,6 @@ const KEYFRAMES = `
   60%  { transform:scale(1.03) translateY(-2px); opacity:1; }
   100% { transform:scale(1) translateY(0); opacity:1; }
 }
-.hp-shake  { animation:hpShake  0.35s ease-out; }
 .coin-spin { animation:coinSpin 0.4s ease-out; }
 .mission-in { animation:missionIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
 `;
@@ -270,8 +258,6 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const [selectedOptionId, setSelectedOptionId] = useState(null);
   const [isLocked, setIsLocked]                 = useState(false);
   const [toast, setToast]                       = useState(null);
-  const [hp, setHp]                 = useState(100);
-  const [hpShaking, setHpShaking]   = useState(false);
   const [screenFlash, setScreenFlash] = useState(null); // 'red'|'green'|null
   const [coinAnim, setCoinAnim]     = useState(false);
   const [streak, setStreak]                     = useState(0);
@@ -367,11 +353,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
     // Game effects
     if (delta < 0) {
-      const damage = Math.abs(delta) * 10;
-      setHp(prev => Math.max(0, prev - damage));
-      setHpShaking(true);
       setScreenFlash('red');
-      setTimeout(() => { setHpShaking(false); setScreenFlash(null); }, 500);
+      setTimeout(() => { setScreenFlash(null); }, 500);
     } else if (delta >= 4) {
       setCoinAnim(true);
       setScreenFlash('green');
@@ -536,7 +519,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             <div className="flex items-center justify-center gap-3 px-4 pb-5 flex-wrap">
               <div className="rounded border border-yellow-500/40 bg-yellow-950/50 px-5 py-3 min-w-[90px]">
                 <p className="text-xl font-black text-yellow-400">💰 {score}</p>
-                <p className="text-[9px] font-black text-yellow-600/80 uppercase tracking-widest mt-0.5">/ {maxPossibleScore} XP</p>
+                <p className="text-[9px] font-black text-yellow-600/80 uppercase tracking-widest mt-0.5">/ {maxPossibleScore} pts</p>
               </div>
               <div className="rounded border border-slate-500/40 bg-slate-900/50 px-5 py-3 min-w-[90px]">
                 <p className="text-xl font-black text-slate-300">⏱ {formatTime(timeDisplay)}</p>
@@ -548,10 +531,6 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   <p className="text-[9px] font-black text-purple-600/80 uppercase tracking-widest mt-0.5">PRECISIÓN</p>
                 </div>
               )}
-              <div className={`rounded border px-5 py-3 min-w-[90px] ${hp > 30 ? 'border-emerald-500/40 bg-emerald-950/50' : 'border-red-500/40 bg-red-950/50'}`}>
-                <p className={`text-xl font-black ${hp > 30 ? 'text-emerald-400' : 'text-red-400'}`}>❤ {hp}</p>
-                <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-0.5">HP FINAL</p>
-              </div>
             </div>
           </div>
 
@@ -667,24 +646,11 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               <span className="font-mono text-[10px] text-slate-400">⏱ {formatTime(elapsed)}</span>
             </div>
           </div>
-          {/* HP + Score bars */}
-          <div className="px-4 py-3 space-y-2">
-            {/* HP */}
-            <div className={`flex items-center gap-2 ${hpShaking ? 'hp-shake' : ''}`}>
-              <span className="text-[9px] font-black w-5 text-red-400 font-mono">HP</span>
-              <div className="flex-1 h-3 rounded-sm overflow-hidden bg-black/40 border border-white/10">
-                <div className="h-full rounded-sm transition-all duration-700 ease-out"
-                  style={{
-                    width: `${hp}%`,
-                    background: hp > 60 ? 'linear-gradient(90deg,#16a34a,#4ade80)' : hp > 30 ? 'linear-gradient(90deg,#ca8a04,#facc15)' : 'linear-gradient(90deg,#b91c1c,#f87171)',
-                    boxShadow: hp > 60 ? '0 0 6px #4ade8066' : hp > 30 ? '0 0 6px #facc1566' : '0 0 8px #f8717166',
-                  }} />
-              </div>
-              <span className="font-mono text-[9px] text-slate-500 w-12 text-right">{hp}/100</span>
-            </div>
-            {/* XP/Score */}
+          {/* Score bar */}
+          <div className="px-4 py-3">
+            {/* Puntuación */}
             <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black w-5 text-yellow-400 font-mono">XP</span>
+              <span className="text-[9px] font-black w-12 text-yellow-400 font-mono">PUNTOS</span>
               <div className="flex-1 h-2 rounded-sm overflow-hidden bg-black/40 border border-white/10">
                 <div className="h-full rounded-sm transition-all duration-500"
                   style={{
