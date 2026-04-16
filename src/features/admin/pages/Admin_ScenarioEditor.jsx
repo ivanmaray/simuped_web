@@ -26,6 +26,7 @@ function getSupabaseAuthKey() {
 
 const statusOptions = [
   { value: "Disponible", label: "Disponible" },
+  { value: "Pendiente de revisión", label: "Pendiente de revisión" },
   { value: "En construcción: en proceso", label: "En construcción: en proceso" },
   { value: "En construcción: sin iniciar", label: "En construcción: sin iniciar" },
   { value: "Borrador", label: "Borrador" },
@@ -2908,52 +2909,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                       ))}
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Acciones críticas del caso</span>
-                      <button
-                        type="button"
-                        onClick={() => setBriefForm(prev => ({ ...prev, criticalActions: [...(prev.criticalActions || []), ''] }))}
-                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                      >
-                        + Añadir acción
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Se mostrarán en el resumen final tras completar las preguntas. Son conceptos clave que no se pueden pasar por alto y que el alumno debe aprender del caso.
-                    </p>
-                    <div className="space-y-2">
-                      {(briefForm.criticalActions || []).length === 0 ? (
-                        <p className="text-sm text-slate-500 italic py-2">No hay acciones críticas. Haz clic en "+ Añadir acción" para crear una.</p>
-                      ) : (
-                        (briefForm.criticalActions || []).map((action, idx) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <input
-                              type="text"
-                              value={action}
-                              onChange={(e) => {
-                                const updated = [...(briefForm.criticalActions || [])];
-                                updated[idx] = e.target.value;
-                                setBriefForm(prev => ({ ...prev, criticalActions: updated }));
-                              }}
-                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                              placeholder="Ej: Administrar adrenalina IM 0.01 mg/kg inmediatamente"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = (briefForm.criticalActions || []).filter((_, i) => i !== idx);
-                                setBriefForm(prev => ({ ...prev, criticalActions: updated }));
-                              }}
-                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 hover:bg-rose-100"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  {/* Acciones críticas eliminadas del editor — datos preservados en BD */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs uppercase tracking-wide text-slate-400">Competencias del escenario</span>

@@ -16,8 +16,12 @@ import {
 function mapScenarios(rows) {
   if (!Array.isArray(rows)) return [];
   return rows.map((row) => {
-    const stepCount = Array.isArray(row?.scenario_steps) ? row.scenario_steps.length : null;
-    const itemCount = Array.isArray(row?.scenario_items) ? row.scenario_items.length : null;
+    const steps = Array.isArray(row?.steps) ? row.steps : [];
+    const stepCount = steps.length;
+    const itemCount = steps.reduce(
+      (sum, s) => sum + (Array.isArray(s.questions) ? s.questions.length : 0),
+      0
+    );
     return {
       ...row,
       step_count: stepCount,
@@ -37,8 +41,7 @@ async function fetchScenarioList() {
       difficulty,
       estimated_minutes,
       created_at,
-      scenario_steps:scenario_steps(id),
-      scenario_items:scenario_items(id)
+      steps(id,questions(id))
     `;
   // Try the extended select first; fallback if the DB doesn't have the new column.
   let data, error;
@@ -60,8 +63,7 @@ async function fetchScenarioList() {
       difficulty,
       estimated_minutes,
       created_at,
-      scenario_steps:scenario_steps(id),
-      scenario_items:scenario_items(id)
+      steps(id,questions(id))
       `;
       ({ data, error } = await supabase
         .from("scenarios")
