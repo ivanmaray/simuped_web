@@ -1560,40 +1560,7 @@ export default function Online_Detalle() {
             </>
           )}
 
-          {/* ACCORDION: 5. Signos de alarma (elige los preocupantes) */}
-          <AccordionSection
-            title="5) Signos de alarma"
-            subtitle="Selecciona los signos que realmente sugieren gravedad."
-            open={accordionOpen[4]}
-            onToggle={() => setAccordionOpen((a) => a.map((v, i) => (i === 4 ? !v : v)))}
-            briefCheck={briefCheck}
-          >
-            <ul className="grid sm:grid-cols-2 gap-2 text-sm text-slate-700">
-              {redFlagCandidates.map((rf) => {
-                const checked = selectedRedFlags.includes(rf);
-                return (
-                  <label key={rf} className={`rounded-lg border px-3 py-2 flex items-center gap-2 cursor-pointer ${checked ? "border-[#1E6ACB] bg-[#4FA3E3]/10" : "border-slate-200 hover:bg-slate-50"}`}>
-                    <input
-                      type="checkbox"
-                      className="accent-[#1E6ACB]"
-                      checked={checked}
-                      onChange={(e) => setSelectedRedFlags((prev) => (
-                        e.target.checked ? [...prev, rf] : prev.filter((x) => x !== rf)
-                      ))}
-                    />
-                    <span>{rf}</span>
-                  </label>
-                );
-              })}
-            </ul>
-            {redFlagsCorrect !== null && (
-              <div className={`mt-3 inline-flex items-center text-xs px-2 py-0.5 rounded border ${
-                redFlagsCorrect ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"
-              }`}>
-                {redFlagsCorrect ? "Selección correcta" : "Hay elementos incorrectos o faltan signos clave"}
-              </div>
-            )}
-          </AccordionSection>
+          {/* Signos de alarma eliminados de la simulación — datos preservados en BD */}
 
           {/* BARRA inferior de acción */}
           <div className="sticky bottom-4 flex items-center justify-between rounded-2xl border border-slate-300 bg-white/90 backdrop-blur p-4 shadow-lg">
@@ -1603,13 +1570,10 @@ export default function Online_Detalle() {
               <span>~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min</span>
             </div>
             {(() => {
-              const hasRedFlags = redFlagCandidates.length > 0;
-              const mustPassRedFlags = hasRedFlags && redFlagsCorrect !== true;
-              const readyToContinue = (brief?.triangle ? tepComplete && tepCorrect : true) && !mustPassRedFlags;
+              const readyToContinue = (brief?.triangle ? tepComplete && tepCorrect : true);
               let title = "Continuar a preguntas";
               if (brief?.triangle && !tepComplete) title = "Completa el TEP para continuar";
               else if (brief?.triangle && !tepCorrect) title = "El TEP no es correcto: corrige el Triángulo para continuar";
-              else if (hasRedFlags && redFlagsCorrect !== true) title = "Selecciona correctamente los signos de alarma para continuar";
               else if (showSummary) title = "El intento ya está finalizado o expirado";
               return (
                 <div className="flex flex-col items-end">
@@ -1659,8 +1623,6 @@ export default function Online_Detalle() {
                 // Solo mostrar mensaje de TEP si está configurado en el brief
                 if (brief?.triangle && !tepComplete) msgs.push("Falta completar el TEP");
                 else if (brief?.triangle && !tepCorrect) msgs.push("El TEP no es correcto");
-                const hasRedFlags = redFlagCandidates.length > 0;
-                if (hasRedFlags && redFlagsCorrect !== true) msgs.push("Selecciona correctamente los signos de alarma");
                 if (!msgs.length) return null;
                 return msgs.join(" · ");
               })()}
