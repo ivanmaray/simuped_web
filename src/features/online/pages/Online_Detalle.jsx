@@ -503,9 +503,8 @@ export default function Online_Detalle() {
       return { ready: false, missing };
     }
     // No incluir triangle en missing, se maneja por separado en mensajes de TEP
-    const hasRedFlags = Array.isArray(brief.red_flags) && brief.red_flags.length > 0;
     const hasCriticalActions = Array.isArray(brief.critical_actions) && brief.critical_actions.length > 0;
-    if (!hasRedFlags && !hasCriticalActions) {
+    if (!hasCriticalActions) {
       missing.push('alarm_signs');
     }
     return { ready: missing.length === 0, missing };
@@ -514,7 +513,7 @@ export default function Online_Detalle() {
   const briefMissingShort = useMemo(() => {
     if (!briefCheck || briefCheck.ready) return "";
     const map = {
-      alarm_signs: 'Signos de alarma',
+      alarm_signs: 'Acciones críticas',
       brief: 'Datos del paciente',
     };
     const labels = (briefCheck.missing || []).map((m) => map[m] || String(m));
@@ -583,38 +582,6 @@ export default function Online_Detalle() {
   }), [brief]);
   const tepComplete = !!(tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation);
   const tepCorrect = tepAnswer.appearance === correctTep.appearance && tepAnswer.breathing === correctTep.breathing && tepAnswer.circulation === correctTep.circulation;
-
-  // Signos de alarma (multi-selección)
-  const [selectedRedFlags, setSelectedRedFlags] = useState([]);
-  const redFlagItems = useMemo(() => {
-    const src = Array.isArray(brief?.red_flags) ? brief.red_flags : [];
-    return src
-      .map((it) => {
-        if (typeof it === "string") return { text: it, correct: true };
-        if (typeof it === "object" && it) return { text: String(it.text || ""), correct: Boolean(it.correct) };
-        return null;
-      })
-      .filter((x) => x && x.text.trim().length > 0)
-      .map((x) => ({ text: x.text.trim(), correct: x.correct }));
-  }, [brief]);
-  const redFlagCandidates = useMemo(() => redFlagItems.map((x) => x.text), [redFlagItems]);
-  const redFlagsCorrect = useMemo(() => {
-    if (!redFlagItems.length) return null;
-    const correctSet = new Set(redFlagItems.filter((x) => x.correct).map((x) => x.text));
-    const incorrectSet = new Set(redFlagItems.filter((x) => !x.correct).map((x) => x.text));
-    const sel = new Set(selectedRedFlags);
-    // No debe haber seleccionados incorrectos
-    for (const s of sel) {
-      if (incorrectSet.has(s)) return false;
-    }
-    // Deben estar todos los correctos seleccionados
-    for (const c of correctSet) {
-      if (!sel.has(c)) return false;
-    }
-    // Y no deben sobrar (evita seleccionar extras desconocidos, por si acaso)
-    if (sel.size !== correctSet.size) return false;
-    return true;
-  }, [selectedRedFlags, redFlagItems]);
 
   // Intento actual
   const [attemptId, setAttemptId] = useState(null);

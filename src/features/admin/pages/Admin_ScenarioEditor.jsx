@@ -249,6 +249,17 @@ function listToTextarea(value) {
       .join("\n");
   }
   if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, raw]) => {
+        if (raw == null) return key;
+        if (Array.isArray(raw)) {
+          return `${key}: ${raw.map((item) => String(item).trim()).filter(Boolean).join(" | ")}`;
+        }
+        return `${key}: ${String(raw)}`;
+      })
+      .join("\n");
+  }
   return "";
 }
 
@@ -289,6 +300,9 @@ function formatVitalsForForm(value) {
     if (value.ta.systolic != null) next.taSystolic = String(value.ta.systolic);
     if (value.ta.diastolic != null) next.taDiastolic = String(value.ta.diastolic);
   }
+  // Fallback: flat tas/tad fields (DB format)
+  if (value.tas != null && !next.taSystolic) next.taSystolic = String(value.tas);
+  if (value.tad != null && !next.taDiastolic) next.taDiastolic = String(value.tad);
   return next;
 }
 
@@ -489,7 +503,12 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
     };
   }
   base.historyRaw = formatHistoryTextarea(safeJsonValue(data.history));
-  base.vitals = formatVitalsForForm(safeJsonValue(data.vitals));
+  const vitalsSource = safeJsonValue(data.vitals);
+  base.vitals = formatVitalsForForm(vitalsSource);
+  // Fallback: if demographics has no weight but vitals has peso, use it
+  if (!base.demographics.weightKg && vitalsSource && vitalsSource.peso != null) {
+    base.demographics.weightKg = String(vitalsSource.peso);
+  }
   base.examText = listToTextarea(safeJsonValue(data.exam));
   base.quickLabsText = formatQuickLabsTextarea(safeJsonValue(data.quick_labs));
   base.imagingText = formatImagingTextarea(safeJsonValue(data.imaging));
@@ -1545,9 +1564,7 @@ export default function Admin_ScenarioEditor() {
       if (!criticalActionsList || criticalActionsList.length === 0) {
         warnings.push("Sin acciones críticas");
       }
-      if (!redFlagsPayload || redFlagsPayload.length === 0) {
-        warnings.push("Sin signos de alarma");
-      }
+      // Signos de alarma eliminados del flujo — no se validan
       if (!chiefComplaint) {
         warnings.push("Falta motivo de consulta");
       }
@@ -2542,9 +2559,9 @@ criticalRationale: updatedRowObj.critical_rationale || "",
       if (Array.isArray(payload.mode) && payload.mode.includes('online') && (payload.status === 'Publicado' || payload.status === 'Disponible')) {
         const tri = briefForm?.triangle || {};
         const hasTri = tri.appearance && tri.breathing && tri.circulation;
-        const hasAlarm = (briefForm?.redFlags && briefForm.redFlags.length > 0) || (briefForm?.criticalActions && briefForm.criticalActions.length > 0);
+        const hasAlarm = briefForm?.criticalActions && briefForm.criticalActions.length > 0;
         if (!hasTri || !hasAlarm) {
-          setError('No se puede publicar el escenario online: completa el Triángulo (Apariencia/Respiración/Circulación) y al menos un signo de alarma / acciones críticas en el Brief.');
+          setError('No se puede publicar el escenario online: completa el Triángulo (Apariencia/Respiración/Circulación) y al menos una acción crítica en el Brief.');
           setSaving(false);
           return;
         }
@@ -3562,65 +3579,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                       </label>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">Signos de alarma</span>
-                      <button
-                        type="button"
-                        onClick={() => setBriefForm(prev => ({ ...prev, redFlags: [...(prev.redFlags || []), { text: "", correct: true }] }))}
-                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                      >
-                        + Añadir signo
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Los alumnos tendrán que escoger los que procedan. Añade algunos correctos y otros distractores, y marca "Correcto" solo en los que realmente sugieren gravedad.
-                    </p>
-                    <div className="space-y-2">
-                      {(briefForm.redFlags || []).length === 0 ? (
-                        <p className="text-sm text-slate-500 italic py-2">No hay signos añadidos. Haz clic en "+ Añadir signo" para crear uno.</p>
-                      ) : (
-                        (briefForm.redFlags || []).map((item, idx) => (
-                          <div key={idx} className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                            <input
-                              type="text"
-                              value={item?.text || ""}
-                              onChange={(e) => {
-                                const updated = [...(briefForm.redFlags || [])];
-                                updated[idx] = { ...(updated[idx] || {}), text: e.target.value };
-                                setBriefForm(prev => ({ ...prev, redFlags: updated }));
-                              }}
-                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                              placeholder="Ej: Estridor con compromiso de vía aérea"
-                            />
-                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                              <input
-                                type="checkbox"
-                                className="accent-[#1E6ACB]"
-                                checked={Boolean(item?.correct)}
-                                onChange={(e) => {
-                                  const updated = [...(briefForm.redFlags || [])];
-                                  updated[idx] = { ...(updated[idx] || {}), correct: e.target.checked };
-                                  setBriefForm(prev => ({ ...prev, redFlags: updated }));
-                                }}
-                              />
-                              Correcto
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = (briefForm.redFlags || []).filter((_, i) => i !== idx);
-                                setBriefForm(prev => ({ ...prev, redFlags: updated }));
-                              }}
-                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600 hover:bg-rose-100"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  {/* Signos de alarma eliminados — datos preservados en BD */}
                 </div>
               </>
             ) : null}

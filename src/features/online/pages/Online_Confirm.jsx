@@ -81,9 +81,8 @@ export default function Online_Confirm() {
     if (!tri.appearance || !tri.breathing || !tri.circulation) {
       missing.push('triangle');
     }
-    const hasRedFlags = Array.isArray(brief.red_flags) && brief.red_flags.length > 0;
     const hasCriticalActions = Array.isArray(brief.critical_actions) && brief.critical_actions.length > 0;
-    if (!hasRedFlags && !hasCriticalActions) {
+    if (!hasCriticalActions) {
       missing.push('alarm_signs');
     }
     return { ready: missing.length === 0, missing };
