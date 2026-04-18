@@ -496,10 +496,10 @@ function hydrateBriefForm(row, roles = ["MED", "NUR", "PHARM"]) {
   const demographicsSource = safeJsonValue(data.demographics);
   if (demographicsSource && typeof demographicsSource === "object") {
     base.demographics = {
-      age: demographicsSource.age ? String(demographicsSource.age) : "",
-      weightKg: demographicsSource.weightKg != null ? String(demographicsSource.weightKg) : "",
-      sex: demographicsSource.sex ? String(demographicsSource.sex) : "",
-      location: demographicsSource.context ? String(demographicsSource.context) : "",
+      age: String(demographicsSource.age || demographicsSource.patient_age || ""),
+      weightKg: String(demographicsSource.weightKg ?? demographicsSource.peso_kg ?? demographicsSource.patient_weight ?? ""),
+      sex: String(demographicsSource.sex || ""),
+      location: String(demographicsSource.context || ""),
     };
   }
   base.historyRaw = formatHistoryTextarea(safeJsonValue(data.history));
