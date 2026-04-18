@@ -655,6 +655,18 @@ export default function Admin_ScenarioEditor() {
     return Object.values(questionsByStep).flat().some(q => q.dirty);
   }, [questionsByStep]);
 
+  // --- Aviso al salir con cambios sin guardar ---
+  const anyDirty = metadataDirty || categoriesDirty || briefDirty || resourcesDirty || stepsDirty || questionsDirty;
+  useEffect(() => {
+    if (!anyDirty) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [anyDirty]);
+
   function resolveRoleLabel(role) {
     if (!role) return "";
     const key = String(role).trim();
@@ -2341,7 +2353,19 @@ criticalRationale: updatedRowObj.critical_rationale || "",
       setQuestionsSuccess(question.id ? "Pregunta actualizada" : "Pregunta creada");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] save question", err);
-      const errorMessage = (err && typeof err === 'object' && err.message) ? err.message : (typeof err === 'string' ? err : "No se pudo guardar la pregunta");
+      const raw = (err && typeof err === 'object' && err.message) ? err.message : (typeof err === 'string' ? err : "");
+      let errorMessage;
+      if (raw.includes("Tiempo agotado")) {
+        errorMessage = "Tiempo de espera agotado guardando la pregunta. Comprueba tu conexión y reintenta.";
+      } else if (raw.includes("403") || raw.includes("401") || raw.toLowerCase().includes("rls") || raw.toLowerCase().includes("permission")) {
+        errorMessage = "Sin permisos para guardar la pregunta. Verifica que tu sesión sigue activa (prueba a recargar la página).";
+      } else if (raw.includes("400") || raw.toLowerCase().includes("violates") || raw.toLowerCase().includes("constraint")) {
+        errorMessage = "Error de validación en la base de datos: " + raw.replace(/^.*?:\s*/, "").slice(0, 120);
+      } else if (raw.includes("500") || raw.includes("502") || raw.includes("503")) {
+        errorMessage = "Error del servidor. Reintenta en unos segundos.";
+      } else {
+        errorMessage = raw || "No se pudo guardar la pregunta";
+      }
       setQuestionsError(errorMessage);
     } finally {
       setQuestionOperation(operationKey, null);
@@ -2386,7 +2410,16 @@ criticalRationale: updatedRowObj.critical_rationale || "",
       setQuestionsSuccess("Pregunta eliminada");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] delete question", err);
-      setQuestionsError(err?.message || "No se pudo eliminar la pregunta");
+      const raw = err?.message || "";
+      let errorMessage;
+      if (raw.includes("Tiempo agotado")) {
+        errorMessage = "Tiempo de espera agotado eliminando la pregunta. Reintenta o recarga.";
+      } else if (raw.includes("403") || raw.includes("401") || raw.toLowerCase().includes("permission")) {
+        errorMessage = "Sin permisos para eliminar la pregunta. Verifica tu sesión.";
+      } else {
+        errorMessage = raw || "No se pudo eliminar la pregunta";
+      }
+      setQuestionsError(errorMessage);
     } finally {
       setQuestionOperation(operationKey, null);
     }
@@ -3799,6 +3832,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                               type="button"
                               onClick={() => moveStep(index, -1)}
                               disabled={index === 0}
+                              aria-label={`Mover paso ${index + 1} hacia arriba`}
                               className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
                             >
                               Subir
@@ -3807,6 +3841,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                               type="button"
                               onClick={() => moveStep(index, 1)}
                               disabled={index === steps.length - 1}
+                              aria-label={`Mover paso ${index + 1} hacia abajo`}
                               className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
                             >
                               Bajar
@@ -3814,6 +3849,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                             <button
                               type="button"
                               onClick={() => removeStep(index)}
+                              aria-label={`Eliminar paso ${index + 1}`}
                               className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-600 hover:bg-rose-100"
                             >
                               Eliminar
@@ -3981,6 +4017,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                                                     name={optionLabel}
                                                     checked={isCorrect}
                                                     onChange={() => handleSetQuestionCorrectOption(stepId, questionIndex, optionIdx)}
+                                                    aria-label={`Marcar opción ${String.fromCharCode(65 + optionIdx)} como correcta`}
                                                     className="h-4 w-4 border-slate-300 text-emerald-600 focus:ring-emerald-400"
                                                   />
                                                   <input
@@ -3995,6 +4032,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                                                   type="button"
                                                   onClick={() => handleRemoveQuestionOption(stepId, questionIndex, optionIdx)}
                                                   disabled={optionsList.length <= 2}
+                                                  aria-label={`Eliminar opción ${String.fromCharCode(65 + optionIdx)}`}
                                                   className="self-start rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-50"
                                                 >
                                                   Eliminar
@@ -4097,6 +4135,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                                               <button
                                                 type="button"
                                                 onClick={() => handleRemoveQuestionHint(stepId, questionIndex, hintIndex)}
+                                                aria-label={`Quitar pista ${hintIndex + 1}`}
                                                 className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
                                               >
                                                 Quitar
