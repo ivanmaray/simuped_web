@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
 import Navbar from "../../../components/Navbar.jsx";
@@ -574,6 +574,7 @@ export default function Admin_ScenarioEditor() {
   const [success, setSuccess] = useState("");
   const [scenario, setScenario] = useState(null);
   const [form, setForm] = useState(null);
+  const [initialForm, setInitialForm] = useState(null);
   const [briefSupportsCompetencies, setBriefSupportsCompetencies] = useState(false);
   const [allCategories, setAllCategories] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
@@ -626,6 +627,33 @@ export default function Admin_ScenarioEditor() {
     NUR: "Enfermería",
     PHARM: "Farmacia",
   };
+
+  // ── Dirty tracking per section ──────────────────────────────────
+  const metadataDirty = useMemo(() => {
+    if (!form || !initialForm) return false;
+    return JSON.stringify(form) !== JSON.stringify(initialForm);
+  }, [form, initialForm]);
+
+  const categoriesDirty = useMemo(() => {
+    return JSON.stringify([...selectedCategories].sort()) !== JSON.stringify([...initialCategories].sort());
+  }, [selectedCategories, initialCategories]);
+
+  const briefDirty = useMemo(() => {
+    return JSON.stringify(briefForm) !== JSON.stringify(initialBriefForm);
+  }, [briefForm, initialBriefForm]);
+
+  const resourcesDirty = useMemo(() => {
+    return JSON.stringify(resources) !== JSON.stringify(initialResources);
+  }, [resources, initialResources]);
+
+  const stepsDirty = useMemo(() => {
+    return JSON.stringify(steps.map(s => ({ step_order: s.step_order, description: s.description, narrative: s.narrative, role_specific: s.role_specific, roles: s.roles })))
+      !== JSON.stringify(initialSteps.map(s => ({ step_order: s.step_order, description: s.description, narrative: s.narrative, role_specific: s.role_specific, roles: s.roles })));
+  }, [steps, initialSteps]);
+
+  const questionsDirty = useMemo(() => {
+    return Object.values(questionsByStep).flat().some(q => q.dirty);
+  }, [questionsByStep]);
 
   function resolveRoleLabel(role) {
     if (!role) return "";
@@ -702,6 +730,7 @@ export default function Admin_ScenarioEditor() {
     return null;
   };
 
+  const questionsRequestIdRef = useRef(0);
   async function loadQuestionsForStepIds(stepIds) {
     if (!Array.isArray(stepIds) || stepIds.length === 0) {
       setQuestionsByStep({});
@@ -711,6 +740,7 @@ export default function Admin_ScenarioEditor() {
     }
     setQuestionsLoading(true);
     setQuestionsError("");
+    const requestId = ++questionsRequestIdRef.current;
     try {
       const { data, error } = await supabase
         .from("questions")
@@ -719,6 +749,8 @@ export default function Admin_ScenarioEditor() {
         .order("step_id", { ascending: true })
         .order("id", { ascending: true });
       if (error) throw error;
+      // Stale request guard: if a newer request was fired while this one was in-flight, discard results
+      if (requestId !== questionsRequestIdRef.current) return;
       const byStep = {};
       (data || []).forEach((row) => {
         if (!row?.step_id) return;
@@ -1005,7 +1037,7 @@ export default function Admin_ScenarioEditor() {
         if (!active) return;
 
         setScenario(data);
-        setForm({
+        const formData = {
           title: data.title || "",
           summary: data.summary || "",
           status: data.status || "Disponible",
@@ -1013,7 +1045,9 @@ export default function Admin_ScenarioEditor() {
           level: normalizeLevelValue(data.level),
           estimated_minutes: data.estimated_minutes ?? 10,
           max_attempts: data.max_attempts ?? 3,
-        });
+        };
+        setForm(formData);
+        setInitialForm(formData);
 
         const currentCategories = (categoryLinkRes.data || []).map((row) => row.category_id);
         setSelectedCategories(currentCategories);
@@ -1489,7 +1523,33 @@ export default function Admin_ScenarioEditor() {
       });
       console.log("[DEBUG] handleSaveBrief: Proceeding after registerChange race)");
       if (hydrated) setInitialBriefForm(hydrated);
-      setBriefSuccess("Brief actualizado");
+
+      // Soft validation warnings — saved OK but flag incomplete fields
+      const warnings = [];
+      const tri = briefForm?.triangle || {};
+      if (!tri.appearance || !tri.breathing || !tri.circulation) {
+        warnings.push("Triángulo de evaluación pediátrica incompleto");
+      }
+      if (!criticalActionsList || criticalActionsList.length === 0) {
+        warnings.push("Sin acciones críticas");
+      }
+      if (!redFlagsPayload || redFlagsPayload.length === 0) {
+        warnings.push("Sin signos de alarma");
+      }
+      if (!chiefComplaint) {
+        warnings.push("Falta motivo de consulta");
+      }
+      if (!learningObjective) {
+        warnings.push("Falta objetivo de aprendizaje");
+      }
+      if (Object.keys(objectivesPayload).length === 0) {
+        warnings.push("Sin objetivos por rol");
+      }
+      if (warnings.length > 0) {
+        setBriefSuccess(`Brief guardado — Aviso: ${warnings.join("; ")}`);
+      } else {
+        setBriefSuccess("Brief actualizado");
+      }
     } catch (err) {
       console.error("[Admin_ScenarioEditor] brief", err);
       const isTimeout = err?.message?.includes("Tiempo agotado guardando brief");
@@ -1611,6 +1671,12 @@ export default function Admin_ScenarioEditor() {
     if (sanitized.some((item) => !item.title || !item.url)) {
       console.log("[DEBUG] handleSaveResources: Validation failed");
       setResourcesError("Cada recurso necesita título y URL");
+      return;
+    }
+    const urlPattern = /^https?:\/\/.+/i;
+    const badUrl = sanitized.find((item) => item.url && item.url !== 'PENDIENTE' && !urlPattern.test(item.url));
+    if (badUrl) {
+      setResourcesError(`URL no válida: "${badUrl.url}" — debe empezar por http:// o https://`);
       return;
     }
     // Get session token from localStorage to avoid hanging Supabase client
@@ -2482,6 +2548,11 @@ criticalRationale: updatedRowObj.critical_rationale || "",
         const nextScenario = { ...data, level: normalizeLevelValue(data.level) };
         setScenario(nextScenario);
         setForm((prev) => (prev ? { ...prev, level: nextScenario.level, status: nextScenario.status, title: nextScenario.title } : prev));
+        // Sync estimated_minutes into brief form to avoid desync
+        if (payload.estimated_minutes != null) {
+          setBriefForm((prev) => ({ ...prev, estimatedMinutes: payload.estimated_minutes }));
+          setInitialBriefForm((prev) => ({ ...prev, estimatedMinutes: payload.estimated_minutes }));
+        }
       }
       const diff = computeDiff(oldScenarioState, payload);
       console.log("[DEBUG] handleSaveScenario: Registering change (non-blocking)");
@@ -2490,6 +2561,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
         fields: Object.keys(diff || {}),
       });
       console.log("[DEBUG] handleSaveScenario: Proceeding after registerChange race");
+      setForm((prev) => { setInitialForm(prev); return prev; });
       setSuccess("Escenario actualizado correctamente");
     } catch (err) {
       console.error("[Admin_ScenarioEditor] save", err);
@@ -2567,7 +2639,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                       if (fetchErr) throw fetchErr;
                       if (data) {
                         setScenario(data);
-                        setForm({
+                        const reloadForm = {
                           title: data.title || "",
                           summary: data.summary || "",
                           status: data.status || "Disponible",
@@ -2575,7 +2647,9 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                           level: data.level ? String(data.level).trim().toLowerCase() : "basico",
                           estimated_minutes: data.estimated_minutes ?? 10,
                           max_attempts: data.max_attempts ?? 3,
-                        });
+                        };
+                        setForm(reloadForm);
+                        setInitialForm(reloadForm);
                       }
                     })
                     .catch((err) => {
@@ -2622,11 +2696,12 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                 <p className="text-sm text-slate-600">Datos básicos y estado del escenario.</p>
               </div>
               <div className="flex items-center gap-2">
+                {metadataDirty && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Sin guardar</span>}
                 <button
                   type="button"
                   onClick={handleSave}
                   disabled={saving}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                  className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-60 ${metadataDirty ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 text-slate-700 hover:bg-slate-100"}`}
                 >
                   {saving ? "Guardando…" : "Guardar"}
                 </button>
@@ -2729,11 +2804,12 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                 <p className="text-sm text-slate-600">Activa o desactiva las categorías disponibles.</p>
               </div>
               <div className="flex items-center gap-2">
+                {categoriesDirty && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Sin guardar</span>}
                 <button
                   type="button"
                   onClick={handleSaveCategories}
                   disabled={categorySaving}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                  className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-60 ${categoriesDirty ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 text-slate-700 hover:bg-slate-100"}`}
                 >
                   {categorySaving ? "Guardando…" : "Guardar categorías"}
                 </button>
@@ -2833,11 +2909,12 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                 <p className="text-sm text-slate-600">Define el objetivo general, metas por rol y acciones críticas.</p>
               </div>
               <div className="flex items-center gap-2">
+                {briefDirty && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Sin guardar</span>}
                 <button
                   type="button"
                   onClick={handleSaveBrief}
                   disabled={briefSaving}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                  className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-60 ${briefDirty ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 text-slate-700 hover:bg-slate-100"}`}
                 >
                   {briefSaving ? "Guardando…" : "Guardar"}
                 </button>
@@ -2857,7 +2934,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                   <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{briefError}</div>
                 ) : null}
                 {briefSuccess ? (
-                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{briefSuccess}</div>
+                  <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${briefSuccess.includes("Aviso") ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{briefSuccess}</div>
                 ) : null}
                 <div className="mt-4 space-y-4">
                   <label className="block text-sm text-slate-600">
@@ -3045,11 +3122,12 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                 <p className="text-sm text-slate-600">Datos del paciente, contexto clínico y presentación inicial.</p>
               </div>
               <div className="flex items-center gap-2">
+                {briefDirty && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Sin guardar</span>}
                 <button
                   type="button"
                   onClick={handleSaveBrief}
                   disabled={briefSaving}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                  className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-60 ${briefDirty ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 text-slate-700 hover:bg-slate-100"}`}
                 >
                   {briefSaving ? "Guardando…" : "Guardar"}
                 </button>
@@ -3069,7 +3147,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                   <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{briefError}</div>
                 ) : null}
                 {briefSuccess ? (
-                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{briefSuccess}</div>
+                  <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${briefSuccess.includes("Aviso") ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{briefSuccess}</div>
                 ) : null}
                 <div className="mt-4 space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
@@ -3523,6 +3601,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                 <p className="text-sm text-slate-600">Documentación de apoyo visible para el escenario.</p>
               </div>
               <div className="flex items-center gap-2">
+                {resourcesDirty && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Sin guardar</span>}
                 <button
                   type="button"
                   onClick={addResource}
@@ -3534,7 +3613,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                   type="button"
                   onClick={handleSaveResources}
                   disabled={resourcesSaving}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                  className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-60 ${resourcesDirty ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 text-slate-700 hover:bg-slate-100"}`}
                 >
                   {resourcesSaving ? "Guardando…" : "Guardar lecturas"}
                 </button>
@@ -3648,6 +3727,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                 <p className="text-sm text-slate-600">Organiza la narrativa cronológica que vivirán los alumnos.</p>
               </div>
               <div className="flex items-center gap-2">
+                {(stepsDirty || questionsDirty) && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Sin guardar</span>}
                 <button
                   type="button"
                   onClick={addStep}
@@ -3659,7 +3739,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                   type="button"
                   onClick={handleSaveSteps}
                   disabled={stepsSaving}
-                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60"
+                  className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium disabled:pointer-events-none disabled:opacity-60 ${stepsDirty ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-slate-200 text-slate-700 hover:bg-slate-100"}`}
                 >
                   {stepsSaving ? "Guardando…" : "Guardar pasos"}
                 </button>
