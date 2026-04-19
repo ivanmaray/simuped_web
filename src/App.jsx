@@ -106,7 +106,16 @@ export default function App() {
       }
       setResetLoading(true);
 
-      // Intentar enviar correo bonito desde el backend (Resend). Si el servidor no está configurado, fallback a Supabase.
+      // Build canonical redirect URL — always use production domain or explicit env var
+      const redirectBase = (
+        import.meta.env.VITE_SITE_URL?.trim() ||
+        import.meta.env.VITE_APP_URL?.trim() ||
+        (typeof window !== 'undefined' ? window.location.origin : 'https://www.simuped.com')
+      ).replace(/\/$/, '');
+      const redirectTo = `${redirectBase}/perfil?set_password=1`;
+
+      // Intentar enviar correo bonito desde el backend (Resend).
+      let backendOk = false;
       try {
         const resp = await fetch('/api/reset_password?action=send', {
           method: 'POST',
@@ -114,27 +123,30 @@ export default function App() {
           body: JSON.stringify({ email })
         });
         const json = await resp.json().catch(() => ({}));
-        if (resp.ok && json && json.ok !== false) {
-          setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
-          return;
+        if (resp.ok && json && json.ok === true) {
+          backendOk = true;
+        } else {
+          console.debug('[Reset] backend response:', json);
         }
-      } catch {}
+      } catch (err) {
+        console.debug('[Reset] backend unavailable, using Supabase fallback:', err.message);
+      }
+
+      if (backendOk) {
+        setResetMsg('Si el correo existe, te enviamos un enlace para restablecer tu contraseña.');
+        return;
+      }
 
       // Fallback: usar email por defecto de Supabase
-      try {
-        const redirectBase =
-          import.meta.env.VITE_SITE_URL?.trim() ||
-          (typeof window !== 'undefined' ? window.location.origin : '');
-        const redirectTo = redirectBase ? `${redirectBase}/perfil?set_password=1` : undefined;
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-        if (error) {
-          setResetMsg(error.message || 'No se pudo enviar el enlace.');
-          return;
-        }
-        setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
-      } catch {
-        setResetMsg('Si el correo existe, te enviamos un enlace para restablecerla.');
+      console.debug('[Reset] using Supabase fallback, redirectTo:', redirectTo);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) {
+        console.warn('[Reset] Supabase resetPasswordForEmail error:', error);
+        // Don't leak whether the email exists
+        setResetMsg('Si el correo existe, te enviamos un enlace para restablecer tu contraseña.');
+        return;
       }
+      setResetMsg('Si el correo existe, te enviamos un enlace para restablecer tu contraseña.');
     } finally {
       setResetLoading(false);
     }

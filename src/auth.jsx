@@ -120,18 +120,27 @@ export function AuthProvider({ children }) {
           const hasCode = url.searchParams.get("code");
           const hasError = url.searchParams.get("error");
           const hasHashAccessToken = window.location.hash.includes("access_token=");
+          // Detect recovery flow: hash may carry type=recovery, or query may have type=recovery
+          const hashType = hasHashAccessToken
+            ? new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type')
+            : null;
+          const isRecoveryFlow = hashType === 'recovery' || url.searchParams.get('type') === 'recovery';
 
           if (hasError) console.warn("[Auth] auth error in URL:", url.searchParams.get("error_description") || hasError);
 
           if (hasCode) {
             try {
-              await supabase.auth.exchangeCodeForSession(window.location.href);
+              // PKCE flow: exchange authorization code for session
+              const code = url.searchParams.get("code");
+              await supabase.auth.exchangeCodeForSession(code);
               console.log("[Auth] exchangeCodeForSession OK");
             } catch (ex) {
               console.warn("[Auth] exchangeCodeForSession failed:", ex);
             }
           } else if (hasHashAccessToken) {
-            // Magic link and recovery flows deliver tokens in the hash fragment.
+            // Implicit / magic-link / recovery flows deliver tokens in the hash fragment.
+            // Note: supabase client with detectSessionInUrl:true may handle this automatically,
+            // but we process it explicitly as a safety net.
             try {
               const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
               const params = new URLSearchParams(hash);
@@ -149,9 +158,18 @@ export function AuthProvider({ children }) {
 
           if (hasCode || hasHashAccessToken || hasError) {
             try {
-              const clean = url.origin + url.pathname + (url.search ? url.search.replace(/([?&])(code|error|type)=[^&]*/g, '$1').replace(/[?&]$/, '') : '');
-              window.history.replaceState({}, "", clean);
-              console.log("[Auth] URL cleaned after hydration");
+              // Clean auth params from URL but preserve app params (set_password, etc.)
+              const cleanUrl = new URL(url.origin + url.pathname);
+              const authParams = new Set(['code', 'error', 'error_description', 'error_code']);
+              for (const [k, v] of url.searchParams.entries()) {
+                if (!authParams.has(k)) cleanUrl.searchParams.set(k, v);
+              }
+              // If this was a recovery flow, ensure set_password flag is present for profile page
+              if (isRecoveryFlow && !cleanUrl.searchParams.has('set_password')) {
+                cleanUrl.searchParams.set('set_password', '1');
+              }
+              window.history.replaceState({}, "", cleanUrl.toString());
+              console.log("[Auth] URL cleaned after hydration:", cleanUrl.pathname + cleanUrl.search);
             } catch {}
           }
         } catch {}
