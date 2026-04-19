@@ -250,12 +250,33 @@ function isVitalAbnormal(key, value) {
   }
 }
 
-/* ─── EcgTrace canvas component ──────────────────────────────── */
+/* ─── EcgTrace canvas — realistic 12-lead–style PQRST waveform ── */
 function EcgTrace({ fc, rhythm }) {
   const canvasRef = useRef(null);
   const animRef = useRef(null);
   const bufferRef = useRef([]);
   const xRef = useRef(0);
+
+  /* Build a single PQRST beat as an array of {x,y} points (normalized 0-1).
+     Uses Gaussian-like bumps for each wave — anatomically plausible. */
+  const beatTemplate = useMemo(() => {
+    const pts = [];
+    const N = 200; // samples per beat
+    const gauss = (x, mu, sigma, amp) => amp * Math.exp(-((x - mu) ** 2) / (2 * sigma ** 2));
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      let y = 0;
+      y += gauss(t, 0.12, 0.020, 0.12);  // P wave
+      y += gauss(t, 0.22, 0.008, -0.10); // Q dip
+      y += gauss(t, 0.25, 0.012, 0.85);  // R spike
+      y += gauss(t, 0.28, 0.010, -0.22); // S dip
+      y += gauss(t, 0.42, 0.040, 0.18);  // T wave
+      // tiny baseline wander
+      y += Math.sin(t * Math.PI * 2) * 0.008;
+      pts.push({ t, y });
+    }
+    return pts;
+  }, []);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -263,71 +284,102 @@ function EcgTrace({ fc, rhythm }) {
     const ctx = canvas.getContext("2d");
     const W = canvas.width;
     const H = canvas.height;
-    const midY = H / 2;
+    const midY = H * 0.55; // slightly below center so R-wave has more room upward
+    const amplitude = H * 0.38;
 
     const heartRate = fc || 0;
-    const speed = 1.8;
-    const pixelsBetweenBeats = heartRate > 0 ? (60 / heartRate) * 80 : 0;
+    const speed = 1.6;
+    const pixelsBetweenBeats = heartRate > 0 ? (60 / heartRate) * 90 : 0;
 
     xRef.current += speed;
     const buf = bufferRef.current;
+
     const newY = (() => {
       if (heartRate === 0) return midY;
-      const phase = pixelsBetweenBeats > 0 ? (xRef.current % pixelsBetweenBeats) : 0;
-      const qrsStart = pixelsBetweenBeats * 0.4;
-      const qrsEnd = qrsStart + 12;
-      if (phase >= qrsStart && phase < qrsStart + 3) {
-        return midY + (phase - qrsStart) * 3;
-      } else if (phase >= qrsStart + 3 && phase < qrsStart + 5) {
-        return midY - 18 + (phase - qrsStart - 3) * (-6);
-      } else if (phase >= qrsStart + 5 && phase < qrsStart + 8) {
-        return midY - 30 + (phase - qrsStart - 5) * 14;
-      } else if (phase >= qrsStart + 8 && phase < qrsEnd) {
-        return midY + 12 - (phase - qrsStart - 8) * 3;
-      } else {
-        return midY + Math.sin(xRef.current * 0.02) * 1.2;
-      }
+      if (pixelsBetweenBeats <= 0) return midY;
+      const phase = (xRef.current % pixelsBetweenBeats) / pixelsBetweenBeats; // 0-1
+      // Find closest point in beat template
+      const idx = Math.min(Math.floor(phase * beatTemplate.length), beatTemplate.length - 1);
+      const sample = beatTemplate[idx];
+      return midY - sample.y * amplitude;
     })();
     buf.push(newY);
     if (buf.length > W) buf.shift();
 
-    ctx.fillStyle = "#0a1a1a";
+    // Background
+    ctx.fillStyle = "#050f0a";
     ctx.fillRect(0, 0, W, H);
 
-    // Grid lines (subtle)
-    ctx.strokeStyle = "rgba(0,255,100,0.06)";
+    // Grid — 5mm squares (major) with 1mm subdivisions
+    const gridSize = 15;
+    const subGrid = gridSize / 5;
+    // Sub-grid
+    ctx.strokeStyle = "rgba(0,180,80,0.04)";
     ctx.lineWidth = 0.5;
-    for (let gy = 0; gy < H; gy += 15) {
+    for (let gy = 0; gy < H; gy += subGrid) {
       ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
     }
-    for (let gx = 0; gx < W; gx += 15) {
+    for (let gx = 0; gx < W; gx += subGrid) {
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    }
+    // Major grid
+    ctx.strokeStyle = "rgba(0,200,90,0.08)";
+    ctx.lineWidth = 0.5;
+    for (let gy = 0; gy < H; gy += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+    }
+    for (let gx = 0; gx < W; gx += gridSize) {
       ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
     }
 
-    // ECG trace
-    ctx.beginPath();
-    ctx.strokeStyle = "#22c55e";
-    ctx.lineWidth = 1.8;
-    ctx.shadowColor = "#22c55e";
-    ctx.shadowBlur = 4;
-    for (let i = 0; i < buf.length; i++) {
-      const px = W - buf.length + i;
-      if (i === 0) ctx.moveTo(px, buf[i]);
-      else ctx.lineTo(px, buf[i]);
+    // ECG trace with glow
+    if (buf.length > 1) {
+      // Outer glow
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(34,197,94,0.25)";
+      ctx.lineWidth = 5;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      for (let i = 0; i < buf.length; i++) {
+        const px = W - buf.length + i;
+        if (i === 0) ctx.moveTo(px, buf[i]);
+        else ctx.lineTo(px, buf[i]);
+      }
+      ctx.stroke();
+
+      // Main trace
+      ctx.beginPath();
+      ctx.strokeStyle = "#22c55e";
+      ctx.lineWidth = 2;
+      ctx.shadowColor = "#22c55e";
+      ctx.shadowBlur = 8;
+      for (let i = 0; i < buf.length; i++) {
+        const px = W - buf.length + i;
+        if (i === 0) ctx.moveTo(px, buf[i]);
+        else ctx.lineTo(px, buf[i]);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Bright leading dot
+      if (buf.length > 0) {
+        const lastY = buf[buf.length - 1];
+        ctx.beginPath();
+        ctx.arc(W - 1, lastY, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#86efac";
+        ctx.shadowColor = "#86efac";
+        ctx.shadowBlur = 12;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
     }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
 
     animRef.current = requestAnimationFrame(draw);
-  }, [fc]);
+  }, [fc, beatTemplate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
-    canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
-    const ctx = canvas.getContext("2d");
-    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     bufferRef.current = [];
@@ -341,10 +393,10 @@ function EcgTrace({ fc, rhythm }) {
       <canvas
         ref={canvasRef}
         className="w-full rounded"
-        style={{ height: "72px", background: "#0a1a1a" }}
+        style={{ height: "80px", background: "#050f0a" }}
       />
       {rhythm && (
-        <p className="text-[9px] font-mono text-green-500/70 mt-1 text-center tracking-wider uppercase">{rhythm}</p>
+        <p className="text-[9px] font-mono text-green-500/60 mt-1 text-center tracking-wider uppercase">{rhythm}</p>
       )}
     </div>
   );
@@ -366,23 +418,33 @@ function PatientDemographics({ info }) {
   );
 }
 
-/* ─── Vital display row ──────────────────────────────────────── */
-function VitalRow({ label, value, unit, abnormal }) {
-  if (value == null && !unit) return null;
+/* ─── Monitor vital channel — mimics real bedside monitor ────── */
+const VITAL_CHANNELS = {
+  fc:   { label: "FC",   unit: "lpm",  color: "#22c55e", labelColor: "#4ade80" }, // green
+  sat:  { label: "SpO\u2082", unit: "%",   color: "#38bdf8", labelColor: "#7dd3fc" }, // cyan
+  fr:   { label: "FR",   unit: "rpm",  color: "#fbbf24", labelColor: "#fcd34d" }, // amber
+  temp: { label: "T\u00BA",   unit: "\u00BAC",  color: "#f472b6", labelColor: "#f9a8d4" }, // pink
+  ta:   { label: "NIBP", unit: "mmHg", color: "#f87171", labelColor: "#fca5a5" }, // red
+};
+
+function MonitorVital({ channel, value, abnormal }) {
+  const cfg = VITAL_CHANNELS[channel];
+  if (!cfg) return null;
   return (
-    <div className="flex items-baseline justify-between py-1.5 border-b border-slate-100 last:border-0">
-      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
-      <div className="flex items-baseline gap-1">
-        <span className={`text-lg font-mono font-black tabular-nums transition-all duration-700 ${abnormal ? 'text-red-600' : 'text-slate-800'}`}>
-          {value ?? "--"}
-        </span>
-        {unit && <span className="text-[10px] text-slate-400">{unit}</span>}
+    <div className="flex items-end justify-between px-2 py-1">
+      <div className="flex flex-col">
+        <span className="text-[8px] font-bold uppercase tracking-widest" style={{ color: cfg.labelColor }}>{cfg.label}</span>
+        <span className="text-[7px] font-mono" style={{ color: cfg.labelColor + '99' }}>{cfg.unit}</span>
       </div>
+      <span className={`font-mono font-black tabular-nums leading-none transition-all duration-700 ${abnormal ? 'animate-pulse' : ''}`}
+        style={{ color: abnormal ? '#ef4444' : cfg.color, fontSize: '1.4rem', textShadow: `0 0 8px ${abnormal ? '#ef444466' : cfg.color + '44'}` }}>
+        {value ?? "--"}
+      </span>
     </div>
   );
 }
 
-/* ─── Monitor Panel (left column) ────────────────────────────── */
+/* ─── Monitor Panel (left column) — dark ICU monitor style ───── */
 function MonitorPanel({ vitals }) {
   const fc = vitals?.fc;
   const fr = vitals?.fr;
@@ -391,61 +453,58 @@ function MonitorPanel({ vitals }) {
   const tas = vitals?.tas;
   const tad = vitals?.tad;
   const rhythm = vitals?.rhythm;
-  const hasVitals = fc != null || fr != null || sat != null || temp != null || tas != null || tad != null;
+
+  const taDisplay = (tas != null && tad != null) ? `${tas}/${tad}` : (tas ?? tad ?? null);
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden h-full flex flex-col">
-      <div className="bg-slate-50 border-b border-slate-200 px-3 py-2">
-        <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Monitor</h4>
+    <div className="rounded-lg overflow-hidden h-full flex flex-col shadow-lg" style={{ background: '#050f0a', border: '1px solid #1a3a2a' }}>
+      {/* Monitor header — like Philips IntelliVue */}
+      <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: '#0a1f14', borderBottom: '1px solid #1a3a2a' }}>
+        <span className="text-[8px] font-black uppercase tracking-[0.25em]" style={{ color: '#4ade8066' }}>Monitor</span>
+        <span className="text-[7px] font-mono tabular-nums" style={{ color: '#4ade8044' }}>{rhythm || 'II'}</span>
       </div>
-      <div className="p-3 flex-1 flex flex-col">
-        {hasVitals ? (
-          <div className="space-y-0">
-            <VitalRow label="FC" value={fc} unit="lpm" abnormal={isVitalAbnormal("fc", fc)} />
-            {sat != null && <VitalRow label={<>SpO<sub>2</sub></>} value={sat} unit="%" abnormal={isVitalAbnormal("sat", sat)} />}
-            {fr != null && <VitalRow label="FR" value={fr} unit="rpm" abnormal={isVitalAbnormal("fr", fr)} />}
-            {temp != null && <VitalRow label={<>T&deg;</>} value={temp} unit="&deg;C" abnormal={isVitalAbnormal("temp", temp)} />}
-            {(tas != null || tad != null) && (
-              <VitalRow
-                label="TA"
-                value={tas != null && tad != null ? `${tas}/${tad}` : (tas ?? tad)}
-                unit="mmHg"
-                abnormal={isVitalAbnormal("tas", tas) || isVitalAbnormal("tad", tad)}
-              />
-            )}
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-xs text-slate-300 italic">Sin constantes</p>
-          </div>
-        )}
-        <div className="mt-auto pt-3">
-          <EcgTrace fc={fc || 0} rhythm={rhythm} />
-        </div>
+
+      {/* ECG trace on top */}
+      <div className="px-1 pt-1">
+        <EcgTrace fc={fc || 0} rhythm={null} />
+      </div>
+
+      {/* Vitals grid */}
+      <div className="flex-1 flex flex-col justify-center divide-y" style={{ borderColor: '#1a3a2a22' }}>
+        <MonitorVital channel="fc" value={fc} abnormal={isVitalAbnormal("fc", fc)} />
+        {sat != null && <MonitorVital channel="sat" value={sat} abnormal={isVitalAbnormal("sat", sat)} />}
+        {fr != null && <MonitorVital channel="fr" value={fr} abnormal={isVitalAbnormal("fr", fr)} />}
+        {taDisplay != null && <MonitorVital channel="ta" value={taDisplay} abnormal={isVitalAbnormal("tas", tas) || isVitalAbnormal("tad", tad)} />}
+        {temp != null && <MonitorVital channel="temp" value={temp} abnormal={isVitalAbnormal("temp", temp)} />}
       </div>
     </div>
   );
 }
 
-/* ─── Monitor Chips (mobile) ─────────────────────────────────── */
+/* ─── Monitor Chips (mobile) — dark style matching monitor ───── */
 function MonitorChips({ vitals }) {
   if (!vitals) return null;
   const items = [];
-  if (vitals.fc != null) items.push({ label: "FC", value: vitals.fc, unit: "lpm", key: "fc" });
-  if (vitals.sat != null) items.push({ label: "SpO2", value: vitals.sat, unit: "%", key: "sat" });
-  if (vitals.fr != null) items.push({ label: "FR", value: vitals.fr, unit: "rpm", key: "fr" });
-  if (vitals.temp != null) items.push({ label: "T", value: vitals.temp, unit: "\u00B0C", key: "temp" });
-  if (vitals.tas != null && vitals.tad != null) items.push({ label: "TA", value: `${vitals.tas}/${vitals.tad}`, unit: "mmHg", key: "tas" });
+  if (vitals.fc != null) items.push({ label: "FC", value: vitals.fc, unit: "lpm", key: "fc", ch: "fc" });
+  if (vitals.sat != null) items.push({ label: "SpO\u2082", value: vitals.sat, unit: "%", key: "sat", ch: "sat" });
+  if (vitals.fr != null) items.push({ label: "FR", value: vitals.fr, unit: "rpm", key: "fr", ch: "fr" });
+  if (vitals.temp != null) items.push({ label: "T\u00BA", value: vitals.temp, unit: "\u00BAC", key: "temp", ch: "temp" });
+  if (vitals.tas != null && vitals.tad != null) items.push({ label: "NIBP", value: `${vitals.tas}/${vitals.tad}`, unit: "mmHg", key: "tas", ch: "ta" });
   if (items.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-2">
-      {items.map(it => (
-        <div key={it.key} className={`rounded border px-2.5 py-1.5 text-center ${isVitalAbnormal(it.key, it.key === "tas" ? vitals.tas : (typeof it.value === "string" ? null : it.value)) ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}>
-          <p className="text-[8px] font-bold text-slate-400 uppercase">{it.label}</p>
-          <p className={`text-sm font-mono font-black tabular-nums ${isVitalAbnormal(it.key, it.key === "tas" ? vitals.tas : (typeof it.value === "string" ? null : it.value)) ? 'text-red-600' : 'text-slate-800'}`}>{it.value}</p>
-          <p className="text-[8px] text-slate-400">{it.unit}</p>
-        </div>
-      ))}
+    <div className="flex flex-wrap gap-1.5">
+      {items.map(it => {
+        const cfg = VITAL_CHANNELS[it.ch] || VITAL_CHANNELS.fc;
+        const abnormal = isVitalAbnormal(it.key, it.key === "tas" ? vitals.tas : (typeof it.value === "string" ? null : it.value));
+        return (
+          <div key={it.key} className="rounded px-2.5 py-1.5 text-center" style={{ background: '#0a1a12', border: `1px solid ${cfg.color}33` }}>
+            <p className="text-[7px] font-bold uppercase tracking-wider" style={{ color: cfg.labelColor }}>{it.label}</p>
+            <p className={`text-sm font-mono font-black tabular-nums ${abnormal ? 'animate-pulse' : ''}`}
+              style={{ color: abnormal ? '#ef4444' : cfg.color, textShadow: `0 0 6px ${abnormal ? '#ef444444' : cfg.color + '33'}` }}>{it.value}</p>
+            <p className="text-[7px] font-mono" style={{ color: cfg.labelColor + '66' }}>{it.unit}</p>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1328,37 +1387,39 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
         </div>
 
         {/* ════ 3-COLUMN BODY ════ */}
-        {/* Desktop: 3 columns. Mobile: stacked */}
+        {/* Desktop: 2 or 3 columns depending on vitals. Mobile: stacked */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-0 border-x border-b border-slate-200 rounded-b-xl overflow-hidden bg-slate-50">
 
-          {/* ── LEFT: Monitor Panel (desktop) ── */}
-          <div className="hidden md:block md:col-span-3 p-3 border-r border-slate-200 bg-white">
-            <MonitorPanel vitals={vitals} />
-          </div>
+          {/* ── LEFT: Monitor Panel (desktop) — only when vitals exist ── */}
+          {vitals && (
+            <div className="hidden md:block md:col-span-3 p-3 border-r border-slate-200 bg-white">
+              <MonitorPanel vitals={vitals} />
+            </div>
+          )}
 
-          {/* ── Mobile: Monitor chips ── */}
-          <div className="md:hidden p-3 bg-white border-b border-slate-200">
-            {vitals ? (
+          {/* ── Mobile: Monitor chips — only when vitals exist ── */}
+          {vitals && (
+            <div className="md:hidden p-2.5 border-b" style={{ background: '#050f0a', borderColor: '#1a3a2a' }}>
               <div className="space-y-2">
                 <MonitorChips vitals={vitals} />
                 <EcgTrace fc={vitals?.fc || 0} rhythm={vitals?.rhythm} />
               </div>
-            ) : (
-              <p className="text-xs text-slate-300 italic text-center py-2">Sin constantes vitales</p>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* ── CENTER: Patient Panel ── */}
-          <div className="md:col-span-5 p-4 border-b md:border-b-0 md:border-r border-slate-200 bg-white overflow-y-auto" style={{ maxHeight: "70vh" }}>
+          {/* ── CENTER: Patient Panel — expands when no monitor ── */}
+          <div className={`${vitals ? 'md:col-span-5' : 'md:col-span-7'} p-4 border-b md:border-b-0 md:border-r border-slate-200 bg-white overflow-y-auto`} style={{ maxHeight: "70vh" }}>
             {/* Patient demographics */}
             <div className="mb-3 pb-3 border-b border-slate-100">
               <PatientDemographics info={patientInfo} />
             </div>
 
-            {/* Narrative text */}
-            <div className="prose prose-sm max-w-none text-slate-700 [&>p]:leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0 [&>p]:text-[0.85rem] [&_strong]:text-slate-900 [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:tracking-wide [&_ul]:text-slate-600 [&_li]:text-[0.83rem]">
-              <ReactMarkdown>{formatInfoBody(currentNode.body_md) || ""}</ReactMarkdown>
-            </div>
+            {/* Narrative text — only for info/outcome nodes; decision nodes show body_md in the right action panel */}
+            {currentNode.kind !== 'decision' && currentNode.body_md && (
+              <div className="prose prose-sm max-w-none text-slate-700 [&>p]:leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0 [&>p]:text-[0.85rem] [&_strong]:text-slate-900 [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:tracking-wide [&_ul]:text-slate-600 [&_li]:text-[0.83rem]">
+                <ReactMarkdown>{formatInfoBody(currentNode.body_md) || ""}</ReactMarkdown>
+              </div>
+            )}
 
             {/* Labs */}
             <LabsTable labs={labs} />
@@ -1373,8 +1434,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             <VentilationPanel vent={ventilation} />
           </div>
 
-          {/* ── RIGHT: Action Panel ── */}
-          <div className="md:col-span-4 p-4 bg-white">
+          {/* ── RIGHT: Action Panel — expands when no monitor ── */}
+          <div className={`${vitals ? 'md:col-span-4' : 'md:col-span-5'} p-4 bg-white`}>
 
             {/* ── INFO node action ── */}
             {currentNode.kind === 'info' && (
