@@ -557,12 +557,14 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
   const [currentNodeId, setCurrentNodeId] = useState(startId);
   const [history, setHistory]             = useState([]);
+  const [nodeTrail, setNodeTrail]         = useState([]); // ALL visited nodes with metadata snapshots
   const [lastFeedback, setLastFeedback]   = useState(null);
   const [score, setScore]                 = useState(0);
   const [startedAt]                       = useState(() => Date.now());
   const [isCompleted, setIsCompleted]     = useState(false);
   const [submitting, setSubmitting]       = useState(false);
   const [registered, setRegistered]       = useState(false);
+  const [debriefTab, setDebriefTab]       = useState('decisions'); // 'decisions' | 'vitals' | 'labs' | 'timeline'
 
   /* Timer */
   const [elapsed, setElapsed] = useState(0);
@@ -583,10 +585,12 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   useEffect(() => {
     setCurrentNodeId(startId);
     setHistory([]);
+    setNodeTrail([]);
     setScore(0);
     setLastFeedback(null);
     setIsCompleted(false);
     setRegistered(false);
+    setDebriefTab('decisions');
     setSelectedOptionId(null);
     setIsLocked(false);
     setStreak(0);
@@ -639,6 +643,21 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const bestOptionId = useMemo(() => {
     if (!currentNode?.options?.length) return null;
     return [...currentNode.options].sort((a, b) => (b.score_delta||0) - (a.score_delta||0))[0]?.id;
+  }, [currentNode]);
+
+  /* Track every node visited (for debriefing) */
+  useEffect(() => {
+    if (!currentNode) return;
+    setNodeTrail(prev => {
+      if (prev.length > 0 && prev[prev.length - 1].nodeId === currentNode.id) return prev;
+      return [...prev, {
+        nodeId: currentNode.id,
+        kind: currentNode.kind,
+        title: currentNode.body_md?.match(/^###?\s+(.+)/)?.[1] || `Paso ${prev.length + 1}`,
+        metadata: currentNode.metadata || {},
+        isTerminal: currentNode.is_terminal || false,
+      }];
+    });
   }, [currentNode]);
 
   /* Auto-advance */
@@ -759,6 +778,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   function handleRestart() {
     setCurrentNodeId(startId);
     setHistory([]);
+    setNodeTrail([]);
     setScore(0);
     setLastFeedback(null);
     setIsCompleted(false);
@@ -770,6 +790,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setShowConfetti(false);
     setFinalTime(null);
     setElapsed(0);
+    setDebriefTab('decisions');
   }
 
   if (!microCase) return (
@@ -791,120 +812,405 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     const pct   = maxPossibleScore > 0 ? Math.round((score / maxPossibleScore) * 100) : null;
     const timeDisplay = finalTime ?? Math.floor((Date.now() - startedAt) / 1000);
     const isVictory = grade && grade.stars >= 1;
+    const correctCount = history.filter(h => h.scoreDelta >= 1).length;
+    const wrongCount   = history.filter(h => h.scoreDelta < 0).length;
+    const neutralCount = history.filter(h => h.scoreDelta === 0).length;
+
+    /* Build vitals timeline from nodeTrail */
+    const vitalsTimeline = nodeTrail
+      .filter(n => n.metadata?.vitals)
+      .map((n, idx) => ({ step: idx + 1, label: n.title, kind: n.kind, ...n.metadata.vitals }));
+
+    /* Build labs evolution — track unique lab names across nodes */
+    const labSnapshots = nodeTrail
+      .filter(n => Array.isArray(n.metadata?.labs) && n.metadata.labs.length > 0)
+      .map((n, idx) => ({ step: idx + 1, label: n.title, labs: n.metadata.labs }));
+
+    /* Gasometry evolution */
+    const gasSnapshots = nodeTrail
+      .filter(n => n.metadata?.gasometry && n.metadata.gasometry.pH != null)
+      .map((n, idx) => ({ step: idx + 1, label: n.title, ...n.metadata.gasometry }));
+
+    /* Debriefing tabs config */
+    const DEBRIEF_TABS = [
+      { key: 'decisions', label: 'Decisiones', icon: '\uD83C\uDFAF', count: history.length },
+      { key: 'vitals',    label: 'Constantes', icon: '\uD83D\uDC93', count: vitalsTimeline.length },
+      { key: 'labs',      label: 'Laboratorio', icon: '\uD83E\uDDEA', count: labSnapshots.length },
+      { key: 'timeline',  label: 'Cronolog\u00EDa', icon: '\u23F1', count: nodeTrail.length },
+    ].filter(t => t.count > 0);
 
     return (
       <>
         <style>{KEYFRAMES}</style>
         {showConfetti && <Confetti />}
 
-        <div className="max-w-2xl mx-auto space-y-4">
-          {/* ── Game Over / Victory header ── */}
-          <div className="rounded-xl overflow-hidden shadow-2xl text-center mission-in"
+        <div className="max-w-4xl mx-auto space-y-4">
+          {/* ══ HEADER: Score + Grade ══ */}
+          <div className="rounded-xl overflow-hidden shadow-2xl mission-in"
             style={{background: isVictory
               ? 'linear-gradient(135deg,#0f2027,#203a43,#2c5364)'
               : 'linear-gradient(135deg,#1a0000,#3d0000,#1f0010)'}}>
-            {/* Banner */}
-            <div className="py-5 px-4" style={{background: isVictory
+            <div className="py-4 px-4" style={{background: isVictory
                 ? 'linear-gradient(90deg,#06402a44,#065f4644,#06402a44)'
                 : 'linear-gradient(90deg,#7f1d1d44,#991b1b44,#7f1d1d44)'}}>
-              <p className={`text-2xl font-black tracking-widest mb-1 ${isVictory ? 'text-emerald-300' : 'text-red-400'}`}
-                style={{textShadow: isVictory ? '0 0 20px #4ade8099' : '0 0 20px #f8717199'}}>
-                {grade?.stars === 3 ? '\u2713 Caso resuelto' : grade?.stars === 2 ? '\u2713 Buen resultado' : grade?.stars === 1 ? '\u25B3 Resultado correcto' : '\u2717 Resultado mejorable'}
-              </p>
-              {/* Stars */}
-              {grade && <Stars count={grade.stars} />}
-              {grade && (
-                <div className={`inline-block mt-2 rounded border px-4 py-1 text-xs font-black tracking-widest uppercase ${grade.colorBg} ${grade.colorBorder} ${grade.colorText}`}>
-                  {grade.label}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-center sm:text-left">
+                  <p className={`text-xl font-black tracking-widest ${isVictory ? 'text-emerald-300' : 'text-red-400'}`}
+                    style={{textShadow: isVictory ? '0 0 20px #4ade8099' : '0 0 20px #f8717199'}}>
+                    {grade?.stars === 3 ? '\u2713 Caso resuelto' : grade?.stars === 2 ? '\u2713 Buen resultado' : grade?.stars === 1 ? '\u25B3 Resultado correcto' : '\u2717 Resultado mejorable'}
+                  </p>
+                  {grade && <Stars count={grade.stars} />}
                 </div>
-              )}
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                  <div className="rounded border border-yellow-500/40 bg-yellow-950/50 px-4 py-2 text-center min-w-[75px]">
+                    <p className="text-lg font-black text-yellow-400">{score}<span className="text-yellow-600/60 text-xs">/{maxPossibleScore}</span></p>
+                    <p className="text-[8px] font-black text-yellow-600/60 uppercase tracking-widest">PUNTOS</p>
+                  </div>
+                  <div className="rounded border border-slate-500/40 bg-slate-900/50 px-4 py-2 text-center min-w-[75px]">
+                    <p className="text-lg font-black text-slate-300">{formatTime(timeDisplay)}</p>
+                    <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest">TIEMPO</p>
+                  </div>
+                  {pct !== null && (
+                    <div className="rounded border border-purple-500/40 bg-purple-950/50 px-4 py-2 text-center min-w-[75px]">
+                      <p className="text-lg font-black text-purple-300">{pct}%</p>
+                      <p className="text-[8px] font-black text-purple-600/80 uppercase tracking-widest">PRECISI\u00D3N</p>
+                    </div>
+                  )}
+                  <div className="rounded border border-emerald-500/30 bg-emerald-950/40 px-4 py-2 text-center min-w-[75px]">
+                    <p className="text-lg font-black text-emerald-400">{correctCount}<span className="text-emerald-600/50 text-xs">/{history.length}</span></p>
+                    <p className="text-[8px] font-black text-emerald-600/60 uppercase tracking-widest">ACIERTOS</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Outcome text */}
+            {/* Outcome text (if terminal node has body) */}
             {currentNode?.body_md && (
               <div className="mx-4 my-3 rounded border border-white/10 bg-black/30 px-4 py-3 text-xs text-left text-slate-300 prose prose-xs max-w-none [&_p]:text-slate-300 [&_strong]:text-white [&_h3]:text-slate-200 [&_h3]:font-black">
                 <ReactMarkdown>{currentNode.body_md}</ReactMarkdown>
               </div>
             )}
 
-            {/* Stats */}
-            <div className="flex items-center justify-center gap-3 px-4 pb-5 flex-wrap">
-              <div className="rounded border border-yellow-500/40 bg-yellow-950/50 px-5 py-3 min-w-[90px]">
-                <p className="text-xl font-black text-yellow-400">{"\uD83D\uDCB0"} {score}</p>
-                <p className="text-[9px] font-black text-yellow-600/80 uppercase tracking-widest mt-0.5">/ {maxPossibleScore} pts</p>
+            {/* Quick verdict bar */}
+            <div className="px-4 pb-4">
+              <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-800 gap-0.5">
+                {correctCount > 0 && <div className="bg-emerald-500 transition-all" style={{width:`${(correctCount/history.length)*100}%`}} />}
+                {neutralCount > 0 && <div className="bg-amber-500 transition-all"  style={{width:`${(neutralCount/history.length)*100}%`}} />}
+                {wrongCount > 0 &&   <div className="bg-red-500 transition-all"     style={{width:`${(wrongCount/history.length)*100}%`}} />}
               </div>
-              <div className="rounded border border-slate-500/40 bg-slate-900/50 px-5 py-3 min-w-[90px]">
-                <p className="text-xl font-black text-slate-300">{"\u23F1"} {formatTime(timeDisplay)}</p>
-                <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-0.5">TIEMPO</p>
+              <div className="flex justify-between mt-1">
+                <span className="text-[9px] text-emerald-500/70 font-bold">{correctCount} correctas</span>
+                {neutralCount > 0 && <span className="text-[9px] text-amber-500/70 font-bold">{neutralCount} neutrales</span>}
+                <span className="text-[9px] text-red-500/70 font-bold">{wrongCount} incorrectas</span>
               </div>
-              {pct !== null && (
-                <div className="rounded border border-purple-500/40 bg-purple-950/50 px-5 py-3 min-w-[90px]">
-                  <p className="text-xl font-black text-purple-300">{pct}%</p>
-                  <p className="text-[9px] font-black text-purple-600/80 uppercase tracking-widest mt-0.5">PRECISI&Oacute;N</p>
+            </div>
+          </div>
+
+          {/* ══ DEBRIEFING TABS ══ */}
+          <div className="rounded-xl overflow-hidden shadow-lg bg-white border border-slate-200">
+            {/* Tab bar */}
+            <div className="flex border-b border-slate-200 bg-slate-50 overflow-x-auto">
+              {DEBRIEF_TABS.map(tab => (
+                <button key={tab.key} type="button"
+                  onClick={() => setDebriefTab(tab.key)}
+                  className={`flex items-center gap-1.5 px-4 py-3 text-xs font-bold transition-all whitespace-nowrap border-b-2
+                    ${debriefTab === tab.key
+                      ? 'border-blue-500 text-blue-700 bg-white'
+                      : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-white/50'}`}>
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${debriefTab === tab.key ? 'bg-blue-100 text-blue-600' : 'bg-slate-200 text-slate-500'}`}>{tab.count}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div className="p-4">
+
+              {/* ── TAB: DECISIONS ── */}
+              {debriefTab === 'decisions' && (
+                <div className="space-y-4">
+                  {history.map((step, idx) => {
+                    const bestOption = [...(step.allOptions||[])].sort((a,b)=>(b.score_delta||0)-(a.score_delta||0))[0];
+                    const wasOptimal = bestOption?.id === step.chosenOptionId;
+                    const positive   = step.scoreDelta >= 1;
+                    const neutral    = step.scoreDelta === 0;
+                    const borderColor = positive ? 'border-emerald-200' : neutral ? 'border-amber-200' : 'border-red-200';
+                    const bgColor     = positive ? 'bg-emerald-50/50'   : neutral ? 'bg-amber-50/50'   : 'bg-red-50/50';
+
+                    return (
+                      <div key={`${step.nodeId}-${idx}`} className={`rounded-lg border-2 ${borderColor} ${bgColor} overflow-hidden`}>
+                        {/* Decision header */}
+                        <div className={`flex items-center justify-between px-4 py-2.5 ${positive ? 'bg-emerald-100/50' : neutral ? 'bg-amber-100/50' : 'bg-red-100/50'}`}>
+                          <div className="flex items-center gap-2">
+                            <span className={`flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-xs font-black
+                              ${positive ? 'bg-emerald-500 text-white' : neutral ? 'bg-amber-500 text-white' : 'bg-red-500 text-white'}`}>
+                              {positive ? '\u2713' : neutral ? '\u2014' : '\u2717'}
+                            </span>
+                            <span className="text-xs font-bold text-slate-700">Decisi\u00F3n {idx + 1}</span>
+                          </div>
+                          <span className={`text-sm font-black ${positive ? 'text-emerald-600' : neutral ? 'text-amber-600' : 'text-red-600'}`}>
+                            {step.scoreDelta >= 0 ? '+' : ''}{step.scoreDelta} pts
+                          </span>
+                        </div>
+
+                        <div className="px-4 py-3 space-y-3">
+                          {/* Question context (from node body) */}
+                          {step.nodeBody && (
+                            <div className="text-xs text-slate-500 leading-relaxed prose prose-xs max-w-none [&_p]:text-slate-500 [&_strong]:text-slate-700 [&_p]:mb-1 [&_p:last-child]:mb-0">
+                              <ReactMarkdown>{step.nodeBody.length > 250 ? step.nodeBody.slice(0,250) + '\u2026' : step.nodeBody}</ReactMarkdown>
+                            </div>
+                          )}
+
+                          {/* Your answer */}
+                          <div className={`rounded-lg border px-3 py-2 ${positive ? 'border-emerald-300 bg-emerald-50' : neutral ? 'border-amber-300 bg-amber-50' : 'border-red-300 bg-red-50'}`}>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Tu respuesta</p>
+                            <p className={`text-sm font-medium ${positive ? 'text-emerald-800' : neutral ? 'text-amber-800' : 'text-red-800'}`}>{step.chosenLabel}</p>
+                          </div>
+
+                          {/* Correct answer (if different) */}
+                          {!wasOptimal && bestOption && (
+                            <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-1">\u2B50 Respuesta \u00F3ptima (+{bestOption.score_delta})</p>
+                              <div className="text-sm font-medium text-emerald-800 prose prose-sm max-w-none [&_p]:mb-0 [&_p]:text-emerald-800">
+                                <ReactMarkdown>{bestOption.label}</ReactMarkdown>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Clinical explanation (full, not truncated) */}
+                          {step.feedback && (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2.5">
+                              <p className="text-[9px] font-black uppercase tracking-widest text-blue-500 mb-1.5">\uD83D\uDCD6 Explicaci\u00F3n cl\u00EDnica</p>
+                              <div className="text-xs text-blue-900 leading-relaxed prose prose-xs max-w-none [&_p]:text-blue-900 [&_strong]:text-blue-950 [&_p]:mb-1 [&_p:last-child]:mb-0">
+                                <ReactMarkdown>{step.feedback}</ReactMarkdown>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* All options overview */}
+                          <details className="group">
+                            <summary className="cursor-pointer text-[10px] text-slate-400 hover:text-slate-600 font-medium">
+                              Ver todas las opciones ({(step.allOptions||[]).length})
+                            </summary>
+                            <div className="mt-2 space-y-1.5">
+                              {(step.allOptions||[]).sort((a,b) => (b.score_delta||0) - (a.score_delta||0)).map(opt => {
+                                const isChosen = opt.id === step.chosenOptionId;
+                                const d = opt.score_delta || 0;
+                                return (
+                                  <div key={opt.id} className={`flex items-start gap-2 rounded px-2.5 py-1.5 text-xs
+                                    ${isChosen ? (d >= 1 ? 'bg-emerald-100 border border-emerald-300' : d === 0 ? 'bg-amber-100 border border-amber-300' : 'bg-red-100 border border-red-300') : 'bg-slate-50 border border-slate-100'}`}>
+                                    <span className={`flex-shrink-0 text-[10px] font-black ${d >= 1 ? 'text-emerald-600' : d === 0 ? 'text-amber-600' : 'text-red-500'}`}>
+                                      {d >= 0 ? '+' : ''}{d}
+                                    </span>
+                                    <span className={`flex-1 ${isChosen ? 'font-semibold' : ''} ${d >= 1 ? 'text-emerald-800' : 'text-slate-600'}`}>
+                                      {opt.label}
+                                      {isChosen && <span className="ml-1 text-[9px] font-bold text-slate-400">(tu respuesta)</span>}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </details>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── TAB: VITALS EVOLUTION ── */}
+              {debriefTab === 'vitals' && (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-500 italic">Evoluci\u00F3n de constantes vitales durante el caso</p>
+
+                  {/* Vitals sparkline table */}
+                  {vitalsTimeline.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="text-left px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-wider">Paso</th>
+                            <th className="text-center px-2 py-2 text-[10px] font-black text-red-500 uppercase tracking-wider">FC</th>
+                            <th className="text-center px-2 py-2 text-[10px] font-black text-blue-500 uppercase tracking-wider">FR</th>
+                            <th className="text-center px-2 py-2 text-[10px] font-black text-cyan-500 uppercase tracking-wider">SatO\u2082</th>
+                            <th className="text-center px-2 py-2 text-[10px] font-black text-amber-600 uppercase tracking-wider">TAS/TAD</th>
+                            <th className="text-center px-2 py-2 text-[10px] font-black text-orange-500 uppercase tracking-wider">T\u00AA</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vitalsTimeline.map((v, idx) => {
+                            const prev = idx > 0 ? vitalsTimeline[idx-1] : null;
+                            const arrow = (curr, old) => {
+                              if (!old || curr == null || old == null) return '';
+                              return curr > old ? '\u2191' : curr < old ? '\u2193' : '\u2192';
+                            };
+                            return (
+                              <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50/50">
+                                <td className="px-3 py-2 text-slate-600 font-medium">{v.step}</td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${isVitalAbnormal('fc',v.fc) ? 'text-red-600' : 'text-slate-700'}`}>
+                                  {v.fc ?? '-'} {arrow(v.fc, prev?.fc) && <span className="text-[9px]">{arrow(v.fc, prev?.fc)}</span>}
+                                </td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${isVitalAbnormal('fr',v.fr) ? 'text-blue-600' : 'text-slate-700'}`}>
+                                  {v.fr ?? '-'} {arrow(v.fr, prev?.fr) && <span className="text-[9px]">{arrow(v.fr, prev?.fr)}</span>}
+                                </td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${isVitalAbnormal('sat',v.sat) ? 'text-cyan-600 bg-cyan-50' : 'text-slate-700'}`}>
+                                  {v.sat ?? '-'}% {arrow(v.sat, prev?.sat) && <span className="text-[9px]">{arrow(v.sat, prev?.sat)}</span>}
+                                </td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${isVitalAbnormal('tas',v.tas) ? 'text-amber-600' : 'text-slate-700'}`}>
+                                  {v.tas ?? '-'}/{v.tad ?? '-'}
+                                </td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${isVitalAbnormal('temp',v.temp) ? 'text-orange-600' : 'text-slate-700'}`}>
+                                  {v.temp != null ? `${v.temp}\u00B0` : '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Gasometry evolution */}
+                  {gasSnapshots.length > 0 && (
+                    <div>
+                      <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">\uD83E\uDDEA Gasometr\u00EDa</h5>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-purple-50/50 border-b border-purple-200">
+                              <th className="text-left px-3 py-2 text-[10px] font-black text-purple-500 uppercase">Paso</th>
+                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">pH</th>
+                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">pCO\u2082</th>
+                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">HCO\u2083</th>
+                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">BE</th>
+                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">Lactato</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {gasSnapshots.map((g, idx) => (
+                              <tr key={idx} className="border-b border-purple-100 hover:bg-purple-50/30">
+                                <td className="px-3 py-2 text-slate-600 font-medium">{g.step}</td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${g.pH < 7.35 ? 'text-red-600' : 'text-slate-700'}`}>{g.pH}</td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${g.pCO2 > 45 || g.pCO2 < 35 ? 'text-amber-600' : 'text-slate-700'}`}>{g.pCO2}</td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${g.HCO3 < 18 ? 'text-red-600' : 'text-slate-700'}`}>{g.HCO3}</td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${g.BE < -5 ? 'text-red-600' : 'text-slate-700'}`}>{g.BE}</td>
+                                <td className={`text-center px-2 py-2 font-mono font-bold ${g.lactato > 2 ? 'text-red-600 bg-red-50' : 'text-slate-700'}`}>{g.lactato}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── TAB: LABS EVOLUTION ── */}
+              {debriefTab === 'labs' && (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-500 italic">Evoluci\u00F3n de anal\u00EDticas y pruebas complementarias</p>
+                  {labSnapshots.map((snap, idx) => (
+                    <div key={idx} className="rounded-lg border border-slate-200 overflow-hidden">
+                      <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center gap-2">
+                        <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[9px] font-black">{snap.step}</span>
+                        <span className="text-[10px] font-bold text-slate-600">{snap.label}</span>
+                      </div>
+                      <div className="p-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {snap.labs.map((lab, li) => (
+                            <div key={li} className={`flex items-center justify-between rounded px-2.5 py-1.5 text-xs
+                              ${lab.alert ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-100'}`}>
+                              <span className={`font-medium ${lab.alert ? 'text-red-700' : 'text-slate-600'}`}>{lab.name}</span>
+                              <span className={`font-mono font-bold ${lab.alert ? 'text-red-600' : 'text-slate-800'}`}>
+                                {lab.alert && '\u26A0 '}{lab.value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── TAB: CLINICAL TIMELINE ── */}
+              {debriefTab === 'timeline' && (
+                <div className="space-y-0">
+                  <p className="text-xs text-slate-500 italic mb-4">Secuencia completa de nodos visitados</p>
+                  {nodeTrail.map((node, idx) => {
+                    const decision = history.find(h => h.nodeId === node.nodeId);
+                    const kindColor = node.kind === 'decision' ? 'border-amber-400 bg-amber-100 text-amber-700'
+                                    : node.kind === 'outcome'  ? 'border-purple-400 bg-purple-100 text-purple-700'
+                                    : 'border-blue-400 bg-blue-100 text-blue-700';
+                    const kindLabel = node.kind === 'decision' ? 'Decisi\u00F3n'
+                                   : node.kind === 'outcome'  ? 'Desenlace'
+                                   : 'Informaci\u00F3n';
+                    return (
+                      <div key={`${node.nodeId}-${idx}`} className="flex gap-3">
+                        {/* Timeline line */}
+                        <div className="flex flex-col items-center">
+                          <div className={`h-6 w-6 rounded-full border-2 flex items-center justify-center text-[9px] font-black flex-shrink-0 ${kindColor}`}>
+                            {idx + 1}
+                          </div>
+                          {idx < nodeTrail.length - 1 && <div className="w-0.5 flex-1 bg-slate-200 min-h-[20px]" />}
+                        </div>
+                        {/* Content */}
+                        <div className="pb-4 flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider border ${kindColor}`}>{kindLabel}</span>
+                            {decision && (
+                              <span className={`text-[10px] font-bold ${decision.scoreDelta >= 1 ? 'text-emerald-600' : decision.scoreDelta === 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {decision.scoreDelta >= 0 ? '+' : ''}{decision.scoreDelta} pts
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-600 leading-snug">{node.title}</p>
+                          {decision && (
+                            <p className="text-[10px] text-slate-400 mt-0.5 italic">
+                              Elegiste: {decision.chosenLabel?.slice(0,60)}{decision.chosenLabel?.length > 60 ? '\u2026' : ''}
+                            </p>
+                          )}
+                          {/* Show vitals snapshot if available */}
+                          {node.metadata?.vitals && (
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {[
+                                ['FC', node.metadata.vitals.fc, 'fc'],
+                                ['SatO\u2082', node.metadata.vitals.sat, 'sat'],
+                                ['TA', `${node.metadata.vitals.tas||'-'}/${node.metadata.vitals.tad||'-'}`, 'tas'],
+                              ].filter(([,v]) => v != null && v !== '-/-').map(([label, val, key]) => (
+                                <span key={label} className={`rounded px-1.5 py-0.5 text-[9px] font-mono font-bold
+                                  ${isVitalAbnormal(key, typeof val === 'string' ? parseInt(val) : val) ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                  {label} {val}{key === 'sat' ? '%' : key === 'fc' ? ' lpm' : ''}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
 
-          {/* ── Decision review ── */}
-          {history.length > 0 && (
-            <div className="rounded-xl overflow-hidden shadow-lg" style={{background:'linear-gradient(135deg,#060e1c,#0a1830)'}}>
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
-                <span className="text-purple-400 text-xs">{"\uD83D\uDCDC"}</span>
-                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">Revisi&oacute;n de decisiones</h4>
-              </div>
-              <div className="p-4 space-y-3">
-                {history.map((step, idx) => {
-                  const bestOption = [...(step.allOptions||[])].sort((a,b)=>(b.score_delta||0)-(a.score_delta||0))[0];
-                  const wasOptimal = bestOption?.id === step.chosenOptionId;
-                  const positive   = step.scoreDelta >= 0;
-                  return (
-                    <div key={`${step.nodeId}-${idx}`} className={`rounded border px-3 py-2.5 ${positive ? 'border-emerald-700/40 bg-emerald-950/30' : 'border-red-700/40 bg-red-950/30'}`}>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Decisi&oacute;n {idx + 1}</p>
-                      <div className="flex items-start gap-2">
-                        <span className={`flex-shrink-0 h-4 w-4 rounded flex items-center justify-center text-[9px] font-black mt-0.5 ${positive ? 'bg-emerald-600 text-white' : 'bg-red-700 text-white'}`}>
-                          {positive ? '\u2713' : '\u2717'}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-slate-300 leading-snug">{step.chosenLabel}</p>
-                          {step.feedback && (
-                            <p className="text-[11px] text-slate-500 mt-1 italic leading-snug">{step.feedback.slice(0,140)}{step.feedback.length>140?'\u2026':''}</p>
-                          )}
-                        </div>
-                        <span className={`flex-shrink-0 text-xs font-black ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {step.scoreDelta >= 0 ? '+' : ''}{step.scoreDelta}
-                        </span>
-                      </div>
-                      {!wasOptimal && bestOption && (
-                        <div className="mt-2 flex items-start gap-2 rounded border border-yellow-700/30 bg-yellow-950/30 px-2 py-1.5">
-                          <span className="text-yellow-500 text-[9px]">{"\u2B50"}</span>
-                          <p className="text-[10px] text-yellow-400/80 leading-snug flex-1">{bestOption.label.slice(0,80)}{bestOption.label.length>80?'\u2026':''}</p>
-                          <span className="text-[10px] font-black text-yellow-400">+{bestOption.score_delta}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ── Previous attempts ── */}
+          {/* ══ PREVIOUS ATTEMPTS ══ */}
           {previousAttempts.length > 0 && (
-            <div className="rounded-xl overflow-hidden" style={{background:'linear-gradient(135deg,#060e1c,#0a1830)'}}>
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
-                <span className="text-slate-500 text-xs">{"\uD83D\uDD50"}</span>
-                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Intentos anteriores</h4>
+            <div className="rounded-xl overflow-hidden border border-slate-200 bg-white">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50">
+                <span className="text-slate-400 text-xs">{"\uD83D\uDD50"}</span>
+                <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Intentos anteriores</h4>
               </div>
               <div className="p-4 space-y-2">
                 {previousAttempts.slice(0, 5).map(att => {
                   const g = getGrade(att.score_total, maxPossibleScore);
                   return (
-                    <div key={att.id} className="flex items-center justify-between text-[10px] text-slate-500 py-1 border-b border-white/5 last:border-0 font-mono">
-                      <span>{dayjs(att.completed_at || att.created_at).format("DD/MM/YY HH:mm")}</span>
+                    <div key={att.id} className="flex items-center justify-between text-[10px] text-slate-500 py-1.5 border-b border-slate-100 last:border-0">
+                      <span className="font-mono">{dayjs(att.completed_at || att.created_at).format("DD/MM/YY HH:mm")}</span>
                       <div className="flex items-center gap-2">
                         {g && <span className={`font-black ${g.colorText}`}>{'\u2B50'.repeat(g.stars)}</span>}
-                        <span className="font-black text-slate-300">{"\uD83D\uDCB0"}{att.score_total}</span>
+                        <span className="font-black text-slate-700">{att.score_total} pts</span>
                       </div>
                     </div>
                   );
@@ -913,7 +1219,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             </div>
           )}
 
-          {/* ── Actions ── */}
+          {/* ══ ACTIONS ══ */}
           <div className="flex flex-wrap items-center gap-3">
             {submitting ? (
               <span className="inline-flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
@@ -924,7 +1230,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-black font-mono">{"\u2713"} GUARDADO</span>
             ) : null}
             <button type="button" onClick={handleRestart}
-              className="inline-flex items-center gap-2 rounded border-2 border-blue-500 bg-blue-700/80 hover:bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 tracking-wide">
+              className="inline-flex items-center gap-2 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 px-5 py-2.5 text-xs font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20 tracking-wide">
               {"\uD83D\uDD04"} Repetir caso
             </button>
           </div>
