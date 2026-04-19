@@ -189,7 +189,7 @@ function EditModal({ mc, onClose, onSaved }) {
 }
 
 /* ── CasoRow ───────────────────────────────────────────────────── */
-function CasoRow({ mc, nodeCount, onEdit, onTogglePublished }) {
+function CasoRow({ mc, nodeCount, stats, onEdit, onTogglePublished }) {
   const [toggling, setToggling] = useState(false);
 
   async function handleToggle() {
@@ -229,6 +229,11 @@ function CasoRow({ mc, nodeCount, onEdit, onTogglePublished }) {
             )}
             {roles.length > 0 && (
               <span>{roles.map(r => ROLE_LABELS[r] || r).join(" · ")}</span>
+            )}
+            {stats && stats.attempts > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                {stats.attempts} intento{stats.attempts === 1 ? "" : "s"} · media {stats.avgScore}
+              </span>
             )}
           </div>
         </div>
@@ -271,6 +276,7 @@ function CasoRow({ mc, nodeCount, onEdit, onTogglePublished }) {
 export default function Admin_CasosRapidos() {
   const [cases, setCases]           = useState([]);
   const [nodeCounts, setNodeCounts] = useState({});
+  const [caseStats, setCaseStats]   = useState({});
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState("");
@@ -283,9 +289,10 @@ export default function Admin_CasosRapidos() {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError("");
     try {
-      const [casesRes, nodesRes] = await Promise.all([
+      const [casesRes, nodesRes, attemptsRes] = await Promise.all([
         supabase.from("micro_cases").select("*").order("title", { ascending: true }),
         supabase.from("micro_case_nodes").select("case_id"),
+        supabase.from("micro_case_attempts").select("case_id, score_total, status"),
       ]);
       if (casesRes.error) throw casesRes.error;
       setCases(casesRes.data || []);
@@ -295,6 +302,19 @@ export default function Admin_CasosRapidos() {
         counts[n.case_id] = (counts[n.case_id] || 0) + 1;
       }
       setNodeCounts(counts);
+      // Aggregate attempt stats per case (only completed)
+      const agg = {};
+      for (const a of attemptsRes?.data || []) {
+        if (a.status !== "completed") continue;
+        if (!agg[a.case_id]) agg[a.case_id] = { attempts: 0, sum: 0 };
+        agg[a.case_id].attempts += 1;
+        agg[a.case_id].sum += typeof a.score_total === "number" ? a.score_total : 0;
+      }
+      const statsMap = {};
+      for (const [id, { attempts, sum }] of Object.entries(agg)) {
+        statsMap[id] = { attempts, avgScore: attempts > 0 ? (sum / attempts).toFixed(1) : "0" };
+      }
+      setCaseStats(statsMap);
     } catch (err) {
       setError(err.message || "Error al cargar los casos rápidos.");
     } finally {
@@ -422,6 +442,7 @@ export default function Admin_CasosRapidos() {
                   key={mc.id}
                   mc={mc}
                   nodeCount={nodeCounts[mc.id] ?? null}
+                  stats={caseStats[mc.id] ?? null}
                   onEdit={setEditingMc}
                   onTogglePublished={handleTogglePublished}
                 />

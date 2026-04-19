@@ -33,20 +33,6 @@ function normalizeRole(rawRole) {
   return null;
 }
 
-function matchesRole(targetRoles, requestedRole) {
-  if (!requestedRole) return true;
-  if (!Array.isArray(targetRoles) || targetRoles.length === 0) return true;
-  return targetRoles.some((role) => {
-    if (!role) return false;
-    const value = role.toString().trim().toLowerCase();
-    if (!value) return false;
-    if (value === requestedRole) return true;
-    if (value === 'comun' || value === 'general') return true;
-    const aliasMatch = ROLE_ALIASES[requestedRole] || [];
-    return aliasMatch.includes(value);
-  });
-}
-
 async function getUserFromRequest(req, client) {
   const authHeader = req.headers.authorization || req.headers.Authorization;
   if (!authHeader || typeof authHeader !== 'string') return null;
@@ -152,7 +138,7 @@ async function handleGetCase(req, res) {
     const t1 = Date.now();
     const { data: nodeRows, error: nodesErr } = await client
       .from('micro_case_nodes')
-      .select('id, case_id, kind, body_md, media_url, order_index, is_terminal, auto_advance_to, metadata, target_roles')
+      .select('id, case_id, kind, body_md, media_url, order_index, is_terminal, auto_advance_to, metadata')
       .eq('case_id', id)
       .order('order_index', { ascending: true });
 
@@ -170,7 +156,7 @@ async function handleGetCase(req, res) {
       ? { data: [], error: null }
       : await client
         .from('micro_case_options')
-        .select('id, node_id, label, next_node_id, feedback_md, score_delta, is_critical, target_roles')
+        .select('id, node_id, label, next_node_id, feedback_md, score_delta, is_critical')
         .in('node_id', nodeIds)
         .order('created_at', { ascending: true });
 
@@ -187,54 +173,10 @@ async function handleGetCase(req, res) {
       optionsByNode[option.node_id].push(option);
     }
 
-    const availableRolesSet = new Set();
-
-    const hydratedNodes = (nodeRows || []).map((node) => {
-      const targetRoles = Array.isArray(node.target_roles) ? node.target_roles : [];
-      targetRoles.forEach((role) => {
-        const normalized = normalizeRole(role);
-        if (normalized) availableRolesSet.add(normalized);
-        const value = role?.toString().trim().toLowerCase();
-        if (value === 'comun' || value === 'general') availableRolesSet.add('comun');
-      });
-      return {
-        ...node,
-        target_roles: targetRoles,
-        options: (optionsByNode[node.id] || []).map((option) => {
-          const optionTargets = Array.isArray(option.target_roles) ? option.target_roles : [];
-          optionTargets.forEach((role) => {
-            const normalized = normalizeRole(role);
-            if (normalized) availableRolesSet.add(normalized);
-          });
-          return {
-            ...option,
-            target_roles: optionTargets
-          };
-        })
-      };
-    });
-
-    const filteredNodes = requestedRole
-      ? hydratedNodes.filter((node) => matchesRole(node.target_roles, requestedRole))
-      : hydratedNodes;
-
-    const allowedNodeIds = new Set(filteredNodes.map((node) => node.id));
-
-    const nodes = filteredNodes.map((node) => ({
+    const nodes = (nodeRows || []).map((node) => ({
       ...node,
-      options: (node.options || []).filter((option) => {
-        if (!matchesRole(option.target_roles, requestedRole)) return false;
-        if (!option.next_node_id) return true;
-        return allowedNodeIds.has(option.next_node_id);
-      })
+      options: optionsByNode[node.id] || []
     }));
-
-    let effectiveStartNodeId = microCase.start_node_id;
-    if (requestedRole && effectiveStartNodeId && !allowedNodeIds.has(effectiveStartNodeId)) {
-      effectiveStartNodeId = nodes.find((node) => node.kind === 'decision')?.id || nodes[0]?.id || null;
-    }
-
-    const availableRoles = Array.from(availableRolesSet).filter(Boolean).sort();
 
     const totalMs = Date.now() - startMs;
     console.log(`[micro_cases:get] Total time: ${totalMs}ms for case ${id}`);
@@ -244,9 +186,9 @@ async function handleGetCase(req, res) {
       case: {
         ...microCase,
         original_start_node_id: microCase.start_node_id,
-        start_node_id: effectiveStartNodeId,
+        start_node_id: microCase.start_node_id,
         nodes,
-        available_roles: availableRoles,
+        available_roles: ['medico', 'enfermeria', 'farmacia'],
         requested_role: requestedRole
       }
     });
@@ -275,6 +217,8 @@ async function handleSubmitAttempt(req, res) {
     if (!caseId || !Array.isArray(steps)) {
       return res.status(400).json({ ok: false, error: 'invalid_payload' });
     }
+
+    console.log(`[micro_cases:submit] user=${user.id} case=${caseId} steps=${steps.length} score=${scoreTotal} completed=${completed}`);
 
     const normalizedRole = normalizeRole(participantRole);
 
@@ -320,13 +264,14 @@ async function handleSubmitAttempt(req, res) {
         .from('micro_case_attempt_steps')
         .insert(stepRows);
       if (stepsErr) {
-        console.error('[micro_cases] steps insert error', stepsErr);
-        // Non-blocking: attempt already created. Return ok but warn.
-        return res.status(200).json({ ok: true, attempt_id: attemptId, warning: 'steps_failed' });
+        console.error('[micro_cases] steps insert error', stepsErr, { attemptId, rowCount: stepRows.length });
+        return res.status(500).json({ ok: false, error: 'steps_insert_failed', detail: stepsErr.message, attempt_id: attemptId });
       }
+    } else {
+      console.warn('[micro_cases:submit] empty steps array', { attemptId, caseId });
     }
 
-    return res.status(200).json({ ok: true, attempt_id: attemptId });
+    return res.status(200).json({ ok: true, attempt_id: attemptId, steps_saved: stepRows.length });
   } catch (err) {
     if (err.message === 'server_not_configured') {
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
@@ -374,6 +319,42 @@ async function handleGetAttempts(req, res) {
   }
 }
 
+async function handleAttemptsSummary(req, res) {
+  try {
+    const client = getServiceClient();
+    const user = await getUserFromRequest(req, client);
+    if (!user) {
+      return res.status(401).json({ ok: false, error: 'missing_token' });
+    }
+    const { data, error } = await client
+      .from('micro_case_attempts')
+      .select('case_id, score_total, status, completed_at')
+      .eq('user_id', user.id)
+      .eq('status', 'completed');
+    if (error) {
+      console.error('[micro_cases] attempts_summary error', error);
+      return res.status(200).json({ ok: true, summary: {}, warning: 'supabase_error' });
+    }
+    const summary = {};
+    for (const row of data || []) {
+      const prev = summary[row.case_id];
+      if (!prev || (row.score_total ?? -Infinity) > (prev.best_score ?? -Infinity)) {
+        summary[row.case_id] = {
+          best_score: row.score_total,
+          last_completed_at: row.completed_at
+        };
+      }
+    }
+    return res.status(200).json({ ok: true, summary });
+  } catch (err) {
+    if (err.message === 'server_not_configured') {
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+    console.error('[micro_cases] attempts_summary unexpected', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+}
+
 export default async function handler(req, res) {
   const action = (req.query.action || req.body?.action || 'list').toString();
 
@@ -387,6 +368,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET' && action === 'attempts') {
     return handleGetAttempts(req, res);
+  }
+
+  if (req.method === 'GET' && action === 'attempts_summary') {
+    return handleAttemptsSummary(req, res);
   }
 
   if (action === 'submit') {

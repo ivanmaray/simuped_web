@@ -94,6 +94,11 @@ function CaseCard({ microCase, onSelect, bestScore }) {
               ⏱ {formatDuration(microCase.estimated_minutes)}
             </span>
           )}
+          {Array.isArray(microCase.recommended_roles) && microCase.recommended_roles.slice(0, 3).map((r) => (
+            <span key={r} className="rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+              {ROLE_LABELS[String(r).toLowerCase()] || r}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -138,6 +143,8 @@ export default function QuickTraining() {
 
   const token = useMemo(() => session?.access_token ?? null, [session]);
 
+  const [attemptsSummary, setAttemptsSummary] = useState({});
+
   useEffect(() => {
     if (!ready || !token) return;
     let isMounted = true;
@@ -145,13 +152,19 @@ export default function QuickTraining() {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch(`${API_BASE_URL}/micro_cases?action=list`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!response.ok) throw new Error(`No se pudo cargar el listado (${response.status})`);
-        const json = await parseJsonResponse(response, "No se pudo leer la lista de microcasos.");
-        if (!json?.ok) throw new Error(json?.error || 'Respuesta inválida del servidor');
-        if (isMounted) setCases(json.cases || EMPTY_STATE);
+        const [listResponse, summaryResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/micro_cases?action=list`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_BASE_URL}/micro_cases?action=attempts_summary`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        if (!listResponse.ok) throw new Error(`No se pudo cargar el listado (${listResponse.status})`);
+        const listJson = await parseJsonResponse(listResponse, "No se pudo leer la lista de microcasos.");
+        if (!listJson?.ok) throw new Error(listJson?.error || 'Respuesta inválida del servidor');
+        if (isMounted) setCases(listJson.cases || EMPTY_STATE);
+
+        if (summaryResponse.ok) {
+          const summaryJson = await parseJsonResponse(summaryResponse, 'summary_error').catch(() => null);
+          if (isMounted && summaryJson?.ok) setAttemptsSummary(summaryJson.summary || {});
+        }
       } catch (err) {
         console.error('[QuickTraining] list error', err);
         if (isMounted) setError(err.message || 'No se pudo obtener el listado.');
@@ -163,16 +176,19 @@ export default function QuickTraining() {
     return () => { isMounted = false; };
   }, [ready, token]);
 
-  /* Best score per case from session completedAttempts */
+  /* Best score per case: DB summary overridden by in-session higher scores */
   const bestScores = useMemo(() => {
     const map = {};
+    for (const [caseId, info] of Object.entries(attemptsSummary)) {
+      if (info?.best_score != null) map[caseId] = info.best_score;
+    }
     for (const att of completedAttempts) {
-      if (!map[att.caseId] || att.score > map[att.caseId]) {
+      if (map[att.caseId] == null || att.score > map[att.caseId]) {
         map[att.caseId] = att.score;
       }
     }
     return map;
-  }, [completedAttempts]);
+  }, [attemptsSummary, completedAttempts]);
 
   /* Filtered cases */
   const filteredCases = useMemo(() => {
@@ -196,23 +212,25 @@ export default function QuickTraining() {
   }
 
   async function handleSubmitAttempt(payload) {
-    if (!token) return;
+    if (!token) return { ok: false, error: 'missing_token' };
     try {
       const response = await fetch(`${API_BASE_URL}/micro_cases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ action: 'submit', participantRole, ...payload })
       });
-      if (!response.ok) return;
-      const json = await parseJsonResponse(response, 'No se pudo procesar la respuesta.');
-      if (json?.ok) {
-        setCompletedAttempts(prev => [
-          { caseId: payload.caseId, attemptId: json.attempt_id, score: payload.scoreTotal, role: participantRole, completedAt: new Date().toISOString() },
-          ...prev
-        ].slice(0, 20));
+      const json = await parseJsonResponse(response, 'No se pudo procesar la respuesta.').catch(() => null);
+      if (!response.ok || !json?.ok) {
+        return { ok: false, error: json?.error || `http_${response.status}`, detail: json?.detail };
       }
+      setCompletedAttempts(prev => [
+        { caseId: payload.caseId, attemptId: json.attempt_id, score: payload.scoreTotal, role: participantRole, completedAt: new Date().toISOString() },
+        ...prev
+      ].slice(0, 20));
+      return json;
     } catch (err) {
       console.warn('[QuickTraining] submit attempt error', err);
+      return { ok: false, error: err?.message || 'network_error' };
     }
   }
 

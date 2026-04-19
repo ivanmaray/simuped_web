@@ -2,18 +2,25 @@ import { useParams } from "react-router-dom";
 import Navbar from "../../../components/Navbar.jsx";
 import MicroCasePlayer from "../components/MicroCasePlayer.jsx";
 import { useAuth } from "../../../auth";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // Keep the same env var and fallback used across the quicktraining pages
 const API_BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MICROCASE_API_BASE_URL) || "/api";
 
+function profileRole(profile) {
+  const raw = String(profile?.rol || "").toLowerCase();
+  if (raw.includes("enfer")) return "enfermeria";
+  if (raw.includes("farm"))  return "farmacia";
+  return "medico";
+}
+
 export default function MicroCasePage() {
   const { caseId } = useParams();
-  const { session, ready } = useAuth();
+  const { session, ready, profile } = useAuth();
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [participantRole, setParticipantRole] = useState("medico");
+  const participantRole = useMemo(() => profileRole(profile), [profile]);
 
   const token = session?.access_token ?? null;
 
@@ -25,9 +32,6 @@ export default function MicroCasePage() {
       setError("");
       try {
         const params = new URLSearchParams({ action: 'get', id: caseId });
-        if (participantRole) {
-          params.set('role', participantRole);
-        }
         const response = await fetch(`${API_BASE_URL}/micro_cases?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -48,10 +52,10 @@ export default function MicroCasePage() {
     }
 
     fetchCase();
-  }, [ready, token, caseId, participantRole]);
+  }, [ready, token, caseId]);
 
   async function handleSubmitAttempt(payload) {
-    if (!token) return;
+    if (!token) return { ok: false, error: 'missing_token' };
     try {
       const response = await fetch(`${API_BASE_URL}/micro_cases`, {
         method: 'POST',
@@ -61,16 +65,15 @@ export default function MicroCasePage() {
         },
         body: JSON.stringify({ action: 'submit', participantRole, ...payload })
       });
+      const json = await parseJsonResponse(response, 'No se pudo procesar la respuesta del intento.').catch(() => null);
       if (!response.ok) {
-        console.warn('[MicroCasePage] submit attempt failed', response.status);
-        return;
+        console.warn('[MicroCasePage] submit attempt failed', response.status, json);
+        return { ok: false, error: json?.error || `http_${response.status}`, detail: json?.detail };
       }
-      const json = await parseJsonResponse(response, 'No se pudo procesar la respuesta del intento.');
-      if (json?.ok) {
-        // Maybe navigate back or show success
-      }
+      return json || { ok: true };
     } catch (err) {
       console.error('[MicroCasePage] submit error', err);
+      return { ok: false, error: err?.message || 'network_error' };
     }
   }
 

@@ -178,9 +178,10 @@ function Stars({ count }) {
 }
 
 /* ─── Grade helpers ──────────────────────────────────────────── */
-function getGrade(score, maxPossible) {
-  if (maxPossible <= 0) return null;
-  const pct = score / maxPossible;
+function getGrade(score, maxPossible, minPossible = 0) {
+  const range = maxPossible - minPossible;
+  if (range <= 0) return null;
+  const pct = Math.max(0, Math.min(1, (score - minPossible) / range));
   if (pct >= 0.85) return { label:"Excelente", stars:3, colorText:"text-emerald-700", colorBg:"bg-emerald-50",  colorBorder:"border-emerald-300", bar:"bg-emerald-500"  };
   if (pct >= 0.60) return { label:"Notable",   stars:2, colorText:"text-blue-700",    colorBg:"bg-blue-50",    colorBorder:"border-blue-300",    bar:"bg-blue-500"    };
   if (pct >= 0.30) return { label:"Suficiente", stars:1, colorText:"text-amber-700",   colorBg:"bg-amber-50",   colorBorder:"border-amber-300",   bar:"bg-amber-500"   };
@@ -847,10 +848,12 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const [isCompleted, setIsCompleted]     = useState(false);
   const [submitting, setSubmitting]       = useState(false);
   const [registered, setRegistered]       = useState(false);
+  const [submitError, setSubmitError]     = useState(null);
   const [debriefTab, setDebriefTab]       = useState('decisions'); // 'decisions' | 'vitals' | 'labs' | 'timeline'
 
   /* Timer */
   const [elapsed, setElapsed] = useState(0);
+  const nodeEnteredAtRef = useRef(Date.now());
 
   /* Gamification */
   const [selectedOptionId, setSelectedOptionId] = useState(null);
@@ -874,6 +877,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setLastFeedback(null);
     setIsCompleted(false);
     setRegistered(false);
+    setSubmitError(null);
     setDebriefTab('decisions');
     setSelectedOptionId(null);
     setIsLocked(false);
@@ -916,11 +920,18 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const progressRatio   = totalNodes > 0 ? Math.min(1, visitedIds.size / totalNodes) : 0;
   const progressPercent = showSummary || isTerminalNode ? 100 : Math.round(progressRatio * 100);
 
-  /* Max possible score */
+  /* Max / min possible score along the visited path (used to normalize grade) */
   const maxPossibleScore = useMemo(() =>
     history.reduce((sum, step) => {
       const best = Math.max(0, ...(step.allOptions || []).map(o => o.score_delta || 0));
       return sum + best;
+    }, 0),
+  [history]);
+
+  const minPossibleScore = useMemo(() =>
+    history.reduce((sum, step) => {
+      const worst = Math.min(0, ...(step.allOptions || []).map(o => o.score_delta || 0));
+      return sum + worst;
     }, 0),
   [history]);
 
@@ -935,6 +946,11 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     if (!currentNode?.options?.length) return [];
     return seededShuffle(currentNode.options, currentNode.id);
   }, [currentNode?.id, currentNode?.options]);
+
+  /* Track when current node was entered (for per-step elapsed_ms) */
+  useEffect(() => {
+    nodeEnteredAtRef.current = Date.now();
+  }, [currentNodeId]);
 
   /* Track every node visited (for debriefing) */
   useEffect(() => {
@@ -1009,13 +1025,15 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setToast({ text: toastMsg, positive: delta >= 1, key: Date.now() });
     setTimeout(() => setToast(null), 1900);
 
+    const elapsedMs = Math.max(0, Date.now() - nodeEnteredAtRef.current);
     setHistory(prev => [...prev, {
       nodeId: currentNode.id,
       nodeBody: currentNode.body_md || "",
       allOptions: currentNode.options || [],
-      chosenOptionId: option.id,
+      optionId: option.id,
       chosenLabel: option.label,
       scoreDelta: delta,
+      elapsedMs,
       feedback: option.feedback_md || null,
     }]);
     setScore(nextScore);
@@ -1044,7 +1062,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setFinalTime(t);
 
     // Confetti
-    const g = getGrade(score, maxPossibleScore);
+    const g = getGrade(score, maxPossibleScore, minPossibleScore);
     if (g && g.stars >= 2) {
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 3800);
@@ -1053,15 +1071,29 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     // Auto-submit
     if (!token || registered || submitting) return;
     setSubmitting(true);
+    setSubmitError(null);
     const durationSeconds = Math.max(0, t);
+    const stepsPayload = history.map((h) => ({
+      nodeId: h.nodeId,
+      optionId: h.optionId || null,
+      outcomeLabel: h.chosenLabel || null,
+      scoreDelta: h.scoreDelta || 0,
+      elapsedMs: h.elapsedMs ?? null,
+    }));
     Promise.resolve(
-      onSubmitAttempt?.({ caseId: microCase.id, steps: history, scoreTotal: score, completed: true, durationSeconds })
+      onSubmitAttempt?.({ caseId: microCase.id, steps: stepsPayload, scoreTotal: score, completed: true, durationSeconds })
     )
-      .then(() => {
+      .then((result) => {
+        if (result && result.ok === false) {
+          setSubmitError(result.error || 'No se pudo registrar el intento.');
+          return;
+        }
         setRegistered(true);
         setAttemptsVersion(v => v + 1);
       })
-      .catch(() => {})
+      .catch((err) => {
+        setSubmitError(err?.message || 'No se pudo registrar el intento.');
+      })
       .finally(() => setSubmitting(false));
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1070,12 +1102,26 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   async function handleFinish() {
     if (submitting || registered || !token) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const durationSeconds = Math.max(0, Math.ceil((Date.now() - startedAt) / 1000));
-      const p = onSubmitAttempt?.({ caseId: microCase.id, steps: history, scoreTotal: score, completed: true, durationSeconds });
-      if (p && typeof p.then === "function") await p;
+      const stepsPayload = history.map((h) => ({
+        nodeId: h.nodeId,
+        optionId: h.optionId || null,
+        outcomeLabel: h.chosenLabel || null,
+        scoreDelta: h.scoreDelta || 0,
+        elapsedMs: h.elapsedMs ?? null,
+      }));
+      const p = onSubmitAttempt?.({ caseId: microCase.id, steps: stepsPayload, scoreTotal: score, completed: true, durationSeconds });
+      const result = p && typeof p.then === "function" ? await p : p;
+      if (result && result.ok === false) {
+        setSubmitError(result.error || 'No se pudo registrar el intento.');
+        return;
+      }
       setRegistered(true);
       setAttemptsVersion(v => v + 1);
+    } catch (err) {
+      setSubmitError(err?.message || 'No se pudo registrar el intento.');
     } finally {
       setSubmitting(false);
     }
@@ -1114,8 +1160,9 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
      END SCREEN
   ════════════════════════════════════════════════════════════ */
   if (showSummary || isTerminalNode) {
-    const grade = getGrade(score, maxPossibleScore);
-    const pct   = maxPossibleScore > 0 ? Math.round((score / maxPossibleScore) * 100) : null;
+    const grade = getGrade(score, maxPossibleScore, minPossibleScore);
+    const scoreRange = maxPossibleScore - minPossibleScore;
+    const pct   = scoreRange > 0 ? Math.round(Math.max(0, Math.min(1, (score - minPossibleScore) / scoreRange)) * 100) : null;
     const timeDisplay = finalTime ?? Math.floor((Date.now() - startedAt) / 1000);
     const isVictory = grade && grade.stars >= 1;
     const correctCount = history.filter(h => h.scoreDelta >= 1).length;
@@ -1238,7 +1285,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                 <div className="space-y-4">
                   {history.map((step, idx) => {
                     const bestOption = [...(step.allOptions||[])].sort((a,b)=>(b.score_delta||0)-(a.score_delta||0))[0];
-                    const wasOptimal = bestOption?.id === step.chosenOptionId;
+                    const wasOptimal = bestOption?.id === step.optionId;
                     const positive   = step.scoreDelta >= 1;
                     const neutral    = step.scoreDelta === 0;
                     const borderColor = positive ? 'border-emerald-200' : neutral ? 'border-amber-200' : 'border-red-200';
@@ -1301,7 +1348,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                             </summary>
                             <div className="mt-2 space-y-1.5">
                               {(step.allOptions||[]).sort((a,b) => (b.score_delta||0) - (a.score_delta||0)).map(opt => {
-                                const isChosen = opt.id === step.chosenOptionId;
+                                const isChosen = opt.id === step.optionId;
                                 const d = opt.score_delta || 0;
                                 return (
                                   <div key={opt.id} className={`flex items-start gap-2 rounded px-2.5 py-1.5 text-xs
@@ -1510,7 +1557,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               </div>
               <div className="p-4 space-y-2">
                 {previousAttempts.slice(0, 5).map(att => {
-                  const g = getGrade(att.score_total, maxPossibleScore);
+                  const g = getGrade(att.score_total, maxPossibleScore, minPossibleScore);
                   return (
                     <div key={att.id} className="flex items-center justify-between text-[10px] text-slate-500 py-1.5 border-b border-slate-100 last:border-0">
                       <span className="font-mono">{dayjs(att.completed_at || att.created_at).format("DD/MM/YY HH:mm")}</span>
@@ -1534,6 +1581,14 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               </span>
             ) : registered ? (
               <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-black font-mono">{"\u2713"} GUARDADO</span>
+            ) : submitError ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-[10px] text-red-600 font-black font-mono">{"\u2717"} NO GUARDADO: {submitError}</span>
+                <button type="button" onClick={handleFinish}
+                  className="rounded-md border border-red-300 bg-red-50 hover:bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700">
+                  Reintentar
+                </button>
+              </div>
             ) : null}
             <button type="button" onClick={handleRestart}
               className="inline-flex items-center gap-2 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 px-5 py-2.5 text-xs font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20 tracking-wide">

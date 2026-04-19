@@ -652,14 +652,16 @@ export default function Admin_ScenarioEditor() {
     const allQuestions = Object.values(questionsByStep || {}).flat();
     const totalQ = allQuestions.length;
     const byRole = { medico: 0, enfermeria: 0, farmacia: 0, todos: 0 };
+    const roleKeyMap = { MED: "medico", NUR: "enfermeria", PHARM: "farmacia" };
     allQuestions.forEach((q) => {
       const roles = Array.isArray(q.roles) ? q.roles : [];
       if (roles.length === 0) {
         byRole.todos++;
       } else {
         roles.forEach((r) => {
-          const key = String(r).toLowerCase();
-          if (key in byRole) byRole[key]++;
+          const code = normalizeRoleCode(r);
+          const key = roleKeyMap[code];
+          if (key) byRole[key]++;
         });
       }
     });

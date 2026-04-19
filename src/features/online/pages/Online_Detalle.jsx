@@ -79,8 +79,10 @@ function normalizeRole(rol) {
   return "";
 }
 
-// Visible si roles es null/[] o incluye el userRole
-function isVisibleForRole(roles, userRole) {
+// Visible si roles es null/[] o incluye el userRole.
+// Los administradores ven todas las preguntas/pasos (perfil "todos") para revisión.
+function isVisibleForRole(roles, userRole, isAdmin = false) {
+  if (isAdmin) return true;
   if (!roles || roles.length === 0) return true;
   const arr = roles.map((r) => String(r).toLowerCase());
   return arr.includes(String(userRole || "").toLowerCase());
@@ -851,9 +853,11 @@ export default function Online_Detalle() {
 
       // Rol del usuario
       let userRole = "";
+      let isAdminUser = false;
       if (sess?.user?.id) {
         const prof = await getProfileCached(supabase, sess.user.id);
         userRole = normalizeRole((prof?.rol) ?? sess.user?.user_metadata?.rol);
+        isAdminUser = Boolean(prof?.is_admin);
       }
       setRol(userRole);
 
@@ -934,10 +938,10 @@ export default function Online_Detalle() {
       }
 
       const stepsWithQs = (stepsFull || [])
-        .filter((s) => isVisibleForRole(s.roles, userRole))
+        .filter((s) => isVisibleForRole(s.roles, userRole, isAdminUser))
         .map((s) => {
           const qs = (s.questions || [])
-            .filter((q) => isVisibleForRole(q.roles, userRole))
+            .filter((q) => isVisibleForRole(q.roles, userRole, isAdminUser))
             .map((q) => ({
               id: q.id,
               text: q.question_text, // alias local para mantener el resto del componente
