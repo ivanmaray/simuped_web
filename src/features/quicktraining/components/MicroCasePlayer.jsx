@@ -202,6 +202,19 @@ function formatTime(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/* Stable seeded shuffle — deterministic per node so it doesn't re-shuffle on re-render */
+function seededShuffle(arr, seedStr) {
+  const result = [...arr];
+  let s = 0;
+  for (let i = 0; i < seedStr.length; i++) s = ((s << 5) - s + seedStr.charCodeAt(i)) | 0;
+  const rand = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 /* ─── useNodeGraph ───────────────────────────────────────────── */
 function useNodeGraph(microCase) {
   return useMemo(() => {
@@ -338,19 +351,36 @@ const BEAT_ART = (() => {
   return pts;
 })();
 
-/* Capnography: flat baseline → sharp rise → plateau → sharp drop */
+/* Capnography — realistic 4-phase capnogram ("rounded rectangle")
+   Phase I:   Inspiratory baseline (CO₂ ≈ 0)        t = 0.00–0.35
+   Phase II:  Expiratory upstroke (steep rise)       t = 0.35–0.42
+   Phase III: Alveolar plateau (slight upslope)      t = 0.42–0.80
+   Phase IV:  Inspiratory downstroke (steep drop)     t = 0.80–0.87
+   then back to baseline                             t = 0.87–1.00   */
 const BEAT_CAPNO = (() => {
   const pts = [];
   for (let i = 0; i <= 200; i++) {
     const t = i / 200;
     let y = 0;
-    // Expiration phase (CO2 rises): steep sigmoid up
-    if (t > 0.10 && t < 0.25) y = 0.9 * (1 / (1 + Math.exp(-30 * (t - 0.17))));
-    // Plateau
-    else if (t >= 0.25 && t < 0.65) y = 0.88 + Math.sin((t - 0.25) * Math.PI / 0.4) * 0.05;
-    // Inspiration (CO2 drops): steep sigmoid down
-    else if (t >= 0.65 && t < 0.80) y = 0.9 * (1 / (1 + Math.exp(30 * (t - 0.72))));
-    else y = 0;
+    if (t < 0.35) {
+      // Phase I: inspiratory baseline — flat near zero
+      y = 0.01;
+    } else if (t < 0.42) {
+      // Phase II: expiratory upstroke — steep sigmoid
+      const p = (t - 0.35) / 0.07;
+      y = 0.85 * (1 / (1 + Math.exp(-12 * (p - 0.5))));
+    } else if (t < 0.80) {
+      // Phase III: alveolar plateau — slight upslope to EtCO₂ peak
+      const p = (t - 0.42) / 0.38;
+      y = 0.83 + p * 0.07; // gentle rise from 0.83 to 0.90
+    } else if (t < 0.87) {
+      // Phase IV: inspiratory downstroke — steep drop
+      const p = (t - 0.80) / 0.07;
+      y = 0.90 * (1 - (1 / (1 + Math.exp(-12 * (p - 0.5)))));
+    } else {
+      // Back to baseline
+      y = 0.01;
+    }
     pts.push(Math.max(0, y));
   }
   return pts;
@@ -390,7 +420,7 @@ const WAVE_ASYSTOLE = (() => {
 })();
 
 /* Generic waveform trace renderer — used by all channels */
-function useWaveformTrace(canvasRef, { rate, template, color, speed = 0.7, freerun = false }) {
+function useWaveformTrace(canvasRef, { rate, template, color, speed = 0.35, freerun = false }) {
   const animRef = useRef(null);
   const bufRef = useRef([]);
   const xRef = useRef(0);
@@ -475,7 +505,7 @@ function MonitorChannel({ label, unit, value, color, rate, template, abnormal, h
         <canvas ref={canvasRef} className="w-full block" style={{ height: `${height}px`, background: '#050f0a' }} />
       </div>
       {/* Numeric value */}
-      <div className="flex-shrink-0 w-[52px] text-right pr-2">
+      <div className="flex-shrink-0 w-[65px] text-right pr-2">
         <span className={`font-mono font-black tabular-nums leading-none ${abnormal ? 'animate-pulse' : ''}`}
           style={{ color: displayColor, fontSize: '1.15rem', textShadow: `0 0 8px ${displayColor}44` }}>
           {value ?? "--"}
@@ -503,7 +533,7 @@ function MonitorNumericRow({ label, unit, value, color, abnormal }) {
 }
 
 /* ─── Full Monitor Panel — multi-channel waveform display ────── */
-function MonitorPanel({ vitals }) {
+function MonitorPanel({ vitals, deterioration = 0 }) {
   const fc = vitals?.fc;
   const fr = vitals?.fr;
   const sat = vitals?.sat;
@@ -511,19 +541,31 @@ function MonitorPanel({ vitals }) {
   const tas = vitals?.tas;
   const tad = vitals?.tad;
   const rhythm = vitals?.rhythm;
+  const etco2 = vitals?.etco2;
+
+  // Apply deterioration modifiers
+  const detFc  = deterioration > 0 && fc  ? Math.max(30, fc  - deterioration * 15) : fc;
+  const detFr  = deterioration > 0 && fr  ? Math.max(4,  fr  - deterioration * 4)  : fr;
+  const detSat = deterioration > 0 && sat ? Math.max(60, sat - deterioration * 5)  : sat;
 
   // Determine if we're in a special rhythm (VF, asystole)
   const isVF = rhythm === 'FV';
   const isAsystole = rhythm === 'asistolia';
   const isArrest = isVF || isAsystole;
 
-  // Oscillating values — each vital fluctuates around its base
-  const oscFc   = useOscillating(fc, 4);
-  const oscSat  = useOscillating(sat, 1);
-  const oscFr   = useOscillating(fr, 2);
+  // Oscillating values — each vital fluctuates around its base (use deteriorated values)
+  const oscFc   = useOscillating(detFc, 4);
+  const oscSat  = useOscillating(detSat, 1);
+  const oscFr   = useOscillating(detFr, 2);
   const oscTas  = useOscillating(tas, 3);
   const oscTad  = useOscillating(tad, 2);
   const oscTemp = useOscillatingFloat(temp, 0.1);
+  const oscEtco2 = useOscillating(etco2, 2);
+
+  // Capnography: show EtCO₂ value if available, otherwise FR
+  const capnoValue = etco2 != null ? oscEtco2 : (isArrest && fr === 0 ? '--' : oscFr);
+  const capnoUnit = etco2 != null ? 'mmHg' : 'rpm';
+  const capnoLabel = etco2 != null ? 'EtCO\u2082' : 'CO\u2082';
 
   const taDisplay = (oscTas != null && oscTad != null && !isArrest) ? `${oscTas}/${oscTad}` : (isArrest ? '--' : (oscTas ?? oscTad ?? null));
 
@@ -565,11 +607,15 @@ function MonitorPanel({ vitals }) {
             abnormal={isArrest || isVitalAbnormal("tas", tas)} height={40} freerun={isArrest} />
         )}
 
-        {/* Capnography — yellow */}
-        {fr != null && (
-          <MonitorChannel label="CO\u2082" unit="rpm" value={isArrest && fr === 0 ? '--' : oscFr} color="#facc15"
-            rate={isArrest ? 0 : fr} template={isArrest ? WAVE_ASYSTOLE : BEAT_CAPNO}
-            abnormal={isArrest || isVitalAbnormal("fr", fr)} height={36} freerun={isArrest} />
+        {/* Capnography — yellow: show EtCO₂ if available, else FR */}
+        {(fr != null || etco2 != null) && (
+          <MonitorChannel label={capnoLabel} unit={capnoUnit} value={capnoValue} color="#facc15"
+            rate={isArrest ? 0 : (fr || 12)} template={isArrest && !etco2 ? WAVE_ASYSTOLE : BEAT_CAPNO}
+            abnormal={isArrest || (etco2 != null ? etco2 < 20 : isVitalAbnormal("fr", fr))} height={36} freerun={isArrest && !etco2} />
+        )}
+        {/* FR as numeric row when EtCO₂ is shown on the waveform */}
+        {etco2 != null && fr != null && (
+          <MonitorNumericRow label="FR" unit="rpm" value={isArrest && fr === 0 ? '--' : oscFr} color="#facc15" abnormal={isVitalAbnormal("fr", fr)} />
         )}
 
         {/* Temperature — numeric only, pink */}
@@ -592,7 +638,7 @@ const VITAL_CHANNELS = {
 
 function MobileWaveChip({ label, value, unit, color, rate, template, abnormal, freerun = false }) {
   const canvasRef = useRef(null);
-  useWaveformTrace(canvasRef, { rate, template, color, speed: 0.6, freerun });
+  useWaveformTrace(canvasRef, { rate, template, color, speed: 0.3, freerun });
   const displayColor = abnormal ? '#ef4444' : color;
   return (
     <div className="rounded overflow-hidden" style={{ background: '#050f0a', border: `1px solid ${color}22`, minWidth: '90px', flex: '1 1 90px' }}>
@@ -613,6 +659,7 @@ function MonitorChips({ vitals }) {
   const tas  = vitals?.tas ?? 0;
   const tad  = vitals?.tad ?? 0;
   const temp = vitals?.temp ?? 0;
+  const etco2 = vitals?.etco2;
   const rhythm = vitals?.rhythm;
 
   const isVF = rhythm === 'FV';
@@ -625,6 +672,7 @@ function MonitorChips({ vitals }) {
   const oscTas  = useOscillating(tas, 3);
   const oscTad  = useOscillating(tad, 2);
   const oscTemp = useOscillatingFloat(temp, 0.1);
+  const oscEtco2 = useOscillating(etco2, 2);
 
   if (!vitals) return null;
 
@@ -632,11 +680,16 @@ function MonitorChips({ vitals }) {
   const ecgColor = isArrest ? '#ef4444' : '#22c55e';
   const ecgValue = isVF ? 'FV' : isAsystole ? '--' : oscFc;
 
+  // Capnography: show EtCO₂ if available, otherwise FR
+  const capnoValue = etco2 != null ? oscEtco2 : (isArrest && fr === 0 ? '--' : oscFr);
+  const capnoUnit = etco2 != null ? 'mmHg' : 'rpm';
+  const capnoLabel = etco2 != null ? 'EtCO\u2082' : 'CO\u2082';
+
   return (
     <div className="flex flex-wrap gap-1.5">
       {vitals.fc != null && <MobileWaveChip label={isVF ? "FV" : "ECG"} value={ecgValue} unit={isArrest ? "" : "lpm"} color={ecgColor} rate={isArrest ? 0 : oscFc} template={ecgTemplate} abnormal={isArrest} freerun={isArrest} />}
       {vitals.sat != null && <MobileWaveChip label="SpO\u2082" value={isArrest && sat === 0 ? '--' : oscSat} unit="%" color="#22d3ee" rate={isArrest ? 0 : oscFc} template={isArrest ? WAVE_ASYSTOLE : BEAT_PLETH} abnormal={isArrest || isVitalAbnormal("sat", oscSat)} freerun={isArrest} />}
-      {vitals.fr != null && <MobileWaveChip label="CO\u2082" value={isArrest && fr === 0 ? '--' : oscFr} unit="rpm" color="#facc15" rate={isArrest ? 0 : oscFr} template={isArrest ? WAVE_ASYSTOLE : BEAT_CAPNO} abnormal={isArrest || isVitalAbnormal("fr", oscFr)} freerun={isArrest} />}
+      {(vitals.fr != null || etco2 != null) && <MobileWaveChip label={capnoLabel} value={capnoValue} unit={capnoUnit} color="#facc15" rate={isArrest ? 0 : (oscFr || 12)} template={isArrest && !etco2 ? WAVE_ASYSTOLE : BEAT_CAPNO} abnormal={isArrest || (etco2 != null ? etco2 < 20 : isVitalAbnormal("fr", oscFr))} freerun={isArrest && !etco2} />}
       {vitals.tas != null && vitals.tad != null && (
         <MobileWaveChip label="ART" value={isArrest ? '--' : `${oscTas}/${oscTad}`} unit="mmHg" color="#f87171" rate={isArrest ? 0 : oscFc} template={isArrest ? WAVE_ASYSTOLE : BEAT_ART} abnormal={isArrest || isVitalAbnormal("tas", oscTas)} freerun={isArrest} />
       )}
@@ -810,6 +863,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const [flashKey, setFlashKey]                 = useState(0);
   const [showConfetti, setShowConfetti]         = useState(false);
   const [finalTime, setFinalTime]               = useState(null);
+  const [deterioration, setDeterioration]       = useState(0); // 0 = none, 1-3 = levels
 
   /* Reset on new case */
   useEffect(() => {
@@ -828,6 +882,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setShowConfetti(false);
     setFinalTime(null);
     setElapsed(0);
+    setDeterioration(0);
   }, [startId]);
 
   /* Timer tick */
@@ -875,6 +930,12 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     return [...currentNode.options].sort((a, b) => (b.score_delta||0) - (a.score_delta||0))[0]?.id;
   }, [currentNode]);
 
+  /* Shuffled options — deterministic per node */
+  const shuffledOptions = useMemo(() => {
+    if (!currentNode?.options?.length) return [];
+    return seededShuffle(currentNode.options, currentNode.id);
+  }, [currentNode?.id, currentNode?.options]);
+
   /* Track every node visited (for debriefing) */
   useEffect(() => {
     if (!currentNode) return;
@@ -900,6 +961,21 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const autoAdvanceActive = Boolean(
     currentNode && currentNode.auto_advance_to && currentNode.kind !== "decision" && currentNodeId !== startId
   );
+
+  /* Time pressure: deteriorate vitals on decision nodes after delay */
+  useEffect(() => {
+    if (currentNode?.kind !== 'decision' || selectedOptionId) {
+      setDeterioration(0);
+      return;
+    }
+    const hasCritical = currentNode.options?.some(o => o.is_critical);
+    if (!hasCritical) { setDeterioration(0); return; }
+
+    const t1 = setTimeout(() => setDeterioration(1), 30000);  // 30s: mild
+    const t2 = setTimeout(() => setDeterioration(2), 60000);  // 60s: moderate
+    const t3 = setTimeout(() => setDeterioration(3), 90000);  // 90s: severe
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [currentNode?.id, currentNode?.kind, selectedOptionId]);
 
   /* ── Handle option select ─────────────────────────────────── */
   function handleOptionSelect(option) {
@@ -1506,7 +1582,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               <span className="font-mono text-[10px] text-slate-500 tabular-nums">{"\u23F1"} {formatTime(elapsed)}</span>
               <div className="relative flex-shrink-0">
                 <span key={flashKey} className={`font-mono text-[10px] font-black text-amber-600 ${coinAnim ? 'coin-spin inline-block' : ''}`}>
-                  {"\uD83D\uDCB0"} {score}
+                  {score} pts
                 </span>
                 {deltaAnim && (
                   <span key={deltaAnim.key}
@@ -1564,7 +1640,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
           {/* ── LEFT: Monitor Panel (desktop) — only when vitals exist ── */}
           {vitals && (
             <div className="hidden md:block md:col-span-3 p-3 border-r border-slate-200 bg-white">
-              <MonitorPanel vitals={vitals} />
+              <MonitorPanel vitals={vitals} deterioration={deterioration} />
             </div>
           )}
 
@@ -1643,9 +1719,26 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   <p className="text-xs text-slate-500">Selecciona la mejor opci&oacute;n:</p>
                 </div>
 
+                {/* Time pressure alert */}
+                {deterioration > 0 && (
+                  <div className={`rounded-lg border-2 px-3 py-2 mb-3 animate-pulse ${
+                    deterioration >= 3 ? 'border-red-500 bg-red-50' :
+                    deterioration >= 2 ? 'border-amber-500 bg-amber-50' :
+                    'border-yellow-400 bg-yellow-50'}`}>
+                    <p className={`text-xs font-black ${
+                      deterioration >= 3 ? 'text-red-700' :
+                      deterioration >= 2 ? 'text-amber-700' :
+                      'text-yellow-700'}`}>
+                      {deterioration >= 3 ? '\ud83d\udea8 DETERIORO CR\u00cdTICO \u2014 El paciente se descompensa. Act\u00faa YA.'
+                       : deterioration >= 2 ? '\u26a0\ufe0f El paciente empeora. Cada segundo cuenta.'
+                       : '\u23f1\ufe0f El paciente espera tu decisi\u00f3n...'}
+                    </p>
+                  </div>
+                )}
+
                 {/* Options */}
                 <div key={currentNodeId} className="grid gap-2">
-                  {(currentNode.options || []).map((option, idx) => {
+                  {shuffledOptions.map((option, idx) => {
                     const isChosen     = selectedOptionId === option.id;
                     const isBest       = option.id === bestOptionId;
                     const optDelta     = option.score_delta || 0;
