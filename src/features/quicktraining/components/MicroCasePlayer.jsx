@@ -255,19 +255,19 @@ function isVitalAbnormal(key, value) {
    Each channel: waveform trace + numeric value on the right
    ═══════════════════════════════════════════════════════════════ */
 
-/* Hook: oscillates a numeric value around its base ±range every ~1.5s */
+/* Hook: oscillates a numeric value around its base ±range every ~3s */
 function useOscillating(base, range) {
   const [val, setVal] = useState(base);
   const baseRef = useRef(base);
   useEffect(() => { baseRef.current = base; setVal(base); }, [base]);
   useEffect(() => {
-    if (base == null || typeof base !== 'number') return;
+    if (base == null || typeof base !== 'number' || base === 0) return; // don't oscillate 0 (e.g. PCR)
     const id = setInterval(() => {
       const b = baseRef.current;
-      if (b == null) return;
+      if (b == null || b === 0) return;
       const delta = (Math.random() - 0.5) * 2 * range;
       setVal(Math.round(b + delta));
-    }, 1200 + Math.random() * 800); // 1.2–2s jitter
+    }, 2800 + Math.random() * 1400); // 2.8–4.2s — realistic monitor refresh
     return () => clearInterval(id);
   }, [base, range]);
   return (base == null || typeof base !== 'number') ? base : val;
@@ -279,13 +279,13 @@ function useOscillatingFloat(base, range, decimals = 1) {
   const baseRef = useRef(base);
   useEffect(() => { baseRef.current = base; setVal(base); }, [base]);
   useEffect(() => {
-    if (base == null || typeof base !== 'number') return;
+    if (base == null || typeof base !== 'number' || base === 0) return; // don't oscillate 0
     const id = setInterval(() => {
       const b = baseRef.current;
-      if (b == null) return;
+      if (b == null || b === 0) return;
       const delta = (Math.random() - 0.5) * 2 * range;
       setVal(parseFloat((b + delta).toFixed(decimals)));
-    }, 2000 + Math.random() * 1500); // temp changes slower: 2–3.5s
+    }, 5000 + Math.random() * 3000); // temp changes very slowly: 5–8s
     return () => clearInterval(id);
   }, [base, range, decimals]);
   return (base == null || typeof base !== 'number') ? base : val;
@@ -356,8 +356,41 @@ const BEAT_CAPNO = (() => {
   return pts;
 })();
 
+/* VF (ventricular fibrillation): chaotic high-frequency oscillation */
+const WAVE_VF = (() => {
+  const pts = [];
+  // Pre-compute a pseudo-random chaotic waveform
+  let seed = 42;
+  const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  for (let i = 0; i <= 600; i++) {
+    const t = i / 600;
+    // Multiple overlapping sine waves + noise for realistic VF
+    let y = 0;
+    y += Math.sin(t * Math.PI * 18) * 0.35;
+    y += Math.sin(t * Math.PI * 27 + 1.2) * 0.25;
+    y += Math.sin(t * Math.PI * 43 + 0.7) * 0.15;
+    y += (rand() - 0.5) * 0.3;
+    // Amplitude modulation (VF waxes and wanes)
+    y *= 0.6 + 0.4 * Math.sin(t * Math.PI * 3.2);
+    pts.push(y);
+  }
+  return pts;
+})();
+
+/* Asystole: nearly flat line with minimal electrical drift */
+const WAVE_ASYSTOLE = (() => {
+  const pts = [];
+  for (let i = 0; i <= 400; i++) {
+    const t = i / 400;
+    // Very subtle baseline drift + tiny noise
+    let y = Math.sin(t * Math.PI * 0.8) * 0.02 + (Math.random() - 0.5) * 0.015;
+    pts.push(y);
+  }
+  return pts;
+})();
+
 /* Generic waveform trace renderer — used by all channels */
-function useWaveformTrace(canvasRef, { rate, template, color, speed = 1.4 }) {
+function useWaveformTrace(canvasRef, { rate, template, color, speed = 0.7, freerun = false }) {
   const animRef = useRef(null);
   const bufRef = useRef([]);
   const xRef = useRef(0);
@@ -376,7 +409,11 @@ function useWaveformTrace(canvasRef, { rate, template, color, speed = 1.4 }) {
     xRef.current += speed;
     const buf = bufRef.current;
     let newY = midY;
-    if (bpm > 0 && pxPerBeat > 0) {
+    if (freerun && template.length > 0) {
+      // Free-run mode: cycle through template continuously (for VF, asystole)
+      const idx = Math.floor(xRef.current) % template.length;
+      newY = midY - template[Math.abs(idx)] * amp;
+    } else if (bpm > 0 && pxPerBeat > 0) {
       const phase = (xRef.current % pxPerBeat) / pxPerBeat;
       const idx = Math.min(Math.floor(phase * template.length), template.length - 1);
       newY = midY - template[idx] * amp;
@@ -422,9 +459,9 @@ function useWaveformTrace(canvasRef, { rate, template, color, speed = 1.4 }) {
 }
 
 /* Single channel row: label | waveform canvas | big number */
-function MonitorChannel({ label, unit, value, color, rate, template, abnormal, height = 48 }) {
+function MonitorChannel({ label, unit, value, color, rate, template, abnormal, height = 48, freerun = false }) {
   const canvasRef = useRef(null);
-  useWaveformTrace(canvasRef, { rate, template, color });
+  useWaveformTrace(canvasRef, { rate, template, color, freerun });
   const displayColor = abnormal ? '#ef4444' : color;
   return (
     <div className="flex items-center gap-0" style={{ borderBottom: '1px solid #0d2818' }}>
@@ -475,42 +512,64 @@ function MonitorPanel({ vitals }) {
   const tad = vitals?.tad;
   const rhythm = vitals?.rhythm;
 
-  // Oscillating values — each vital fluctuates around its base
-  const oscFc   = useOscillating(fc, 4);          // ±4 lpm
-  const oscSat  = useOscillating(sat, 1);          // ±1%
-  const oscFr   = useOscillating(fr, 2);           // ±2 rpm
-  const oscTas  = useOscillating(tas, 3);          // ±3 mmHg
-  const oscTad  = useOscillating(tad, 2);          // ±2 mmHg
-  const oscTemp = useOscillatingFloat(temp, 0.1);  // ±0.1°C
+  // Determine if we're in a special rhythm (VF, asystole)
+  const isVF = rhythm === 'FV';
+  const isAsystole = rhythm === 'asistolia';
+  const isArrest = isVF || isAsystole;
 
-  const taDisplay = (oscTas != null && oscTad != null) ? `${oscTas}/${oscTad}` : (oscTas ?? oscTad ?? null);
+  // Oscillating values — each vital fluctuates around its base
+  const oscFc   = useOscillating(fc, 4);
+  const oscSat  = useOscillating(sat, 1);
+  const oscFr   = useOscillating(fr, 2);
+  const oscTas  = useOscillating(tas, 3);
+  const oscTad  = useOscillating(tad, 2);
+  const oscTemp = useOscillatingFloat(temp, 0.1);
+
+  const taDisplay = (oscTas != null && oscTad != null && !isArrest) ? `${oscTas}/${oscTad}` : (isArrest ? '--' : (oscTas ?? oscTad ?? null));
+
+  // Pick ECG template and display based on rhythm
+  const ecgTemplate = isVF ? WAVE_VF : isAsystole ? WAVE_ASYSTOLE : BEAT_ECG;
+  const ecgFreerun = isArrest; // VF and asystole don't depend on FC
+  const ecgValue = isVF ? 'FV' : isAsystole ? '--' : oscFc;
+  const ecgColor = isVF ? '#ef4444' : isAsystole ? '#ef4444' : '#22c55e';
+
+  // Header label for rhythm
+  const rhythmLabel = isVF ? 'FV \u26A0' : isAsystole ? 'ASISTOLIA \u26A0' : (rhythm || 'DII');
+  const headerColor = isArrest ? '#ef444488' : '#4ade8055';
 
   return (
-    <div className="rounded-lg overflow-hidden h-full flex flex-col shadow-lg" style={{ background: '#050f0a', border: '1px solid #0d2818' }}>
+    <div className="rounded-lg overflow-hidden flex flex-col shadow-lg" style={{ background: '#050f0a', border: `1px solid ${isArrest ? '#7f1d1d' : '#0d2818'}` }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-2 py-1" style={{ background: '#081a10', borderBottom: '1px solid #0d2818' }}>
-        <span className="text-[7px] font-black uppercase tracking-[0.2em]" style={{ color: '#4ade8055' }}>Monitor</span>
-        <span className="text-[7px] font-mono" style={{ color: '#4ade8033' }}>{rhythm || 'DII'}</span>
+      <div className="flex items-center justify-between px-2 py-1" style={{ background: isArrest ? '#1a0505' : '#081a10', borderBottom: `1px solid ${isArrest ? '#7f1d1d' : '#0d2818'}` }}>
+        <span className="text-[7px] font-black uppercase tracking-[0.2em]" style={{ color: headerColor }}>Monitor</span>
+        <span className={`text-[7px] font-mono font-black ${isArrest ? 'animate-pulse' : ''}`} style={{ color: isArrest ? '#ef4444' : '#4ade8033' }}>{rhythmLabel}</span>
       </div>
 
       {/* Channel rows */}
       <div className="flex-1 flex flex-col">
-        {/* ECG — green */}
-        <MonitorChannel label="ECG" unit="lpm" value={oscFc} color="#22c55e" rate={fc} template={BEAT_ECG} abnormal={isVitalAbnormal("fc", fc)} height={52} />
+        {/* ECG — green normally, red in VF/asystole */}
+        <MonitorChannel label={isVF ? "FV" : "ECG"} unit={isArrest ? "" : "lpm"} value={ecgValue} color={ecgColor}
+          rate={fc} template={ecgTemplate} abnormal={isArrest} height={52} freerun={ecgFreerun} />
 
-        {/* SpO2 pleth — cyan */}
+        {/* SpO2 pleth — cyan (show flat in arrest) */}
         {sat != null && (
-          <MonitorChannel label={"SpO\u2082"} unit="%" value={oscSat} color="#22d3ee" rate={fc} template={BEAT_PLETH} abnormal={isVitalAbnormal("sat", sat)} height={40} />
+          <MonitorChannel label={"SpO\u2082"} unit="%" value={isArrest && sat === 0 ? '--' : oscSat} color="#22d3ee"
+            rate={isArrest ? 0 : fc} template={isArrest ? WAVE_ASYSTOLE : BEAT_PLETH}
+            abnormal={isArrest || isVitalAbnormal("sat", sat)} height={40} freerun={isArrest} />
         )}
 
-        {/* Arterial pressure — red */}
+        {/* Arterial pressure — red (flat in arrest) */}
         {tas != null && tad != null && (
-          <MonitorChannel label="ART" unit="mmHg" value={taDisplay} color="#f87171" rate={fc} template={BEAT_ART} abnormal={isVitalAbnormal("tas", tas)} height={40} />
+          <MonitorChannel label="ART" unit="mmHg" value={taDisplay} color="#f87171"
+            rate={isArrest ? 0 : fc} template={isArrest ? WAVE_ASYSTOLE : BEAT_ART}
+            abnormal={isArrest || isVitalAbnormal("tas", tas)} height={40} freerun={isArrest} />
         )}
 
         {/* Capnography — yellow */}
         {fr != null && (
-          <MonitorChannel label="CO\u2082" unit="rpm" value={oscFr} color="#facc15" rate={fr} template={BEAT_CAPNO} abnormal={isVitalAbnormal("fr", fr)} height={36} />
+          <MonitorChannel label="CO\u2082" unit="rpm" value={isArrest && fr === 0 ? '--' : oscFr} color="#facc15"
+            rate={isArrest ? 0 : fr} template={isArrest ? WAVE_ASYSTOLE : BEAT_CAPNO}
+            abnormal={isArrest || isVitalAbnormal("fr", fr)} height={36} freerun={isArrest} />
         )}
 
         {/* Temperature — numeric only, pink */}
@@ -531,9 +590,9 @@ const VITAL_CHANNELS = {
   ta:   { label: "NIBP", unit: "mmHg", color: "#f87171", labelColor: "#fca5a5" },
 };
 
-function MobileWaveChip({ label, value, unit, color, rate, template, abnormal }) {
+function MobileWaveChip({ label, value, unit, color, rate, template, abnormal, freerun = false }) {
   const canvasRef = useRef(null);
-  useWaveformTrace(canvasRef, { rate, template, color, speed: 1.2 });
+  useWaveformTrace(canvasRef, { rate, template, color, speed: 0.6, freerun });
   const displayColor = abnormal ? '#ef4444' : color;
   return (
     <div className="rounded overflow-hidden" style={{ background: '#050f0a', border: `1px solid ${color}22`, minWidth: '90px', flex: '1 1 90px' }}>
@@ -554,6 +613,11 @@ function MonitorChips({ vitals }) {
   const tas  = vitals?.tas ?? 0;
   const tad  = vitals?.tad ?? 0;
   const temp = vitals?.temp ?? 0;
+  const rhythm = vitals?.rhythm;
+
+  const isVF = rhythm === 'FV';
+  const isAsystole = rhythm === 'asistolia';
+  const isArrest = isVF || isAsystole;
 
   const oscFc   = useOscillating(fc, 4);
   const oscSat  = useOscillating(sat, 1);
@@ -563,13 +627,18 @@ function MonitorChips({ vitals }) {
   const oscTemp = useOscillatingFloat(temp, 0.1);
 
   if (!vitals) return null;
+
+  const ecgTemplate = isVF ? WAVE_VF : isAsystole ? WAVE_ASYSTOLE : BEAT_ECG;
+  const ecgColor = isArrest ? '#ef4444' : '#22c55e';
+  const ecgValue = isVF ? 'FV' : isAsystole ? '--' : oscFc;
+
   return (
     <div className="flex flex-wrap gap-1.5">
-      {vitals.fc != null && <MobileWaveChip label="ECG" value={oscFc} unit="lpm" color="#22c55e" rate={oscFc} template={BEAT_ECG} abnormal={isVitalAbnormal("fc", oscFc)} />}
-      {vitals.sat != null && <MobileWaveChip label="SpO\u2082" value={oscSat} unit="%" color="#22d3ee" rate={oscFc} template={BEAT_PLETH} abnormal={isVitalAbnormal("sat", oscSat)} />}
-      {vitals.fr != null && <MobileWaveChip label="CO\u2082" value={oscFr} unit="rpm" color="#facc15" rate={oscFr} template={BEAT_CAPNO} abnormal={isVitalAbnormal("fr", oscFr)} />}
+      {vitals.fc != null && <MobileWaveChip label={isVF ? "FV" : "ECG"} value={ecgValue} unit={isArrest ? "" : "lpm"} color={ecgColor} rate={isArrest ? 0 : oscFc} template={ecgTemplate} abnormal={isArrest} freerun={isArrest} />}
+      {vitals.sat != null && <MobileWaveChip label="SpO\u2082" value={isArrest && sat === 0 ? '--' : oscSat} unit="%" color="#22d3ee" rate={isArrest ? 0 : oscFc} template={isArrest ? WAVE_ASYSTOLE : BEAT_PLETH} abnormal={isArrest || isVitalAbnormal("sat", oscSat)} freerun={isArrest} />}
+      {vitals.fr != null && <MobileWaveChip label="CO\u2082" value={isArrest && fr === 0 ? '--' : oscFr} unit="rpm" color="#facc15" rate={isArrest ? 0 : oscFr} template={isArrest ? WAVE_ASYSTOLE : BEAT_CAPNO} abnormal={isArrest || isVitalAbnormal("fr", oscFr)} freerun={isArrest} />}
       {vitals.tas != null && vitals.tad != null && (
-        <MobileWaveChip label="ART" value={`${oscTas}/${oscTad}`} unit="mmHg" color="#f87171" rate={oscFc} template={BEAT_ART} abnormal={isVitalAbnormal("tas", oscTas)} />
+        <MobileWaveChip label="ART" value={isArrest ? '--' : `${oscTas}/${oscTad}`} unit="mmHg" color="#f87171" rate={isArrest ? 0 : oscFc} template={isArrest ? WAVE_ASYSTOLE : BEAT_ART} abnormal={isArrest || isVitalAbnormal("tas", oscTas)} freerun={isArrest} />
       )}
       {vitals.temp != null && (
         <div className="rounded px-2 py-1 text-center" style={{ background: '#050f0a', border: '1px solid #f472b622', minWidth: '55px' }}>
@@ -599,15 +668,28 @@ function PatientDemographics({ info }) {
 }
 
 /* ─── Labs table ─────────────────────────────────────────────── */
+function normalizeLabs(labs) {
+  if (!labs) return [];
+  if (Array.isArray(labs)) return labs;
+  // Convert object format {K: 7.2, Na: 138} → [{name:"K", value:"7.2"}, ...]
+  if (typeof labs === 'object') {
+    return Object.entries(labs)
+      .filter(([, v]) => v != null && v !== true) // skip _pending: true flags
+      .map(([name, value]) => ({ name, value: String(value) }));
+  }
+  return [];
+}
+
 function LabsTable({ labs }) {
-  if (!labs || labs.length === 0) return null;
+  const items = normalizeLabs(labs);
+  if (items.length === 0) return null;
   return (
     <div className="mt-3 rounded border border-slate-200 overflow-hidden">
       <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-200">
         <span className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500">Laboratorio</span>
       </div>
       <div className="divide-y divide-slate-100">
-        {labs.map((lab, i) => (
+        {items.map((lab, i) => (
           <div key={i} className="flex items-center justify-between px-3 py-1.5">
             <span className="text-xs text-slate-600">{lab.name}</span>
             <span className={`text-xs font-mono font-bold ${lab.alert ? 'text-red-600' : 'text-slate-800'}`}>{lab.value}</span>
@@ -971,8 +1053,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
     /* Build labs evolution — track unique lab names across nodes */
     const labSnapshots = nodeTrail
-      .filter(n => Array.isArray(n.metadata?.labs) && n.metadata.labs.length > 0)
-      .map((n, idx) => ({ step: idx + 1, label: n.title, labs: n.metadata.labs }));
+      .filter(n => n.metadata?.labs && normalizeLabs(n.metadata.labs).length > 0)
+      .map((n, idx) => ({ step: idx + 1, label: n.title, labs: normalizeLabs(n.metadata.labs) }));
 
     /* Gasometry evolution */
     const gasSnapshots = nodeTrail
@@ -1500,8 +1582,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               <PatientDemographics info={patientInfo} />
             </div>
 
-            {/* Narrative text — only for info/outcome nodes; decision nodes show body_md in the right action panel */}
-            {currentNode.kind !== 'decision' && currentNode.body_md && (
+            {/* Narrative text — shown for ALL node types in the center panel */}
+            {currentNode.body_md && (
               <div className="prose prose-sm max-w-none text-slate-700 [&>p]:leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0 [&>p]:text-[0.85rem] [&_strong]:text-slate-900 [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:tracking-wide [&_ul]:text-slate-600 [&_li]:text-[0.83rem]">
                 <ReactMarkdown>{formatInfoBody(currentNode.body_md) || ""}</ReactMarkdown>
               </div>
@@ -1555,12 +1637,10 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   </div>
                 )}
 
-                {/* Question header */}
+                {/* Question header — narrative is now in center panel */}
                 <div className="border-b border-slate-100 pb-2">
-                  <p className="text-[9px] font-black uppercase tracking-[0.15em] text-amber-600 mb-1">Decisi&oacute;n cl&iacute;nica</p>
-                  <div className="prose prose-sm max-w-none text-slate-800 font-medium leading-relaxed [&>p]:mb-0 [&>p]:text-[0.85rem] [&_strong]:text-amber-700">
-                    <ReactMarkdown>{currentNode.body_md || ""}</ReactMarkdown>
-                  </div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.15em] text-amber-600 mb-1">{"\u2699"} Decisi&oacute;n cl&iacute;nica</p>
+                  <p className="text-xs text-slate-500">Selecciona la mejor opci&oacute;n:</p>
                 </div>
 
                 {/* Options */}
