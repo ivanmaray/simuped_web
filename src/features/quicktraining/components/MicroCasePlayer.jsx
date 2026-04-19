@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import dayjs from "dayjs";
 import ReactMarkdown from "react-markdown";
 
@@ -190,12 +190,8 @@ function getGrade(score, maxPossible) {
 /* ─── Auto-format info node text into paragraphs ────────────── */
 function formatInfoBody(text) {
   if (!text) return text;
-  // Insert blank line before sentences starting with uppercase after a period
-  // but skip abbreviations like "SatO₂", "mmHg", etc.
   return text
-    // Break before common clinical section starters
     .replace(/\.\s+(FC\s|TA\s|SatO|T\s\d|Temp|GCS|Exploración|Analítica|Antecedentes|Historia|En urgencias|En domicilio|Padres|Ahora|Actualmente|Acude|Llega|Monitor|Dispositivo|Vía |Sin |Presenta|Signos|Síntomas)/g, '.\n\n$1')
-    // Break before any new sentence starting with capital letter (not mid-abbreviation)
     .replace(/\.\s+([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ])/g, '.\n\n$1');
 }
 
@@ -231,6 +227,323 @@ function usePreviousAttempts(caseId, token, version = 0) {
   return { attempts };
 }
 
+/* ─── Sex display helper ─────────────────────────────────────── */
+function sexSymbol(sex) {
+  if (sex === "M") return "\u2642";
+  if (sex === "F") return "\u2640";
+  return "";
+}
+
+/* ─── Vital abnormality check ────────────────────────────────── */
+function isVitalAbnormal(key, value) {
+  if (value == null || value === "") return false;
+  const v = Number(value);
+  if (isNaN(v)) return false;
+  switch (key) {
+    case "fc":   return v > 160 || v < 50;
+    case "fr":   return v > 40;
+    case "sat":  return v < 94;
+    case "temp": return v > 38;
+    case "tas":  return v < 60 || v > 140;
+    case "tad":  return v < 30 || v > 90;
+    default:     return false;
+  }
+}
+
+/* ─── EcgTrace canvas component ──────────────────────────────── */
+function EcgTrace({ fc, rhythm }) {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const bufferRef = useRef([]);
+  const xRef = useRef(0);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
+    const midY = H / 2;
+
+    const heartRate = fc || 0;
+    const speed = 1.8;
+    const pixelsBetweenBeats = heartRate > 0 ? (60 / heartRate) * 80 : 0;
+
+    xRef.current += speed;
+    const buf = bufferRef.current;
+    const newY = (() => {
+      if (heartRate === 0) return midY;
+      const phase = pixelsBetweenBeats > 0 ? (xRef.current % pixelsBetweenBeats) : 0;
+      const qrsStart = pixelsBetweenBeats * 0.4;
+      const qrsEnd = qrsStart + 12;
+      if (phase >= qrsStart && phase < qrsStart + 3) {
+        return midY + (phase - qrsStart) * 3;
+      } else if (phase >= qrsStart + 3 && phase < qrsStart + 5) {
+        return midY - 18 + (phase - qrsStart - 3) * (-6);
+      } else if (phase >= qrsStart + 5 && phase < qrsStart + 8) {
+        return midY - 30 + (phase - qrsStart - 5) * 14;
+      } else if (phase >= qrsStart + 8 && phase < qrsEnd) {
+        return midY + 12 - (phase - qrsStart - 8) * 3;
+      } else {
+        return midY + Math.sin(xRef.current * 0.02) * 1.2;
+      }
+    })();
+    buf.push(newY);
+    if (buf.length > W) buf.shift();
+
+    ctx.fillStyle = "#0a1a1a";
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines (subtle)
+    ctx.strokeStyle = "rgba(0,255,100,0.06)";
+    ctx.lineWidth = 0.5;
+    for (let gy = 0; gy < H; gy += 15) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+    }
+    for (let gx = 0; gx < W; gx += 15) {
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    }
+
+    // ECG trace
+    ctx.beginPath();
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 1.8;
+    ctx.shadowColor = "#22c55e";
+    ctx.shadowBlur = 4;
+    for (let i = 0; i < buf.length; i++) {
+      const px = W - buf.length + i;
+      if (i === 0) ctx.moveTo(px, buf[i]);
+      else ctx.lineTo(px, buf[i]);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    animRef.current = requestAnimationFrame(draw);
+  }, [fc]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+    canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    bufferRef.current = [];
+    xRef.current = 0;
+    animRef.current = requestAnimationFrame(draw);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [draw]);
+
+  return (
+    <div className="w-full">
+      <canvas
+        ref={canvasRef}
+        className="w-full rounded"
+        style={{ height: "72px", background: "#0a1a1a" }}
+      />
+      {rhythm && (
+        <p className="text-[9px] font-mono text-green-500/70 mt-1 text-center tracking-wider uppercase">{rhythm}</p>
+      )}
+    </div>
+  );
+}
+
+/* ─── Patient demographics formatter ─────────────────────────── */
+function PatientDemographics({ info }) {
+  if (!info) return null;
+  const parts = [];
+  if (info.name) parts.push(info.name);
+  const s = sexSymbol(info.sex);
+  if (s) parts.push(s);
+  if (info.age) parts.push(info.age);
+  if (info.weightKg) parts.push(`${info.weightKg} kg`);
+  return (
+    <p className="text-sm font-semibold text-slate-700 tracking-wide">
+      {parts.join(" \u00B7 ")}
+    </p>
+  );
+}
+
+/* ─── Vital display row ──────────────────────────────────────── */
+function VitalRow({ label, value, unit, abnormal }) {
+  if (value == null && !unit) return null;
+  return (
+    <div className="flex items-baseline justify-between py-1.5 border-b border-slate-100 last:border-0">
+      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+      <div className="flex items-baseline gap-1">
+        <span className={`text-lg font-mono font-black tabular-nums transition-all duration-700 ${abnormal ? 'text-red-600' : 'text-slate-800'}`}>
+          {value ?? "--"}
+        </span>
+        {unit && <span className="text-[10px] text-slate-400">{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Monitor Panel (left column) ────────────────────────────── */
+function MonitorPanel({ vitals }) {
+  const fc = vitals?.fc;
+  const fr = vitals?.fr;
+  const sat = vitals?.sat;
+  const temp = vitals?.temp;
+  const tas = vitals?.tas;
+  const tad = vitals?.tad;
+  const rhythm = vitals?.rhythm;
+  const hasVitals = fc != null || fr != null || sat != null || temp != null || tas != null || tad != null;
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden h-full flex flex-col">
+      <div className="bg-slate-50 border-b border-slate-200 px-3 py-2">
+        <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Monitor</h4>
+      </div>
+      <div className="p-3 flex-1 flex flex-col">
+        {hasVitals ? (
+          <div className="space-y-0">
+            <VitalRow label="FC" value={fc} unit="lpm" abnormal={isVitalAbnormal("fc", fc)} />
+            {sat != null && <VitalRow label={<>SpO<sub>2</sub></>} value={sat} unit="%" abnormal={isVitalAbnormal("sat", sat)} />}
+            {fr != null && <VitalRow label="FR" value={fr} unit="rpm" abnormal={isVitalAbnormal("fr", fr)} />}
+            {temp != null && <VitalRow label={<>T&deg;</>} value={temp} unit="&deg;C" abnormal={isVitalAbnormal("temp", temp)} />}
+            {(tas != null || tad != null) && (
+              <VitalRow
+                label="TA"
+                value={tas != null && tad != null ? `${tas}/${tad}` : (tas ?? tad)}
+                unit="mmHg"
+                abnormal={isVitalAbnormal("tas", tas) || isVitalAbnormal("tad", tad)}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-xs text-slate-300 italic">Sin constantes</p>
+          </div>
+        )}
+        <div className="mt-auto pt-3">
+          <EcgTrace fc={fc || 0} rhythm={rhythm} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Monitor Chips (mobile) ─────────────────────────────────── */
+function MonitorChips({ vitals }) {
+  if (!vitals) return null;
+  const items = [];
+  if (vitals.fc != null) items.push({ label: "FC", value: vitals.fc, unit: "lpm", key: "fc" });
+  if (vitals.sat != null) items.push({ label: "SpO2", value: vitals.sat, unit: "%", key: "sat" });
+  if (vitals.fr != null) items.push({ label: "FR", value: vitals.fr, unit: "rpm", key: "fr" });
+  if (vitals.temp != null) items.push({ label: "T", value: vitals.temp, unit: "\u00B0C", key: "temp" });
+  if (vitals.tas != null && vitals.tad != null) items.push({ label: "TA", value: `${vitals.tas}/${vitals.tad}`, unit: "mmHg", key: "tas" });
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map(it => (
+        <div key={it.key} className={`rounded border px-2.5 py-1.5 text-center ${isVitalAbnormal(it.key, it.key === "tas" ? vitals.tas : (typeof it.value === "string" ? null : it.value)) ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}>
+          <p className="text-[8px] font-bold text-slate-400 uppercase">{it.label}</p>
+          <p className={`text-sm font-mono font-black tabular-nums ${isVitalAbnormal(it.key, it.key === "tas" ? vitals.tas : (typeof it.value === "string" ? null : it.value)) ? 'text-red-600' : 'text-slate-800'}`}>{it.value}</p>
+          <p className="text-[8px] text-slate-400">{it.unit}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Labs table ─────────────────────────────────────────────── */
+function LabsTable({ labs }) {
+  if (!labs || labs.length === 0) return null;
+  return (
+    <div className="mt-3 rounded border border-slate-200 overflow-hidden">
+      <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-200">
+        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500">Laboratorio</span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {labs.map((lab, i) => (
+          <div key={i} className="flex items-center justify-between px-3 py-1.5">
+            <span className="text-xs text-slate-600">{lab.name}</span>
+            <span className={`text-xs font-mono font-bold ${lab.alert ? 'text-red-600' : 'text-slate-800'}`}>{lab.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Gasometry panel ────────────────────────────────────────── */
+function GasometryPanel({ gas }) {
+  if (!gas) return null;
+  const fields = [
+    { label: "pH", value: gas.pH },
+    { label: "pCO2", value: gas.pCO2 },
+    { label: "HCO3", value: gas.HCO3 },
+    { label: "BE", value: gas.BE },
+    { label: "Lactato", value: gas.lactato },
+  ].filter(f => f.value != null);
+  if (fields.length === 0) return null;
+  return (
+    <div className="mt-3 rounded border border-amber-200 bg-amber-50/50 overflow-hidden">
+      <div className="bg-amber-50 px-3 py-1.5 border-b border-amber-200">
+        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-amber-700">Gasometr&iacute;a</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 py-2">
+        {fields.map(f => (
+          <div key={f.label} className="flex items-baseline justify-between">
+            <span className="text-[10px] text-amber-600 font-semibold">{f.label}</span>
+            <span className="text-xs font-mono font-bold text-slate-800">{f.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Imaging tags ───────────────────────────────────────────── */
+function ImagingTags({ imaging }) {
+  if (!imaging || imaging.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 mb-1.5">Imagen</p>
+      <div className="flex flex-wrap gap-1.5">
+        {imaging.map((img, i) => (
+          <div key={i} className="rounded border border-blue-200 bg-blue-50 px-2.5 py-1">
+            <span className="text-[10px] font-bold text-blue-700">{img.name}</span>
+            {img.finding && <span className="text-[10px] text-blue-500 ml-1">- {img.finding}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Ventilation params ─────────────────────────────────────── */
+function VentilationPanel({ vent }) {
+  if (!vent) return null;
+  const fields = [
+    { label: "Modo", value: vent.mode },
+    { label: "PIP", value: vent.pip },
+    { label: "PEEP", value: vent.peep },
+    { label: "FiO2", value: vent.fio2 },
+    { label: "Vt", value: vent.vt },
+  ].filter(f => f.value != null);
+  if (fields.length === 0) return null;
+  return (
+    <div className="mt-3 rounded border border-teal-200 bg-teal-50/50 overflow-hidden">
+      <div className="bg-teal-50 px-3 py-1.5 border-b border-teal-200">
+        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-teal-700">Ventilaci&oacute;n</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 py-2">
+        {fields.map(f => (
+          <div key={f.label} className="flex items-baseline justify-between">
+            <span className="text-[10px] text-teal-600 font-semibold">{f.label}</span>
+            <span className="text-xs font-mono font-bold text-slate-800">{f.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const FEEDBACK_DELAY_MS       = 1500;
 const INFO_AUTO_ADVANCE_MS    = 1400;
 
@@ -258,7 +571,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const [selectedOptionId, setSelectedOptionId] = useState(null);
   const [isLocked, setIsLocked]                 = useState(false);
   const [toast, setToast]                       = useState(null);
-  const [screenFlash, setScreenFlash] = useState(null); // 'red'|'green'|null
+  const [screenFlash, setScreenFlash] = useState(null);
   const [coinAnim, setCoinAnim]     = useState(false);
   const [streak, setStreak]                     = useState(0);
   const [deltaAnim, setDeltaAnim]               = useState(null);
@@ -363,11 +676,11 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
     // Toast
     const toastMsg =
-      delta >= 4 ? `🎯 ¡Perfecto! +${delta}` :
-      delta >= 2 ? `✓ ¡Bien! +${delta}` :
-      delta >= 1 ? `👍 Correcto +${delta}` :
-      delta === 0 ? `➡ Neutral` :
-      `✗ Incorrecto ${delta}`;
+      delta >= 4 ? `\uD83C\uDFAF \u00A1Perfecto! +${delta}` :
+      delta >= 2 ? `\u2713 \u00A1Bien! +${delta}` :
+      delta >= 1 ? `\uD83D\uDC4D Correcto +${delta}` :
+      delta === 0 ? `\u27A1 Neutral` :
+      `\u2717 Incorrecto ${delta}`;
     setToast({ text: toastMsg, positive: delta >= 1, key: Date.now() });
     setTimeout(() => setToast(null), 1900);
 
@@ -409,11 +722,10 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     const g = getGrade(score, maxPossibleScore);
     if (g && g.stars >= 2) {
       setShowConfetti(true);
-      const off = setTimeout(() => setShowConfetti(false), 3800);
-      // cleanup handled below
+      setTimeout(() => setShowConfetti(false), 3800);
     }
 
-    // Auto-submit — always, regardless of score
+    // Auto-submit
     if (!token || registered || submitting) return;
     setSubmitting(true);
     const durationSeconds = Math.max(0, t);
@@ -424,7 +736,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
         setRegistered(true);
         setAttemptsVersion(v => v + 1);
       })
-      .catch(() => {}) // silent — no bloquea la UI
+      .catch(() => {})
       .finally(() => setSubmitting(false));
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -467,7 +779,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   );
   if (showUnavailable) return (
     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-      Selecciona un punto de inicio válido.
+      Selecciona un punto de inicio v&aacute;lido.
     </div>
   );
 
@@ -497,7 +809,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                 : 'linear-gradient(90deg,#7f1d1d44,#991b1b44,#7f1d1d44)'}}>
               <p className={`text-2xl font-black tracking-widest mb-1 ${isVictory ? 'text-emerald-300' : 'text-red-400'}`}
                 style={{textShadow: isVictory ? '0 0 20px #4ade8099' : '0 0 20px #f8717199'}}>
-                {grade?.stars === 3 ? '✓ Caso resuelto' : grade?.stars === 2 ? '✓ Buen resultado' : grade?.stars === 1 ? '△ Resultado correcto' : '✗ Resultado mejorable'}
+                {grade?.stars === 3 ? '\u2713 Caso resuelto' : grade?.stars === 2 ? '\u2713 Buen resultado' : grade?.stars === 1 ? '\u25B3 Resultado correcto' : '\u2717 Resultado mejorable'}
               </p>
               {/* Stars */}
               {grade && <Stars count={grade.stars} />}
@@ -518,28 +830,28 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             {/* Stats */}
             <div className="flex items-center justify-center gap-3 px-4 pb-5 flex-wrap">
               <div className="rounded border border-yellow-500/40 bg-yellow-950/50 px-5 py-3 min-w-[90px]">
-                <p className="text-xl font-black text-yellow-400">💰 {score}</p>
+                <p className="text-xl font-black text-yellow-400">{"\uD83D\uDCB0"} {score}</p>
                 <p className="text-[9px] font-black text-yellow-600/80 uppercase tracking-widest mt-0.5">/ {maxPossibleScore} pts</p>
               </div>
               <div className="rounded border border-slate-500/40 bg-slate-900/50 px-5 py-3 min-w-[90px]">
-                <p className="text-xl font-black text-slate-300">⏱ {formatTime(timeDisplay)}</p>
+                <p className="text-xl font-black text-slate-300">{"\u23F1"} {formatTime(timeDisplay)}</p>
                 <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mt-0.5">TIEMPO</p>
               </div>
               {pct !== null && (
                 <div className="rounded border border-purple-500/40 bg-purple-950/50 px-5 py-3 min-w-[90px]">
                   <p className="text-xl font-black text-purple-300">{pct}%</p>
-                  <p className="text-[9px] font-black text-purple-600/80 uppercase tracking-widest mt-0.5">PRECISIÓN</p>
+                  <p className="text-[9px] font-black text-purple-600/80 uppercase tracking-widest mt-0.5">PRECISI&Oacute;N</p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* ── Revisión de decisiones ── */}
+          {/* ── Decision review ── */}
           {history.length > 0 && (
             <div className="rounded-xl overflow-hidden shadow-lg" style={{background:'linear-gradient(135deg,#060e1c,#0a1830)'}}>
               <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
-                <span className="text-purple-400 text-xs">📜</span>
-                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">Revisión de decisiones</h4>
+                <span className="text-purple-400 text-xs">{"\uD83D\uDCDC"}</span>
+                <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">Revisi&oacute;n de decisiones</h4>
               </div>
               <div className="p-4 space-y-3">
                 {history.map((step, idx) => {
@@ -548,15 +860,15 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   const positive   = step.scoreDelta >= 0;
                   return (
                     <div key={`${step.nodeId}-${idx}`} className={`rounded border px-3 py-2.5 ${positive ? 'border-emerald-700/40 bg-emerald-950/30' : 'border-red-700/40 bg-red-950/30'}`}>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Decisión {idx + 1}</p>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Decisi&oacute;n {idx + 1}</p>
                       <div className="flex items-start gap-2">
                         <span className={`flex-shrink-0 h-4 w-4 rounded flex items-center justify-center text-[9px] font-black mt-0.5 ${positive ? 'bg-emerald-600 text-white' : 'bg-red-700 text-white'}`}>
-                          {positive ? '✓' : '✗'}
+                          {positive ? '\u2713' : '\u2717'}
                         </span>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-slate-300 leading-snug">{step.chosenLabel}</p>
                           {step.feedback && (
-                            <p className="text-[11px] text-slate-500 mt-1 italic leading-snug">{step.feedback.slice(0,140)}{step.feedback.length>140?'…':''}</p>
+                            <p className="text-[11px] text-slate-500 mt-1 italic leading-snug">{step.feedback.slice(0,140)}{step.feedback.length>140?'\u2026':''}</p>
                           )}
                         </div>
                         <span className={`flex-shrink-0 text-xs font-black ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -565,8 +877,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                       </div>
                       {!wasOptimal && bestOption && (
                         <div className="mt-2 flex items-start gap-2 rounded border border-yellow-700/30 bg-yellow-950/30 px-2 py-1.5">
-                          <span className="text-yellow-500 text-[9px]">⭐</span>
-                          <p className="text-[10px] text-yellow-400/80 leading-snug flex-1">{bestOption.label.slice(0,80)}{bestOption.label.length>80?'…':''}</p>
+                          <span className="text-yellow-500 text-[9px]">{"\u2B50"}</span>
+                          <p className="text-[10px] text-yellow-400/80 leading-snug flex-1">{bestOption.label.slice(0,80)}{bestOption.label.length>80?'\u2026':''}</p>
                           <span className="text-[10px] font-black text-yellow-400">+{bestOption.score_delta}</span>
                         </div>
                       )}
@@ -577,11 +889,11 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             </div>
           )}
 
-          {/* ── Intentos previos ── */}
+          {/* ── Previous attempts ── */}
           {previousAttempts.length > 0 && (
             <div className="rounded-xl overflow-hidden" style={{background:'linear-gradient(135deg,#060e1c,#0a1830)'}}>
               <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10">
-                <span className="text-slate-500 text-xs">🕐</span>
+                <span className="text-slate-500 text-xs">{"\uD83D\uDD50"}</span>
                 <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Intentos anteriores</h4>
               </div>
               <div className="p-4 space-y-2">
@@ -591,8 +903,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                     <div key={att.id} className="flex items-center justify-between text-[10px] text-slate-500 py-1 border-b border-white/5 last:border-0 font-mono">
                       <span>{dayjs(att.completed_at || att.created_at).format("DD/MM/YY HH:mm")}</span>
                       <div className="flex items-center gap-2">
-                        {g && <span className={`font-black ${g.colorText}`}>{'⭐'.repeat(g.stars)}</span>}
-                        <span className="font-black text-slate-300">💰{att.score_total}</span>
+                        {g && <span className={`font-black ${g.colorText}`}>{'\u2B50'.repeat(g.stars)}</span>}
+                        <span className="font-black text-slate-300">{"\uD83D\uDCB0"}{att.score_total}</span>
                       </div>
                     </div>
                   );
@@ -601,7 +913,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             </div>
           )}
 
-          {/* ── Acciones ── */}
+          {/* ── Actions ── */}
           <div className="flex flex-wrap items-center gap-3">
             {submitting ? (
               <span className="inline-flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
@@ -609,11 +921,11 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                 GUARDANDO...
               </span>
             ) : registered ? (
-              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-black font-mono">✓ GUARDADO</span>
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-black font-mono">{"\u2713"} GUARDADO</span>
             ) : null}
             <button type="button" onClick={handleRestart}
               className="inline-flex items-center gap-2 rounded border-2 border-blue-500 bg-blue-700/80 hover:bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 tracking-wide">
-              🔄 Repetir caso
+              {"\uD83D\uDD04"} Repetir caso
             </button>
           </div>
         </div>
@@ -622,61 +934,64 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   }
 
   /* ════════════════════════════════════════════════════════════
-     PLAYER
+     PLAYER — 3-Column Clinical Monitor Layout
   ════════════════════════════════════════════════════════════ */
+  const vitals = currentNode?.metadata?.vitals || null;
+  const labs = currentNode?.metadata?.labs || null;
+  const gasometry = currentNode?.metadata?.gasometry || null;
+  const imaging = currentNode?.metadata?.imaging || null;
+  const ventilation = currentNode?.metadata?.ventilation || null;
+  const patientInfo = microCase?.patient_info || null;
+
   return (
     <>
       <style>{KEYFRAMES}</style>
       <Toast toast={toast} />
       <ScreenFlash type={screenFlash} />
-      <div className="max-w-2xl mx-auto space-y-4">
 
-        {/* ── HUD ── */}
-        <div className="rounded-xl overflow-hidden shadow-2xl" style={{background:'linear-gradient(135deg,#060e1c,#0a1e38,#0d2347)'}}>
-          {/* Top strip */}
-          <div className="flex items-center justify-between px-4 pt-3 pb-1 border-b border-white/10">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-purple-300 text-base">⚕</span>
-              <h3 className="text-xs font-black text-white/90 leading-snug truncate tracking-wide uppercase">{microCase.title}</h3>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="max-w-7xl mx-auto space-y-0">
+
+        {/* ════ HEADER BAR ════ */}
+        <div className="bg-white border border-slate-200 rounded-t-xl shadow-sm">
+          {/* Top row */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100">
+            <div className="flex items-center gap-3 min-w-0">
+              <h3 className="text-[10px] font-black text-slate-500 leading-snug truncate tracking-[0.15em] uppercase">{microCase.title}</h3>
               {roleLabel && (
-                <span className="rounded border border-blue-500/40 bg-blue-500/15 px-2 py-0.5 text-[9px] font-black text-blue-300 uppercase tracking-widest">{roleLabel}</span>
+                <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-600 uppercase tracking-widest flex-shrink-0">{roleLabel}</span>
               )}
-              <span className="font-mono text-[10px] text-slate-400">⏱ {formatTime(elapsed)}</span>
             </div>
-          </div>
-          {/* Score bar */}
-          <div className="px-4 py-3">
-            {/* Puntuación */}
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black w-12 text-yellow-400 font-mono">PUNTOS</span>
-              <div className="flex-1 h-2 rounded-sm overflow-hidden bg-black/40 border border-white/10">
-                <div className="h-full rounded-sm transition-all duration-500"
-                  style={{
-                    width: `${maxPossibleScore > 0 ? Math.min(100,(score/maxPossibleScore)*100) : 0}%`,
-                    background: 'linear-gradient(90deg,#92400e,#fbbf24)',
-                    boxShadow: '0 0 5px #fbbf2455',
-                  }} />
-              </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {patientInfo && (
+                <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
+                  {[patientInfo.name, sexSymbol(patientInfo.sex), patientInfo.age, patientInfo.weightKg ? `${patientInfo.weightKg}kg` : null].filter(Boolean).join(" \u00B7 ")}
+                </span>
+              )}
+              <span className="font-mono text-[10px] text-slate-500 tabular-nums">{"\u23F1"} {formatTime(elapsed)}</span>
               <div className="relative flex-shrink-0">
-                <span key={flashKey} className={`font-mono text-[10px] font-black text-yellow-400 ${coinAnim ? 'coin-spin inline-block' : ''}`}>
-                  💰 {score}
+                <span key={flashKey} className={`font-mono text-[10px] font-black text-amber-600 ${coinAnim ? 'coin-spin inline-block' : ''}`}>
+                  {"\uD83D\uDCB0"} {score}
                 </span>
                 {deltaAnim && (
                   <span key={deltaAnim.key}
-                    className={`anim-delta absolute -top-4 -right-0 text-xs font-black pointer-events-none select-none ${deltaAnim.value >= 0 ? 'text-yellow-300' : 'text-red-400'}`}>
+                    className={`anim-delta absolute -top-4 -right-0 text-xs font-black pointer-events-none select-none ${deltaAnim.value >= 0 ? 'text-amber-500' : 'text-red-500'}`}>
                     {deltaAnim.value >= 0 ? '+' : ''}{deltaAnim.value}
                   </span>
                 )}
               </div>
+              {streak >= 2 && (
+                <span key={streak} className={`text-[10px] font-black ${streak >= 4 ? 'text-orange-500 streak-hot' : 'text-orange-400 animate-pulse'}`}>
+                  {'\uD83D\uDD25'.repeat(streak >= 4 ? 2 : 1)}{"\u00D7"}{streak}
+                </span>
+              )}
             </div>
           </div>
-          {/* Stage progress */}
-          <div className="px-4 pb-3">
+
+          {/* Progress dots */}
+          <div className="px-4 py-2 bg-slate-50/50">
             {decisionNodes.length > 0 ? (
               <div className="flex items-center gap-1.5">
-                <span className="text-[8px] text-slate-500 font-black mr-1 tracking-widest uppercase">PROGRESO</span>
+                <span className="text-[8px] text-slate-400 font-black mr-1 tracking-widest uppercase">Progreso</span>
                 {decisionNodes.map((dn, idx) => {
                   const step      = history.find(h => h.nodeId === dn.id);
                   const isCurrent = currentNodeId === dn.id;
@@ -684,151 +999,187 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   return (
                     <div key={dn.id} className="flex items-center gap-1.5">
                       <div className={`flex items-center justify-center text-[8px] font-black transition-all duration-300
-                        ${isCurrent ? 'h-6 w-6 rounded border-2 border-purple-400 bg-purple-500/30 text-purple-300 node-pop shadow-lg shadow-purple-500/30'
-                          : good === true  ? 'h-5 w-5 rounded border border-emerald-500 bg-emerald-500/20 text-emerald-400 node-pop'
-                          : good === false ? 'h-5 w-5 rounded border border-red-500 bg-red-500/20 text-red-400 node-pop'
-                          : 'h-4 w-4 rounded border border-white/15 bg-white/5 text-white/25'}`}>
-                        {isCurrent ? idx+1 : good === true ? '✓' : good === false ? '✗' : ''}
+                        ${isCurrent ? 'h-6 w-6 rounded-full border-2 border-blue-500 bg-blue-100 text-blue-700 node-pop shadow-sm'
+                          : good === true  ? 'h-5 w-5 rounded-full border border-emerald-400 bg-emerald-100 text-emerald-600 node-pop'
+                          : good === false ? 'h-5 w-5 rounded-full border border-red-400 bg-red-100 text-red-600 node-pop'
+                          : 'h-4 w-4 rounded-full border border-slate-200 bg-white text-slate-300'}`}>
+                        {isCurrent ? idx+1 : good === true ? '\u2713' : good === false ? '\u2717' : ''}
                       </div>
                       {idx < decisionNodes.length - 1 && (
-                        <div className={`h-px w-4 transition-colors duration-300 ${good === true ? 'bg-emerald-500/50' : good === false ? 'bg-red-500/50' : 'bg-white/15'}`} />
+                        <div className={`h-px w-4 transition-colors duration-300 ${good === true ? 'bg-emerald-300' : good === false ? 'bg-red-300' : 'bg-slate-200'}`} />
                       )}
                     </div>
                   );
                 })}
-                <div className="flex-1 h-px bg-white/10 ml-1" />
-                {streak >= 2 && (
-                  <span key={streak} className={`text-[10px] font-black ml-2 ${streak >= 4 ? 'text-orange-300 streak-hot' : 'text-orange-400 animate-pulse'}`}>
-                    {'🔥'.repeat(streak >= 4 ? 2 : 1)}×{streak}
-                  </span>
-                )}
+                <div className="flex-1 h-px bg-slate-200 ml-1" />
               </div>
             ) : (
-              <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-purple-500/70 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
               </div>
             )}
           </div>
         </div>
 
-        {/* ── INFO node ── */}
-        {currentNode.kind === 'info' && (
-          <div className="rounded-xl overflow-hidden shadow-xl mission-in" style={{background:'linear-gradient(135deg,#060e1c,#0a1830,#0d2040)'}}>
-            <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b border-blue-500/20">
-              <span className="text-blue-400 text-sm">🩺</span>
-              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400">Caso clínico</span>
-            </div>
-            <div className="px-4 py-4">
-              <div className="prose prose-sm max-w-none text-slate-200 [&>p]:leading-7 [&>p]:mb-3 [&>p:last-child]:mb-0 [&>p]:text-[0.88rem] [&_strong]:text-white [&_h3]:text-blue-300 [&_h3]:text-sm [&_h3]:font-black [&_h3]:tracking-wide [&_ul]:text-slate-300 [&_li]:text-[0.85rem]">
-                <ReactMarkdown>{formatInfoBody(currentNode.body_md) || ""}</ReactMarkdown>
+        {/* ════ 3-COLUMN BODY ════ */}
+        {/* Desktop: 3 columns. Mobile: stacked */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-0 border-x border-b border-slate-200 rounded-b-xl overflow-hidden bg-slate-50">
+
+          {/* ── LEFT: Monitor Panel (desktop) ── */}
+          <div className="hidden md:block md:col-span-3 p-3 border-r border-slate-200 bg-white">
+            <MonitorPanel vitals={vitals} />
+          </div>
+
+          {/* ── Mobile: Monitor chips ── */}
+          <div className="md:hidden p-3 bg-white border-b border-slate-200">
+            {vitals ? (
+              <div className="space-y-2">
+                <MonitorChips vitals={vitals} />
+                <EcgTrace fc={vitals?.fc || 0} rhythm={vitals?.rhythm} />
               </div>
-              {currentNodeId === startId && currentNode.auto_advance_to && (
-                <div className="mt-5 pt-4 border-t border-blue-500/20">
+            ) : (
+              <p className="text-xs text-slate-300 italic text-center py-2">Sin constantes vitales</p>
+            )}
+          </div>
+
+          {/* ── CENTER: Patient Panel ── */}
+          <div className="md:col-span-5 p-4 border-b md:border-b-0 md:border-r border-slate-200 bg-white overflow-y-auto" style={{ maxHeight: "70vh" }}>
+            {/* Patient demographics */}
+            <div className="mb-3 pb-3 border-b border-slate-100">
+              <PatientDemographics info={patientInfo} />
+            </div>
+
+            {/* Narrative text */}
+            <div className="prose prose-sm max-w-none text-slate-700 [&>p]:leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0 [&>p]:text-[0.85rem] [&_strong]:text-slate-900 [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:tracking-wide [&_ul]:text-slate-600 [&_li]:text-[0.83rem]">
+              <ReactMarkdown>{formatInfoBody(currentNode.body_md) || ""}</ReactMarkdown>
+            </div>
+
+            {/* Labs */}
+            <LabsTable labs={labs} />
+
+            {/* Gasometry */}
+            <GasometryPanel gas={gasometry} />
+
+            {/* Imaging */}
+            <ImagingTags imaging={imaging} />
+
+            {/* Ventilation */}
+            <VentilationPanel vent={ventilation} />
+          </div>
+
+          {/* ── RIGHT: Action Panel ── */}
+          <div className="md:col-span-4 p-4 bg-white">
+
+            {/* ── INFO node action ── */}
+            {currentNode.kind === 'info' && (
+              <div className="flex flex-col items-center justify-center h-full min-h-[200px]">
+                {currentNodeId === startId && currentNode.auto_advance_to ? (
                   <button type="button"
                     onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
-                    className="inline-flex items-center gap-2 rounded border-2 border-blue-500 bg-blue-700 hover:bg-blue-600 px-6 py-2.5 text-sm font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/30 tracking-wide">
-                    ▶ Comenzar caso
+                    className="inline-flex items-center gap-2 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 px-6 py-3 text-sm font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20 tracking-wide">
+                    {"\u25B6"} Comenzar caso
                   </button>
-                </div>
-              )}
-              {autoAdvanceActive && (
-                <p className="mt-3 text-[10px] text-blue-400/70 font-mono animate-pulse">CARGANDO...</p>
-              )}
-            </div>
-          </div>
-        )}
+                ) : autoAdvanceActive ? (
+                  <div className="text-center space-y-2">
+                    <svg className="animate-spin h-5 w-5 text-blue-500 mx-auto" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                    <p className="text-xs text-slate-400 font-medium">Cargando...</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">Informaci&oacute;n cl&iacute;nica</p>
+                )}
+              </div>
+            )}
 
-        {/* ── DECISION node ── */}
-        {currentNode.kind === 'decision' && (
-          <div className="rounded-xl overflow-hidden shadow-xl mission-in" style={{background:'linear-gradient(135deg,#060e1c,#0c1a30,#0f1f3a)'}}>
-            {/* Decision header */}
-            <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-amber-500/25" style={{background:'linear-gradient(90deg,#78350f22,transparent)'}}>
-              <span className="text-amber-400 text-xs">⚡</span>
-              <span className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-400">Decisión clínica</span>
-            </div>
-            {/* Feedback anterior */}
-            {lastFeedback && (
-              <div className={`mx-4 mt-3 rounded border px-3 py-2.5 text-xs ${lastFeedback.positive ? 'border-emerald-500/40 bg-emerald-950/60 text-emerald-300' : 'border-red-500/40 bg-red-950/60 text-red-300'}`}>
-                <div className="prose prose-xs max-w-none [&_p]:text-inherit [&_strong]:text-white [&_p]:mb-1 [&_p:last-child]:mb-0">
-                  <ReactMarkdown>{lastFeedback.content}</ReactMarkdown>
+            {/* ── DECISION node action ── */}
+            {currentNode.kind === 'decision' && (
+              <div className="space-y-3">
+                {/* Previous feedback */}
+                {lastFeedback && (
+                  <div className={`rounded-lg border px-3 py-2.5 text-xs ${lastFeedback.positive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    <div className="prose prose-xs max-w-none [&_p]:text-inherit [&_strong]:font-bold [&_p]:mb-1 [&_p:last-child]:mb-0">
+                      <ReactMarkdown>{lastFeedback.content}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+
+                {/* Question header */}
+                <div className="border-b border-slate-100 pb-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.15em] text-amber-600 mb-1">Decisi&oacute;n cl&iacute;nica</p>
+                  <div className="prose prose-sm max-w-none text-slate-800 font-medium leading-relaxed [&>p]:mb-0 [&>p]:text-[0.85rem] [&_strong]:text-amber-700">
+                    <ReactMarkdown>{currentNode.body_md || ""}</ReactMarkdown>
+                  </div>
+                </div>
+
+                {/* Options */}
+                <div key={currentNodeId} className="grid gap-2">
+                  {(currentNode.options || []).map((option, idx) => {
+                    const isChosen     = selectedOptionId === option.id;
+                    const isBest       = option.id === bestOptionId;
+                    const optDelta     = option.score_delta || 0;
+                    const isSelected   = !!selectedOptionId;
+                    const chosenDelta  = isSelected
+                      ? (currentNode.options.find(o => o.id === selectedOptionId)?.score_delta || 0)
+                      : 0;
+                    const chosenPositive = chosenDelta >= 1;
+
+                    const letters = ['A','B','C','D','E'];
+
+                    let letterClass = "flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-xs font-black border-2 transition-all ";
+                    let wrapClass = "w-full text-left rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all duration-200 opt-enter flex items-start gap-3 ";
+                    let scoreBadge = null;
+
+                    if (!isSelected) {
+                      wrapClass += "border-slate-200 bg-white text-slate-700 hover:border-blue-400 hover:bg-blue-50/50 hover:shadow-sm cursor-pointer group";
+                      letterClass += "border-slate-300 bg-slate-100 text-slate-500 group-hover:border-blue-400 group-hover:bg-blue-100 group-hover:text-blue-600";
+                    } else if (isChosen) {
+                      if (chosenPositive) {
+                        wrapClass += "border-emerald-400 bg-emerald-50 text-emerald-800 anim-correct";
+                        letterClass += "border-emerald-400 bg-emerald-500 text-white";
+                      } else {
+                        wrapClass += "border-red-400 bg-red-50 text-red-800 anim-wrong";
+                        letterClass += "border-red-400 bg-red-500 text-white";
+                      }
+                      scoreBadge = (
+                        <span className={`flex-shrink-0 text-sm font-black ${chosenPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {chosenDelta >= 0 ? '+' : ''}{chosenDelta}
+                        </span>
+                      );
+                    } else {
+                      if (isBest && !chosenPositive) {
+                        wrapClass += "border-amber-300 bg-amber-50 text-amber-800 opacity-95";
+                        letterClass += "border-amber-400 bg-amber-400 text-white";
+                        scoreBadge = <span className="flex-shrink-0 text-xs font-black text-amber-600">{"\u2B50"}+{optDelta}</span>;
+                      } else if (optDelta >= 1) {
+                        wrapClass += "border-emerald-200 bg-emerald-50/50 text-emerald-600 opacity-70";
+                        letterClass += "border-emerald-300 bg-emerald-100 text-emerald-500";
+                        scoreBadge = <span className="flex-shrink-0 text-[10px] font-semibold text-emerald-500">+{optDelta}</span>;
+                      } else {
+                        wrapClass += "border-slate-100 bg-slate-50/50 text-slate-400 opacity-40 cursor-default";
+                        letterClass += "border-slate-200 bg-slate-100 text-slate-300";
+                        scoreBadge = <span className="flex-shrink-0 text-[10px] text-slate-400">{optDelta}</span>;
+                      }
+                    }
+
+                    return (
+                      <button key={option.id} type="button"
+                        onClick={() => handleOptionSelect(option)}
+                        disabled={isLocked}
+                        className={wrapClass}
+                        style={{ animationDelay: `${idx * 0.07}s` }}
+                      >
+                        <span className={letterClass}>{isChosen ? (chosenPositive ? '\u2713' : '\u2717') : (isSelected && isBest && !chosenPositive) ? '\u2605' : letters[idx]}</span>
+                        <div className="prose prose-sm max-w-none flex-1 [&_p]:mb-0 [&_p]:text-inherit [&_strong]:text-amber-700">
+                          <ReactMarkdown>{option.label}</ReactMarkdown>
+                        </div>
+                        {scoreBadge}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
-            {/* Question */}
-            <div className="px-4 pt-3 pb-1">
-              <div className="prose prose-sm max-w-none text-slate-100 font-medium leading-relaxed [&>p]:mb-0 [&>p]:text-[0.9rem] [&_strong]:text-yellow-300">
-                <ReactMarkdown>{currentNode.body_md || ""}</ReactMarkdown>
-              </div>
-            </div>
-            {/* Opciones */}
-            <div key={currentNodeId} className="px-4 pb-4 pt-3 grid gap-2">
-              {(currentNode.options || []).map((option, idx) => {
-                const isChosen     = selectedOptionId === option.id;
-                const isBest       = option.id === bestOptionId;
-                const optDelta     = option.score_delta || 0;
-                const isSelected   = !!selectedOptionId;
-                const chosenDelta  = isSelected
-                  ? (currentNode.options.find(o => o.id === selectedOptionId)?.score_delta || 0)
-                  : 0;
-                const chosenPositive = chosenDelta >= 1;
-
-                const letters = ['A','B','C','D','E'];
-
-                let btnStyle = {};
-                let letterClass = "flex-shrink-0 w-7 h-7 rounded flex items-center justify-center text-xs font-black border-2 transition-all ";
-                let wrapClass = "w-full text-left rounded border-2 px-3 py-3 text-sm font-medium transition-all duration-200 opt-enter flex items-start gap-3 ";
-                let scoreBadge = null;
-
-                if (!isSelected) {
-                  wrapClass += "border-slate-600/50 bg-slate-800/30 text-slate-200 hover:border-blue-500/80 hover:bg-blue-900/25 hover:scale-[1.01] hover:shadow-md hover:shadow-blue-900/30 cursor-pointer group";
-                  letterClass += "border-slate-500 bg-slate-700/50 text-slate-300 group-hover:border-blue-400 group-hover:bg-blue-800/50 group-hover:text-blue-200";
-                } else if (isChosen) {
-                  if (chosenPositive) {
-                    wrapClass += "border-emerald-500 bg-emerald-950/70 text-emerald-200 anim-correct";
-                    letterClass += "border-emerald-400 bg-emerald-600 text-white";
-                  } else {
-                    wrapClass += "border-red-500 bg-red-950/70 text-red-200 anim-wrong";
-                    letterClass += "border-red-400 bg-red-700 text-white";
-                  }
-                  scoreBadge = (
-                    <span className={`flex-shrink-0 text-sm font-black ${chosenPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {chosenDelta >= 0 ? '+' : ''}{chosenDelta}
-                    </span>
-                  );
-                } else {
-                  if (isBest && !chosenPositive) {
-                    wrapClass += "border-yellow-500/80 bg-yellow-950/50 text-yellow-200 opacity-95";
-                    letterClass += "border-yellow-400 bg-yellow-700/70 text-yellow-200";
-                    scoreBadge = <span className="flex-shrink-0 text-xs font-black text-yellow-400">⭐+{optDelta}</span>;
-                  } else if (optDelta >= 1) {
-                    wrapClass += "border-emerald-700/50 bg-emerald-950/30 text-emerald-300/70 opacity-70";
-                    letterClass += "border-emerald-600/60 bg-emerald-900/40 text-emerald-400/70";
-                    scoreBadge = <span className="flex-shrink-0 text-[10px] font-semibold text-emerald-500/70">+{optDelta}</span>;
-                  } else {
-                    wrapClass += "border-slate-700/30 bg-slate-900/30 text-slate-500/50 opacity-30 cursor-default";
-                    letterClass += "border-slate-600/30 bg-slate-800/30 text-slate-500/40";
-                    scoreBadge = <span className="flex-shrink-0 text-[10px] text-slate-600/50">{optDelta}</span>;
-                  }
-                }
-
-                return (
-                  <button key={option.id} type="button"
-                    onClick={() => handleOptionSelect(option)}
-                    disabled={isLocked}
-                    className={wrapClass}
-                    style={{ animationDelay: `${idx * 0.07}s` }}
-                  >
-                    <span className={letterClass}>{isChosen ? (chosenPositive ? '✓' : '✗') : (isSelected && isBest && !chosenPositive) ? '★' : letters[idx]}</span>
-                    <div className="prose prose-sm max-w-none flex-1 [&_p]:mb-0 [&_p]:text-inherit [&_strong]:text-yellow-300">
-                      <ReactMarkdown>{option.label}</ReactMarkdown>
-                    </div>
-                    {scoreBadge}
-                  </button>
-                );
-              })}
-            </div>
           </div>
-        )}
+        </div>
       </div>
     </>
   );

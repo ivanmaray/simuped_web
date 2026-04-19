@@ -647,6 +647,26 @@ export default function Admin_ScenarioEditor() {
     PHARM: "Farmacia",
   };
 
+  // ── Stats counters ──────────────────────────────────────────────
+  const scenarioStats = useMemo(() => {
+    const allQuestions = Object.values(questionsByStep || {}).flat();
+    const totalQ = allQuestions.length;
+    const byRole = { medico: 0, enfermeria: 0, farmacia: 0, todos: 0 };
+    allQuestions.forEach((q) => {
+      const roles = Array.isArray(q.roles) ? q.roles : [];
+      if (roles.length === 0) {
+        byRole.todos++;
+      } else {
+        roles.forEach((r) => {
+          const key = String(r).toLowerCase();
+          if (key in byRole) byRole[key]++;
+        });
+      }
+    });
+    const critical = allQuestions.filter((q) => q.is_critical).length;
+    return { totalSteps: steps.length, totalQ, byRole, critical };
+  }, [steps, questionsByStep]);
+
   // ── Dirty tracking per section ──────────────────────────────────
   const metadataDirty = useMemo(() => {
     if (!form || !initialForm) return false;
@@ -2672,6 +2692,34 @@ criticalRationale: updatedRowObj.critical_rationale || "",
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Editor de escenario</p>
               <h1 className="text-2xl font-semibold text-slate-900">{form.title || "Escenario sin título"}</h1>
               <p className="text-sm text-slate-500">ID {scenario?.id} · creado {scenario?.created_at ? new Date(scenario.created_at).toLocaleString() : "—"}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                  {scenarioStats.totalSteps} {scenarioStats.totalSteps === 1 ? "paso" : "pasos"}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">
+                  {scenarioStats.totalQ} {scenarioStats.totalQ === 1 ? "pregunta" : "preguntas"}
+                </span>
+                {scenarioStats.critical > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 font-medium text-rose-700">
+                    {scenarioStats.critical} {scenarioStats.critical === 1 ? "crítica" : "críticas"}
+                  </span>
+                )}
+                <span className="text-slate-400">|</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                  MED {scenarioStats.byRole.medico}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
+                  ENF {scenarioStats.byRole.enfermeria}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-1 text-purple-700">
+                  FAR {scenarioStats.byRole.farmacia}
+                </span>
+                {scenarioStats.byRole.todos > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-slate-600">
+                    Todos {scenarioStats.byRole.todos}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
