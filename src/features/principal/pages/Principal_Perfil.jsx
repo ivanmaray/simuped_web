@@ -556,17 +556,51 @@ export default function Principal_Perfil() {
 
     setPwLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: passwordValue });
+      // Verify we have an active session before attempting password update
+      const { data: sessData } = await supabase.auth.getSession();
+      if (!sessData?.session) {
+        console.warn("[Perfil] No active session for password update");
+        setPwMsg("Tu sesión ha expirado. Vuelve a iniciar el proceso de restablecimiento.");
+        return;
+      }
+      console.log("[Perfil] Updating password for user:", sessData.session.user?.id);
+
+      // Race the updateUser call against a timeout to avoid infinite "Guardando..."
+      const timeoutMs = 15000;
+      const updatePromise = supabase.auth.updateUser({ password: passwordValue });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT")), timeoutMs)
+      );
+
+      let result;
+      try {
+        result = await Promise.race([updatePromise, timeoutPromise]);
+      } catch (raceErr) {
+        if (raceErr?.message === "TIMEOUT") {
+          console.error("[Perfil] updateUser timed out after", timeoutMs, "ms");
+          setPwMsg("La solicitud tardó demasiado. Comprueba tu conexión e inténtalo de nuevo.");
+          return;
+        }
+        throw raceErr;
+      }
+
+      const { error } = result;
       if (error) {
+        console.warn("[Perfil] updateUser error:", error);
         const raw = (error.message || '').toLowerCase();
         if (raw.includes('weak') || raw.includes('least')) {
           setPwMsg("La contraseña no cumple las políticas de seguridad. Revisa los requisitos.");
+        } else if (raw.includes('same') || raw.includes('different')) {
+          setPwMsg("La nueva contraseña debe ser diferente a la anterior.");
+        } else if (raw.includes('session') || raw.includes('token') || raw.includes('expired')) {
+          setPwMsg("Tu sesión ha expirado. Solicita un nuevo enlace de restablecimiento.");
         } else {
           setPwMsg(error.message || "No se pudo actualizar la contraseña.");
         }
         return;
       }
-      setPwMsg("Contraseña actualizada ✔");
+      console.log("[Perfil] Password updated successfully");
+      setPwMsg("Contraseña actualizada \u2714");
       setTimeout(() => {
         setShowSetPassword(false);
         setNewPassword("");
@@ -579,6 +613,7 @@ export default function Principal_Perfil() {
         setPwMsg("");
       }, 1500);
     } catch (ex) {
+      console.error("[Perfil] Unexpected error updating password:", ex);
       setPwMsg("Error inesperado actualizando la contraseña.");
     } finally {
       setPwLoading(false);
