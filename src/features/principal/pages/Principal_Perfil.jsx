@@ -154,6 +154,7 @@ function getAchievementLevelDescriptor(onlineAttempted, presencialAttempted) {
 
 function formatRoleLabel(rol) {
   const key = String(rol || "").toLowerCase();
+  if (key === "admin") return "Administrador (todas)";
   if (key.includes("farm")) return "Farmacia";
   if (key.includes("enfer")) return "Enfermería";
   if (key.includes("med")) return "Medicina";
@@ -1036,6 +1037,7 @@ export default function Principal_Perfil() {
                   { value: "medico", label: "Médico" },
                   { value: "enfermeria", label: "Enfermería" },
                   { value: "farmacia", label: "Farmacia" },
+                  ...(isAdmin ? [{ value: "admin", label: "Administrador (todas)" }] : []),
                 ].map((r) => {
                 const active = rol === r.value;
                 return (

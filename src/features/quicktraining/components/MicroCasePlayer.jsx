@@ -424,7 +424,7 @@ const WAVE_ASYSTOLE = (() => {
    This mimics real bedside monitors: a vertical cursor moves across, redrawing
    the trace in place. A small "erase window" ahead of the cursor clears the
    previous sweep so the new trace overwrites the old one. */
-function useWaveformTrace(canvasRef, { rate, template, color, speed = 1.1, freerun = false }) {
+function useWaveformTrace(canvasRef, { rate, template, color, speed = 0.5, freerun = false }) {
   const animRef = useRef(null);
   const bufRef  = useRef(null);   // Float32Array of Y values per pixel
   const drawnRef = useRef(null);  // Uint8Array: which pixels have been drawn at least once
@@ -464,8 +464,8 @@ function useWaveformTrace(canvasRef, { rate, template, color, speed = 1.1, freer
         phaseRef.current = (phaseRef.current + 1) % template.length;
         y = midY - template[phaseRef.current] * amp;
       } else if (bpm > 0 && template.length > 0) {
-        // Advance phase by 1px worth of beat time. pxPerBeat scales with rate.
-        const pxPerBeat = (60 / bpm) * 70; // 70 px/sec sweep
+        // Advance phase by 1px worth of beat time. pxPerSec = speed * 60fps.
+        const pxPerBeat = (60 / bpm) * (speed * 60);
         phaseRef.current = (phaseRef.current + 1 / pxPerBeat) % 1;
         const idx = Math.min(Math.floor(phaseRef.current * template.length), template.length - 1);
         y = midY - template[idx] * amp;
@@ -608,7 +608,7 @@ function MonitorChannel({ label, sublabel, unit, value, subvalue, color, rate, t
         <canvas ref={canvasRef} className="w-full block" style={{ height: `${height}px`, background: '#050f0a' }} />
       </div>
       {/* Numeric value + alarm limits */}
-      <div className="flex-shrink-0 w-[74px] flex flex-col justify-center items-end pr-1.5 py-0.5">
+      <div className="flex-shrink-0 w-[92px] flex flex-col justify-center items-end pr-1.5 py-0.5">
         {(alarmHigh != null || alarmLow != null) && (
           <div className="flex flex-col items-end leading-none" style={{ color: color + '66' }}>
             <span className="text-[7px] font-mono">{alarmHigh ?? ''}</span>
@@ -661,7 +661,24 @@ function MonitorNumericRow({ label, sublabel, unit, value, subvalue, color, abno
 }
 
 /* ─── Full Monitor Panel — multi-channel waveform display ────── */
-function MonitorPanel({ vitals, deterioration = 0 }) {
+function patientCategory(info) {
+  const ageRaw = String(info?.age || "").toLowerCase();
+  if (!ageRaw) return "PEDIÁTRICO";
+  if (/(neonat|rn\b|reci[eé]n)/.test(ageRaw)) return "NEONATAL";
+  if (/(lactan|mes(es)?\b)/.test(ageRaw)) return "LACTANTE";
+  const yMatch = ageRaw.match(/(\d+)\s*(a(ñ|n)os?|y)/);
+  if (yMatch) {
+    const y = parseInt(yMatch[1], 10);
+    if (y < 1) return "LACTANTE";
+    if (y < 12) return "PEDIÁTRICO";
+    if (y < 18) return "ADOLESCENTE";
+    return "ADULTO";
+  }
+  return "PEDIÁTRICO";
+}
+
+function MonitorPanel({ vitals, deterioration = 0, patientInfo = null }) {
+  const category = patientCategory(patientInfo);
   const fc = vitals?.fc;
   const fr = vitals?.fr;
   const sat = vitals?.sat;
@@ -701,7 +718,7 @@ function MonitorPanel({ vitals, deterioration = 0 }) {
   // Capnography: show EtCO₂ value if available, otherwise FR
   const capnoValue = etco2 != null ? oscEtco2 : (isArrest && fr === 0 ? '--' : oscFr);
   const capnoUnit = etco2 != null ? 'mmHg' : 'rpm';
-  const capnoLabel = etco2 != null ? 'EtCO\u2082' : 'CO\u2082';
+  const capnoLabel = etco2 != null ? 'EtCO\u2082' : 'FR';
 
   const taDisplay = (oscTas != null && oscTad != null && !isArrest) ? `${oscTas}/${oscTad}` : (isArrest ? '--' : (oscTas ?? oscTad ?? null));
   const taSub = map != null ? `(${map})` : null;
@@ -729,7 +746,7 @@ function MonitorPanel({ vitals, deterioration = 0 }) {
       {/* Status bar — Adulto · tiempo · ritmo · alarma */}
       <div className="flex items-center justify-between px-2 py-1 gap-2" style={{ background: isArrest ? '#1a0505' : '#0a1f13', borderBottom: `1px solid ${isArrest ? '#7f1d1d' : '#0d2818'}` }}>
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[8px] font-black uppercase tracking-[0.15em]" style={{ color: '#4ade80aa' }}>Adulto</span>
+          <span className="text-[8px] font-black uppercase tracking-[0.15em]" style={{ color: '#4ade80aa' }}>{category}</span>
           <span className="text-[8px] font-mono tabular-nums" style={{ color: '#4ade8088' }}>{mm}:{ss}</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -817,7 +834,7 @@ const VITAL_CHANNELS = {
 
 function MobileWaveChip({ label, value, unit, color, rate, template, abnormal, freerun = false }) {
   const canvasRef = useRef(null);
-  useWaveformTrace(canvasRef, { rate, template, color, speed: 0.3, freerun });
+  useWaveformTrace(canvasRef, { rate, template, color, speed: 0.4, freerun });
   const displayColor = abnormal ? '#ef4444' : color;
   return (
     <div className="rounded overflow-hidden" style={{ background: '#050f0a', border: `1px solid ${color}22`, minWidth: '90px', flex: '1 1 90px' }}>
@@ -2081,7 +2098,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
           {/* ── LEFT: Monitor Panel (desktop) — only when vitals exist ── */}
           {vitals && (
             <div className="hidden md:block md:col-span-3 p-3 border-r border-slate-200 bg-white">
-              <MonitorPanel vitals={vitals} deterioration={deterioration} />
+              <MonitorPanel vitals={vitals} deterioration={deterioration} patientInfo={patientInfo} />
             </div>
           )}
 

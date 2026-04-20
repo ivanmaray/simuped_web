@@ -70,9 +70,10 @@ function isTimedStep(step) {
   );
 }
 
-// Normaliza el rol del usuario a 'medico' | 'enfermeria' | 'farmacia'
+// Normaliza el rol del usuario a 'medico' | 'enfermeria' | 'farmacia' | 'admin'
 function normalizeRole(rol) {
   const k = String(rol || "").toLowerCase();
+  if (k === "admin") return "admin";
   if (k.includes("medic")) return "medico";
   if (k.includes("enfer")) return "enfermeria";
   if (k.includes("farm")) return "farmacia";
@@ -80,9 +81,9 @@ function normalizeRole(rol) {
 }
 
 // Visible si roles es null/[] o incluye el userRole.
-// Los administradores ven todas las preguntas/pasos (perfil "todos") para revisión.
-function isVisibleForRole(roles, userRole, isAdmin = false) {
-  if (isAdmin) return true;
+// Si el usuario ha elegido rol 'admin' en su perfil, ve todas las preguntas.
+function isVisibleForRole(roles, userRole) {
+  if (String(userRole || "").toLowerCase() === "admin") return true;
   if (!roles || roles.length === 0) return true;
   const arr = roles.map((r) => String(r).toLowerCase());
   return arr.includes(String(userRole || "").toLowerCase());
@@ -864,11 +865,9 @@ export default function Online_Detalle() {
 
       // Rol del usuario
       let userRole = "";
-      let isAdminUser = false;
       if (sess?.user?.id) {
         const prof = await getProfileCached(supabase, sess.user.id);
         userRole = normalizeRole((prof?.rol) ?? sess.user?.user_metadata?.rol);
-        isAdminUser = Boolean(prof?.is_admin);
       }
       setRol(userRole);
 
@@ -949,10 +948,10 @@ export default function Online_Detalle() {
       }
 
       const stepsWithQs = (stepsFull || [])
-        .filter((s) => isVisibleForRole(s.roles, userRole, isAdminUser))
+        .filter((s) => isVisibleForRole(s.roles, userRole))
         .map((s) => {
           const qs = (s.questions || [])
-            .filter((q) => isVisibleForRole(q.roles, userRole, isAdminUser))
+            .filter((q) => isVisibleForRole(q.roles, userRole))
             .map((q) => ({
               id: q.id,
               text: q.question_text, // alias local para mantener el resto del componente
