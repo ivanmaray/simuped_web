@@ -867,7 +867,7 @@ function MonitorChips({ vitals }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {vitals.fc != null && <MobileWaveChip label={isVF ? "FV" : "ECG"} value={ecgValue} unit={isArrest ? "" : "lpm"} color={ecgColor} rate={isArrest ? 0 : oscFc} template={ecgTemplate} abnormal={isArrest} freerun={isArrest} />}
-      {vitals.sat != null && <MobileWaveChip label="SpO\u2082" value={isArrest && sat === 0 ? '--' : oscSat} unit="%" color="#22d3ee" rate={isArrest ? 0 : oscFc} template={isArrest ? WAVE_ASYSTOLE : BEAT_PLETH} abnormal={isArrest || isVitalAbnormal("sat", oscSat)} freerun={isArrest} />}
+      {vitals.sat != null && <MobileWaveChip label="SpO₂" value={isArrest && sat === 0 ? '--' : oscSat} unit="%" color="#22d3ee" rate={isArrest ? 0 : oscFc} template={isArrest ? WAVE_ASYSTOLE : BEAT_PLETH} abnormal={isArrest || isVitalAbnormal("sat", oscSat)} freerun={isArrest} />}
       {(vitals.fr != null || etco2 != null) && <MobileWaveChip label={capnoLabel} value={capnoValue} unit={capnoUnit} color="#facc15" rate={isArrest ? 0 : (oscFr || 12)} template={isArrest && !etco2 ? WAVE_ASYSTOLE : BEAT_CAPNO} abnormal={isArrest || (etco2 != null ? etco2 < 20 : isVitalAbnormal("fr", oscFr))} freerun={isArrest && !etco2} />}
       {vitals.tas != null && vitals.tad != null && (
         <MobileWaveChip label="ART" value={isArrest ? '--' : `${oscTas}/${oscTad}`} unit="mmHg" color="#f87171" rate={isArrest ? 0 : oscFc} template={isArrest ? WAVE_ASYSTOLE : BEAT_ART} abnormal={isArrest || isVitalAbnormal("tas", oscTas)} freerun={isArrest} />
@@ -1043,11 +1043,8 @@ function ImagingModal({ image, onClose }) {
             </div>
           )}
         </div>
-        {(image.finding || image.attribution) && (
+        {image.attribution && (
           <div className="px-4 py-2 bg-slate-800 border-t border-slate-700 text-xs text-slate-200 space-y-1">
-            {image.finding && (
-              <div><span className="font-bold text-blue-300">Hallazgo:</span> {image.finding}</div>
-            )}
             {image.attribution && (
               <div className="text-[10px] text-slate-400 italic">
                 {image.attribution_url ? (
@@ -1063,60 +1060,97 @@ function ImagingModal({ image, onClose }) {
   );
 }
 
+function InlineImaging({ img }) {
+  const [zoom, setZoom] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const hotspots = Array.isArray(img?.hotspots) ? img.hotspots : [];
+  const modLabel = img.modality ? (MODALITY_LABEL[img.modality] || img.modality) : null;
+  return (
+    <>
+      <figure className="rounded-lg border border-slate-300 bg-slate-900 overflow-hidden shadow-sm">
+        <figcaption className="flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-800 text-white">
+          <div className="flex items-center gap-2 min-w-0">
+            {modLabel && (
+              <span className="text-[9px] font-black uppercase tracking-[0.15em] text-cyan-300 bg-cyan-900/40 px-1.5 py-0.5 rounded flex-shrink-0">
+                {modLabel}
+              </span>
+            )}
+            <span className="text-xs font-semibold truncate">{img.name}</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {hotspots.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setRevealed((v) => !v)}
+                className="text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-500 px-2 py-0.5 rounded transition"
+              >
+                {revealed ? "Ocultar hallazgos" : `Revelar hallazgos (${hotspots.length})`}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setZoom(true)}
+              className="text-[10px] font-bold text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded transition"
+              title="Ampliar"
+            >
+              ⤢ Ampliar
+            </button>
+          </div>
+        </figcaption>
+        <div className="relative bg-black flex items-center justify-center">
+          <div className="relative inline-block max-w-full">
+            <img
+              src={img.url}
+              alt={img.name}
+              className="block max-w-full max-h-[420px] object-contain mx-auto"
+            />
+            {revealed && hotspots.map((h, i) => (
+              <div
+                key={i}
+                className="absolute pointer-events-none"
+                style={{ left: `${h.x}%`, top: `${h.y}%`, transform: "translate(-50%, -50%)" }}
+              >
+                <div className="w-5 h-5 rounded-full border-2 border-yellow-400 bg-yellow-400/20 animate-pulse" />
+                <div className="absolute left-1/2 top-full mt-1 -translate-x-1/2 bg-yellow-400 text-black text-[9px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
+                  {h.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {img.attribution && (
+          <div className="px-3 py-1 bg-slate-800 border-t border-slate-700 text-[9px] text-slate-400 italic">
+            {img.attribution_url ? (
+              <a href={img.attribution_url} target="_blank" rel="noopener noreferrer"
+                 className="underline hover:text-slate-200">{img.attribution}</a>
+            ) : img.attribution}
+          </div>
+        )}
+      </figure>
+      {zoom && <ImagingModal image={img} onClose={() => setZoom(false)} />}
+    </>
+  );
+}
+
 function ImagingViewer({ imaging }) {
-  const [open, setOpen] = useState(null);
   if (!imaging || imaging.length === 0) return null;
   return (
-    <div className="mt-3">
-      <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 mb-1.5">Imagen</p>
-      <div className="flex flex-wrap gap-2">
-        {imaging.map((img, i) => {
-          const hasImage = Boolean(img.url);
-          const modLabel = img.modality ? (MODALITY_LABEL[img.modality] || img.modality) : null;
-          if (hasImage) {
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setOpen(img)}
-                className="group relative flex items-center gap-2 rounded border-2 border-blue-300 bg-blue-50 hover:border-blue-500 hover:bg-blue-100 px-2 py-1.5 transition text-left"
-                title="Pulsa para ampliar"
-              >
-                <img
-                  src={img.url}
-                  alt=""
-                  className="w-12 h-12 object-cover rounded bg-black"
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1">
-                    {modLabel && (
-                      <span className="text-[8px] font-black uppercase tracking-[0.1em] text-cyan-700 bg-cyan-100 px-1 rounded">
-                        {modLabel}
-                      </span>
-                    )}
-                    <span className="text-[10px] font-bold text-blue-800 truncate">{img.name}</span>
-                  </div>
-                  {img.finding && (
-                    <span className="block text-[9px] text-blue-600 truncate max-w-[160px]">{img.finding}</span>
-                  )}
-                </div>
-              </button>
-            );
-          }
-          return (
-            <div key={i} className="rounded border border-blue-200 bg-blue-50 px-2.5 py-1">
-              {modLabel && (
-                <span className="text-[8px] font-black uppercase tracking-[0.1em] text-cyan-700 mr-1">
-                  {modLabel}
-                </span>
-              )}
-              <span className="text-[10px] font-bold text-blue-700">{img.name}</span>
-              {img.finding && <span className="text-[10px] text-blue-500 ml-1">- {img.finding}</span>}
-            </div>
-          );
-        })}
-      </div>
-      {open && <ImagingModal image={open} onClose={() => setOpen(null)} />}
+    <div className="mt-3 space-y-2">
+      {imaging.map((img, i) => {
+        const modLabel = img.modality ? (MODALITY_LABEL[img.modality] || img.modality) : null;
+        if (img.url) return <InlineImaging key={i} img={img} />;
+        return (
+          <div key={i} className="rounded border border-blue-200 bg-blue-50 px-2.5 py-1.5">
+            {modLabel && (
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-cyan-700 mr-1">
+                {modLabel}
+              </span>
+            )}
+            <span className="text-[11px] font-bold text-blue-700">{img.name}</span>
+            {img.finding && <span className="text-[11px] text-blue-600 ml-1">— {img.finding}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1149,8 +1183,6 @@ function VentilationPanel({ vent }) {
   );
 }
 
-const FEEDBACK_DELAY_MS       = 1500;
-const INFO_AUTO_ADVANCE_MS    = 1400;
 
 /* ═══════════════════════════════════════════════════════════════
    MicroCasePlayer
@@ -1179,6 +1211,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   /* Gamification */
   const [selectedOptionId, setSelectedOptionId] = useState(null);
   const [isLocked, setIsLocked]                 = useState(false);
+  const [pendingAdvance, setPendingAdvance]     = useState(null); // { nextNodeId, completed }
   const [toast, setToast]                       = useState(null);
   const [screenFlash, setScreenFlash] = useState(null);
   const [coinAnim, setCoinAnim]     = useState(false);
@@ -1202,6 +1235,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setDebriefTab('decisions');
     setSelectedOptionId(null);
     setIsLocked(false);
+    setPendingAdvance(null);
     setStreak(0);
     setDeltaAnim(null);
     setShowConfetti(false);
@@ -1288,16 +1322,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     });
   }, [currentNode]);
 
-  /* Auto-advance */
-  useEffect(() => {
-    if (!currentNode || !currentNode.auto_advance_to || currentNode.kind === "decision" || currentNodeId === startId) return;
-    const t = window.setTimeout(() => setCurrentNodeId(currentNode.auto_advance_to), INFO_AUTO_ADVANCE_MS);
-    return () => window.clearTimeout(t);
-  }, [currentNode, currentNodeId, startId]);
-
-  const autoAdvanceActive = Boolean(
-    currentNode && currentNode.auto_advance_to && currentNode.kind !== "decision" && currentNodeId !== startId
-  );
+  const autoAdvanceActive = false;
 
   /* Time pressure: deteriorate vitals on decision nodes after delay.
      Persisted in sessionStorage so un refresh no regala tiempo al jugador. */
@@ -1381,17 +1406,27 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
     const nextNodeId = option.next_node_id || currentNode?.auto_advance_to || null;
 
-    setTimeout(() => {
-      setSelectedOptionId(null);
-      setIsLocked(false);
-      setDeltaAnim(null);
-      if (!nextNodeId) {
-        setIsCompleted(true);
-        setCurrentNodeId(null);
-      } else {
-        setCurrentNodeId(nextNodeId);
-      }
-    }, FEEDBACK_DELAY_MS);
+    // Guardar el avance pendiente; el usuario pulsará "Continuar →"
+    setPendingAdvance({ nextNodeId, completed: !nextNodeId });
+
+    // Pequeña pausa visual para el highlight de la opción (deltaAnim)
+    setTimeout(() => setDeltaAnim(null), 800);
+  }
+
+  /* ── Confirmar avance tras leer el feedback ─────────────────── */
+  function handleAdvance() {
+    if (!pendingAdvance) return;
+    const { nextNodeId, completed } = pendingAdvance;
+    setSelectedOptionId(null);
+    setIsLocked(false);
+    setDeltaAnim(null);
+    setPendingAdvance(null);
+    if (completed || !nextNodeId) {
+      setIsCompleted(true);
+      setCurrentNodeId(null);
+    } else {
+      setCurrentNodeId(nextNodeId);
+    }
   }
 
   /* ── Handle terminal node reached — auto-register ──────────── */
@@ -1487,6 +1522,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setRegistered(false);
     setSelectedOptionId(null);
     setIsLocked(false);
+    setPendingAdvance(null);
     setStreak(0);
     setDeltaAnim(null);
     setShowConfetti(false);
@@ -1576,7 +1612,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   {pct !== null && (
                     <div className="rounded border border-purple-500/40 bg-purple-950/50 px-4 py-2 text-center min-w-[75px]">
                       <p className="text-lg font-black text-purple-300">{pct}%</p>
-                      <p className="text-[8px] font-black text-purple-600/80 uppercase tracking-widest">PRECISI\u00D3N</p>
+                      <p className="text-[8px] font-black text-purple-600/80 uppercase tracking-widest">PRECISIÓN</p>
                     </div>
                   )}
                   <div className="rounded border border-emerald-500/30 bg-emerald-950/40 px-4 py-2 text-center min-w-[75px]">
@@ -1650,7 +1686,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                               ${positive ? 'bg-emerald-500 text-white' : neutral ? 'bg-amber-500 text-white' : 'bg-red-500 text-white'}`}>
                               {positive ? '\u2713' : neutral ? '\u2014' : '\u2717'}
                             </span>
-                            <span className="text-xs font-bold text-slate-700">Decisi\u00F3n {idx + 1}</span>
+                            <span className="text-xs font-bold text-slate-700">Decisión {idx + 1}</span>
                           </div>
                           <span className={`text-sm font-black ${positive ? 'text-emerald-600' : neutral ? 'text-amber-600' : 'text-red-600'}`}>
                             {step.scoreDelta >= 0 ? '+' : ''}{step.scoreDelta} pts
@@ -1674,7 +1710,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                           {/* Correct answer (if different) */}
                           {!wasOptimal && bestOption && (
                             <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
-                              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-1">\u2B50 Respuesta \u00F3ptima (+{bestOption.score_delta})</p>
+                              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-1">⭐ Respuesta óptima (+{bestOption.score_delta})</p>
                               <div className="text-sm font-medium text-emerald-800 prose prose-sm max-w-none [&_p]:mb-0 [&_p]:text-emerald-800">
                                 <ReactMarkdown>{bestOption.label}</ReactMarkdown>
                               </div>
@@ -1684,7 +1720,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                           {/* Clinical explanation (full, not truncated) */}
                           {step.feedback && (
                             <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-3 py-2.5">
-                              <p className="text-[9px] font-black uppercase tracking-widest text-blue-500 mb-1.5">\uD83D\uDCD6 Explicaci\u00F3n cl\u00EDnica</p>
+                              <p className="text-[9px] font-black uppercase tracking-widest text-blue-500 mb-1.5">📖 Explicación clínica</p>
                               <div className="text-xs text-blue-900 leading-relaxed prose prose-xs max-w-none [&_p]:text-blue-900 [&_strong]:text-blue-950 [&_p]:mb-1 [&_p:last-child]:mb-0">
                                 <ReactMarkdown>{step.feedback}</ReactMarkdown>
                               </div>
@@ -1725,7 +1761,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               {/* ── TAB: VITALS EVOLUTION ── */}
               {debriefTab === 'vitals' && (
                 <div className="space-y-4">
-                  <p className="text-xs text-slate-500 italic">Evoluci\u00F3n de constantes vitales durante el caso</p>
+                  <p className="text-xs text-slate-500 italic">Evolución de constantes vitales durante el caso</p>
 
                   {/* Vitals sparkline table */}
                   {vitalsTimeline.length > 0 && (
@@ -1736,9 +1772,9 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                             <th className="text-left px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-wider">Paso</th>
                             <th className="text-center px-2 py-2 text-[10px] font-black text-red-500 uppercase tracking-wider">FC</th>
                             <th className="text-center px-2 py-2 text-[10px] font-black text-blue-500 uppercase tracking-wider">FR</th>
-                            <th className="text-center px-2 py-2 text-[10px] font-black text-cyan-500 uppercase tracking-wider">SatO\u2082</th>
+                            <th className="text-center px-2 py-2 text-[10px] font-black text-cyan-500 uppercase tracking-wider">SatO₂</th>
                             <th className="text-center px-2 py-2 text-[10px] font-black text-amber-600 uppercase tracking-wider">TAS/TAD</th>
-                            <th className="text-center px-2 py-2 text-[10px] font-black text-orange-500 uppercase tracking-wider">T\u00AA</th>
+                            <th className="text-center px-2 py-2 text-[10px] font-black text-orange-500 uppercase tracking-wider">Tª</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1777,15 +1813,15 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                   {/* Gasometry evolution */}
                   {gasSnapshots.length > 0 && (
                     <div>
-                      <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">\uD83E\uDDEA Gasometr\u00EDa</h5>
+                      <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">🧪 Gasometría</h5>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs border-collapse">
                           <thead>
                             <tr className="bg-purple-50/50 border-b border-purple-200">
                               <th className="text-left px-3 py-2 text-[10px] font-black text-purple-500 uppercase">Paso</th>
                               <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">pH</th>
-                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">pCO\u2082</th>
-                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">HCO\u2083</th>
+                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">pCO₂</th>
+                              <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">HCO₃</th>
                               <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">BE</th>
                               <th className="text-center px-2 py-2 text-[10px] font-black text-purple-500 uppercase">Lactato</th>
                             </tr>
@@ -1812,7 +1848,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               {/* ── TAB: LABS EVOLUTION ── */}
               {debriefTab === 'labs' && (
                 <div className="space-y-4">
-                  <p className="text-xs text-slate-500 italic">Evoluci\u00F3n de anal\u00EDticas y pruebas complementarias</p>
+                  <p className="text-xs text-slate-500 italic">Evolución de analíticas y pruebas complementarias</p>
                   {labSnapshots.map((snap, idx) => (
                     <div key={idx} className="rounded-lg border border-slate-200 overflow-hidden">
                       <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center gap-2">
@@ -2088,21 +2124,28 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
 
             {/* ── INFO node action ── */}
             {currentNode.kind === 'info' && (
-              <div className="flex flex-col items-center justify-center h-full min-h-[200px]">
-                {currentNodeId === startId && currentNode.auto_advance_to ? (
-                  <button type="button"
-                    onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
-                    className="inline-flex items-center gap-2 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 px-6 py-3 text-sm font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20 tracking-wide">
-                    {"\u25B6"} Comenzar caso
-                  </button>
-                ) : autoAdvanceActive ? (
-                  <div className="text-center space-y-2">
-                    <svg className="animate-spin h-5 w-5 text-blue-500 mx-auto" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                    <p className="text-xs text-slate-400 font-medium">Cargando...</p>
+              <div className="flex flex-col h-full min-h-[200px] space-y-3">
+                {/* Feedback de la decisión anterior — persiste hasta la próxima pregunta */}
+                {lastFeedback && currentNodeId !== startId && (
+                  <div className={`rounded-lg border px-3 py-2.5 text-xs ${lastFeedback.positive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    <p className="text-[9px] font-black uppercase tracking-[0.15em] mb-1 opacity-70">Feedback de tu decisión</p>
+                    <div className="prose prose-xs max-w-none [&_p]:text-inherit [&_strong]:font-bold [&_p]:mb-1 [&_p:last-child]:mb-0">
+                      <ReactMarkdown>{lastFeedback.content}</ReactMarkdown>
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">Informaci&oacute;n cl&iacute;nica</p>
                 )}
+                <div className="flex-1 flex items-center justify-center">
+                  {currentNode.auto_advance_to ? (
+                    <button type="button"
+                      onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
+                      autoFocus
+                      className="inline-flex items-center gap-2 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 px-6 py-3 text-sm font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20 tracking-wide">
+                      {currentNodeId === startId ? `\u25B6 Comenzar caso` : `Continuar \u2192`}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">Informaci&oacute;n cl&iacute;nica</p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -2207,6 +2250,20 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                     );
                   })}
                 </div>
+
+                {/* Botón Continuar — aparece tras seleccionar; el feedback permanece visible hasta que se pulsa */}
+                {pendingAdvance && (
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={handleAdvance}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg hover:shadow-blue-500/30 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                      autoFocus
+                    >
+                      {pendingAdvance.completed ? 'Ver resultados' : 'Continuar'} {"\u2192"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -695,6 +695,17 @@ export default function Online_Detalle() {
   const answeredTotal = useMemo(() => Object.keys(answers).length, [answers]);
   const allAnswered = totalQuestions > 0 && answeredTotal >= totalQuestions;
 
+  // Lista de pasos con preguntas pendientes (para avisar al usuario al finalizar)
+  const pendingSteps = useMemo(() => {
+    const list = [];
+    steps.forEach((s, idx) => {
+      const qs = s.questions || [];
+      const pending = qs.filter(q => answers[q.id]?.selectedKey == null).length;
+      if (pending > 0) list.push({ idx, number: idx + 1, title: s.title || `Bloque ${idx + 1}`, pending, total: qs.length });
+    });
+    return list;
+  }, [steps, answers]);
+
   const finishAttempt = useCallback(async (statusOverride) => {
     if (!attemptId) return;
   
@@ -2072,12 +2083,22 @@ export default function Online_Detalle() {
                       {currentIdx >= steps.length - 1 ? "Fin" : "Siguiente bloque"}
                     </button>
                     <button
-                      onClick={() => finishAttempt()}
-                      className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
-                      disabled={!allAnswered && !timeUp}
-                      title={allAnswered ? "Finalizar y guardar nota" : (timeUp ? "Tiempo agotado: se finalizará" : "Responde todas las preguntas para finalizar")}
+                      onClick={() => {
+                        if (allAnswered || timeUp) { finishAttempt(); return; }
+                        const totalPending = pendingSteps.reduce((a, b) => a + b.pending, 0);
+                        const list = pendingSteps.map(s => `  • Bloque ${s.number}: ${s.pending}/${s.total} sin responder`).join("\n");
+                        const msg = `Te quedan ${totalPending} pregunta(s) sin responder en ${pendingSteps.length} bloque(s):\n\n${list}\n\n¿Quieres ir al primer bloque pendiente?`;
+                        if (window.confirm(msg) && pendingSteps[0]) {
+                          setCurrentIdx(pendingSteps[0].idx);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }
+                      }}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                      title={allAnswered ? "Finalizar y guardar nota" : (timeUp ? "Tiempo agotado: se finalizará" : `Faltan ${pendingSteps.reduce((a,b)=>a+b.pending,0)} pregunta(s) por responder`)}
                     >
-                      Finalizar intento
+                      {allAnswered || timeUp
+                        ? "Finalizar intento"
+                        : `Finalizar (faltan ${pendingSteps.reduce((a,b)=>a+b.pending,0)})`}
                     </button>
                   </div>
                 </div>
