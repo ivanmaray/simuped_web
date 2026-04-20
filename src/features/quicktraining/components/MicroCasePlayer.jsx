@@ -420,115 +420,242 @@ const WAVE_ASYSTOLE = (() => {
   return pts;
 })();
 
-/* Generic waveform trace renderer — used by all channels */
-function useWaveformTrace(canvasRef, { rate, template, color, speed = 0.35, freerun = false }) {
+/* Generic waveform trace renderer — sweep mode (cursor L→R, erase ahead).
+   This mimics real bedside monitors: a vertical cursor moves across, redrawing
+   the trace in place. A small "erase window" ahead of the cursor clears the
+   previous sweep so the new trace overwrites the old one. */
+function useWaveformTrace(canvasRef, { rate, template, color, speed = 1.1, freerun = false }) {
   const animRef = useRef(null);
-  const bufRef = useRef([]);
-  const xRef = useRef(0);
+  const bufRef  = useRef(null);   // Float32Array of Y values per pixel
+  const drawnRef = useRef(null);  // Uint8Array: which pixels have been drawn at least once
+  const cursorRef = useRef(0);    // current cursor X in float px
+  const phaseRef  = useRef(0);    // beat phase accumulator
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) { animRef.current = requestAnimationFrame(draw); return; }
     const ctx = canvas.getContext("2d");
     const W = canvas.width;
     const H = canvas.height;
     const midY = H * 0.5;
-    const amp = H * 0.40;
-    const bpm = rate || 0;
-    const pxPerBeat = bpm > 0 ? (60 / bpm) * 70 : 0;
+    const amp  = H * 0.40;
+    const bpm  = rate || 0;
 
-    xRef.current += speed;
+    if (!bufRef.current || bufRef.current.length !== W) {
+      bufRef.current = new Float32Array(W);
+      drawnRef.current = new Uint8Array(W);
+      bufRef.current.fill(midY);
+      // Clear canvas with background
+      ctx.fillStyle = "#050f0a";
+      ctx.fillRect(0, 0, W, H);
+    }
     const buf = bufRef.current;
-    let newY = midY;
-    if (freerun && template.length > 0) {
-      // Free-run mode: cycle through template continuously (for VF, asystole)
-      const idx = Math.floor(xRef.current) % template.length;
-      newY = midY - template[Math.abs(idx)] * amp;
-    } else if (bpm > 0 && pxPerBeat > 0) {
-      const phase = (xRef.current % pxPerBeat) / pxPerBeat;
-      const idx = Math.min(Math.floor(phase * template.length), template.length - 1);
-      newY = midY - template[idx] * amp;
-    }
-    buf.push(newY);
-    if (buf.length > W) buf.shift();
+    const drawn = drawnRef.current;
 
+    // --- Advance cursor & compute new samples for each pixel crossed ---
+    const prevX = cursorRef.current;
+    cursorRef.current = (cursorRef.current + speed) % W;
+    const nextX = cursorRef.current;
+
+    // Sample the template for each pixel between prevX and nextX (supports wrap)
+    const writePixel = (px) => {
+      let y = midY;
+      if (freerun && template.length > 0) {
+        phaseRef.current = (phaseRef.current + 1) % template.length;
+        y = midY - template[phaseRef.current] * amp;
+      } else if (bpm > 0 && template.length > 0) {
+        // Advance phase by 1px worth of beat time. pxPerBeat scales with rate.
+        const pxPerBeat = (60 / bpm) * 70; // 70 px/sec sweep
+        phaseRef.current = (phaseRef.current + 1 / pxPerBeat) % 1;
+        const idx = Math.min(Math.floor(phaseRef.current * template.length), template.length - 1);
+        y = midY - template[idx] * amp;
+      } else {
+        // No rate: flat line, reset phase
+        phaseRef.current = 0;
+        y = midY;
+      }
+      buf[px] = y;
+      drawn[px] = 1;
+    };
+
+    if (nextX >= prevX) {
+      for (let px = Math.ceil(prevX); px < Math.ceil(nextX); px++) writePixel(px % W);
+    } else {
+      for (let px = Math.ceil(prevX); px < W; px++) writePixel(px);
+      for (let px = 0; px < Math.ceil(nextX); px++) writePixel(px);
+    }
+
+    // --- Erase a small window AHEAD of the cursor (gives the "gap" look) ---
+    const eraseW = 18;
+    const eraseStart = Math.ceil(nextX);
     ctx.fillStyle = "#050f0a";
-    ctx.fillRect(0, 0, W, H);
-
-    // Subtle grid
-    ctx.strokeStyle = "rgba(100,200,150,0.04)";
-    ctx.lineWidth = 0.5;
-    for (let gy = 0; gy < H; gy += 10) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
-    for (let gx = 0; gx < W; gx += 10) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
-
-    if (buf.length > 1) {
-      // Glow
-      ctx.beginPath(); ctx.strokeStyle = color + "30"; ctx.lineWidth = 4; ctx.lineJoin = "round";
-      for (let i = 0; i < buf.length; i++) { const px = W - buf.length + i; i === 0 ? ctx.moveTo(px, buf[i]) : ctx.lineTo(px, buf[i]); }
-      ctx.stroke();
-      // Main
-      ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.shadowColor = color; ctx.shadowBlur = 6;
-      for (let i = 0; i < buf.length; i++) { const px = W - buf.length + i; i === 0 ? ctx.moveTo(px, buf[i]) : ctx.lineTo(px, buf[i]); }
-      ctx.stroke(); ctx.shadowBlur = 0;
-      // Leading dot
-      ctx.beginPath(); ctx.arc(W - 1, buf[buf.length - 1], 2, 0, Math.PI * 2);
-      ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 10; ctx.fill(); ctx.shadowBlur = 0;
+    for (let i = 0; i < eraseW; i++) {
+      const px = (eraseStart + i) % W;
+      ctx.fillRect(px, 0, 1, H);
+      drawn[px] = 0;
     }
+
+    // --- Redraw ONLY the slice we just wrote (cheap) + grid where we erased ---
+    // Grid: redraw major/minor lines within the segment we touched.
+    const drawGridSlice = (x0, x1) => {
+      ctx.save();
+      ctx.strokeStyle = "rgba(80,160,120,0.08)";
+      ctx.lineWidth = 0.5;
+      for (let gx = x0; gx < x1; gx++) {
+        if (gx % 40 === 0) { ctx.beginPath(); ctx.moveTo(gx + 0.5, 0); ctx.lineTo(gx + 0.5, H); ctx.stroke(); }
+      }
+      ctx.strokeStyle = "rgba(80,160,120,0.05)";
+      for (let gy = 0; gy < H; gy += 20) { ctx.beginPath(); ctx.moveTo(x0, gy + 0.5); ctx.lineTo(x1, gy + 0.5); ctx.stroke(); }
+      ctx.restore();
+    };
+
+    // Clear + re-paint the "written" slice so we overwrite any old content
+    const paintSlice = (x0, x1) => {
+      if (x1 <= x0) return;
+      ctx.fillStyle = "#050f0a";
+      ctx.fillRect(x0, 0, x1 - x0, H);
+      drawGridSlice(x0, x1);
+      // Glow pass
+      ctx.beginPath();
+      ctx.strokeStyle = color + "33";
+      ctx.lineWidth = 4;
+      ctx.lineJoin = "round";
+      let started = false;
+      for (let px = x0; px < x1; px++) {
+        if (!drawn[px]) { started = false; continue; }
+        if (!started) { ctx.moveTo(px, buf[px]); started = true; }
+        else          { ctx.lineTo(px, buf[px]); }
+      }
+      ctx.stroke();
+      // Main trace
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.6;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 5;
+      started = false;
+      for (let px = x0; px < x1; px++) {
+        if (!drawn[px]) { started = false; continue; }
+        if (!started) { ctx.moveTo(px, buf[px]); started = true; }
+        else          { ctx.lineTo(px, buf[px]); }
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    };
+
+    if (nextX >= prevX) {
+      paintSlice(Math.max(0, Math.ceil(prevX) - 1), Math.ceil(nextX));
+    } else {
+      paintSlice(Math.max(0, Math.ceil(prevX) - 1), W);
+      paintSlice(0, Math.ceil(nextX));
+    }
+
+    // Bright cursor line at nextX
+    ctx.save();
+    ctx.strokeStyle = color + "cc";
+    ctx.lineWidth = 1;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(Math.ceil(nextX) + 0.5, 0);
+    ctx.lineTo(Math.ceil(nextX) + 0.5, H);
+    ctx.stroke();
+    ctx.restore();
+
     animRef.current = requestAnimationFrame(draw);
-  }, [canvasRef, rate, template, color, speed]);
+  }, [canvasRef, rate, template, color, speed, freerun]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    bufRef.current = [];
-    xRef.current = 0;
+    const resize = () => {
+      canvas.width  = Math.max(1, Math.floor(canvas.offsetWidth));
+      canvas.height = Math.max(1, Math.floor(canvas.offsetHeight));
+      bufRef.current = null; // force reset on next frame
+    };
+    resize();
+    cursorRef.current = 0;
+    phaseRef.current = 0;
     animRef.current = requestAnimationFrame(draw);
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      ro.disconnect();
+    };
   }, [draw]);
 }
 
-/* Single channel row: label | waveform canvas | big number */
-function MonitorChannel({ label, unit, value, color, rate, template, abnormal, height = 48, freerun = false }) {
+/* Single channel row: label | waveform canvas | big number + alarm limits */
+function MonitorChannel({ label, sublabel, unit, value, subvalue, color, rate, template, abnormal,
+                         height = 48, freerun = false, alarmHigh, alarmLow, leadTag }) {
   const canvasRef = useRef(null);
   useWaveformTrace(canvasRef, { rate, template, color, freerun });
   const displayColor = abnormal ? '#ef4444' : color;
   return (
-    <div className="flex items-center gap-0" style={{ borderBottom: '1px solid #0d2818' }}>
+    <div className="flex items-stretch gap-0" style={{ borderBottom: '1px solid #0d2818' }}>
       {/* Label column */}
-      <div className="flex flex-col items-start justify-center px-1.5 w-[38px] flex-shrink-0">
-        <span className="text-[7px] font-bold uppercase tracking-wider leading-tight" style={{ color: color + 'aa' }}>{label}</span>
-        <span className="text-[6px] font-mono" style={{ color: color + '55' }}>{unit}</span>
+      <div className="flex flex-col items-start justify-center px-1.5 w-[42px] flex-shrink-0 py-0.5">
+        <span className="text-[8px] font-bold uppercase tracking-wider leading-none" style={{ color: color + 'dd' }}>{label}</span>
+        {sublabel && <span className="text-[6px] font-mono leading-none mt-0.5" style={{ color: color + '88' }}>{sublabel}</span>}
+        <span className="text-[6px] font-mono leading-none mt-0.5" style={{ color: color + '55' }}>{unit}</span>
+        {leadTag && (
+          <span className="text-[6px] font-mono leading-none mt-0.5 px-0.5 rounded" style={{ color: color + 'aa', background: '#081a10' }}>{leadTag}</span>
+        )}
       </div>
       {/* Waveform */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 relative">
         <canvas ref={canvasRef} className="w-full block" style={{ height: `${height}px`, background: '#050f0a' }} />
       </div>
-      {/* Numeric value */}
-      <div className="flex-shrink-0 w-[65px] text-right pr-2">
-        <span className={`font-mono font-black tabular-nums leading-none ${abnormal ? 'animate-pulse' : ''}`}
-          style={{ color: displayColor, fontSize: '1.15rem', textShadow: `0 0 8px ${displayColor}44` }}>
-          {value ?? "--"}
-        </span>
+      {/* Numeric value + alarm limits */}
+      <div className="flex-shrink-0 w-[74px] flex flex-col justify-center items-end pr-1.5 py-0.5">
+        {(alarmHigh != null || alarmLow != null) && (
+          <div className="flex flex-col items-end leading-none" style={{ color: color + '66' }}>
+            <span className="text-[7px] font-mono">{alarmHigh ?? ''}</span>
+            <span className="text-[7px] font-mono">{alarmLow ?? ''}</span>
+          </div>
+        )}
+        <div className="flex items-baseline gap-1 leading-none">
+          <span className={`font-mono font-black tabular-nums ${abnormal ? 'animate-pulse' : ''}`}
+            style={{ color: displayColor, fontSize: '1.35rem', textShadow: `0 0 8px ${displayColor}55`, lineHeight: 1 }}>
+            {value ?? "--"}
+          </span>
+        </div>
+        {subvalue != null && (
+          <span className="text-[9px] font-mono tabular-nums mt-0.5" style={{ color: color + 'bb' }}>{subvalue}</span>
+        )}
       </div>
     </div>
   );
 }
 
 /* Numeric-only row (no waveform) for temp / NIBP */
-function MonitorNumericRow({ label, unit, value, color, abnormal }) {
+function MonitorNumericRow({ label, sublabel, unit, value, subvalue, color, abnormal, alarmHigh, alarmLow }) {
   const displayColor = abnormal ? '#ef4444' : color;
   return (
     <div className="flex items-center justify-between px-1.5 py-1" style={{ borderBottom: '1px solid #0d2818' }}>
       <div className="flex flex-col">
-        <span className="text-[7px] font-bold uppercase tracking-wider" style={{ color: color + 'aa' }}>{label}</span>
-        <span className="text-[6px] font-mono" style={{ color: color + '55' }}>{unit}</span>
+        <span className="text-[8px] font-bold uppercase tracking-wider leading-none" style={{ color: color + 'dd' }}>{label}</span>
+        {sublabel && <span className="text-[6px] font-mono leading-none mt-0.5" style={{ color: color + '88' }}>{sublabel}</span>}
+        <span className="text-[6px] font-mono leading-none mt-0.5" style={{ color: color + '55' }}>{unit}</span>
       </div>
-      <span className={`font-mono font-black tabular-nums leading-none pr-0.5 ${abnormal ? 'animate-pulse' : ''}`}
-        style={{ color: displayColor, fontSize: '1.1rem', textShadow: `0 0 8px ${displayColor}44` }}>
-        {value ?? "--"}
-      </span>
+      <div className="flex items-center gap-1.5">
+        {(alarmHigh != null || alarmLow != null) && (
+          <div className="flex flex-col items-end leading-none" style={{ color: color + '66' }}>
+            <span className="text-[7px] font-mono">{alarmHigh ?? ''}</span>
+            <span className="text-[7px] font-mono">{alarmLow ?? ''}</span>
+          </div>
+        )}
+        <div className="flex flex-col items-end">
+          <span className={`font-mono font-black tabular-nums leading-none ${abnormal ? 'animate-pulse' : ''}`}
+            style={{ color: displayColor, fontSize: '1.25rem', textShadow: `0 0 8px ${displayColor}55` }}>
+            {value ?? "--"}
+          </span>
+          {subvalue != null && (
+            <span className="text-[9px] font-mono tabular-nums mt-0.5" style={{ color: color + 'bb' }}>{subvalue}</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -563,12 +690,21 @@ function MonitorPanel({ vitals, deterioration = 0 }) {
   const oscTemp = useOscillatingFloat(temp, 0.1);
   const oscEtco2 = useOscillating(etco2, 2);
 
+  // Pulso (desde pleth) — pequeña desviación sobre FC (típico de monitor real)
+  const pulseRate = useOscillating(detFc != null && !isArrest ? detFc : null, 2);
+
+  // MAP (mean arterial pressure) = DAP + (SAP - DAP)/3
+  const map = (oscTas != null && oscTad != null && !isArrest)
+    ? Math.round(oscTad + (oscTas - oscTad) / 3)
+    : null;
+
   // Capnography: show EtCO₂ value if available, otherwise FR
   const capnoValue = etco2 != null ? oscEtco2 : (isArrest && fr === 0 ? '--' : oscFr);
   const capnoUnit = etco2 != null ? 'mmHg' : 'rpm';
   const capnoLabel = etco2 != null ? 'EtCO\u2082' : 'CO\u2082';
 
   const taDisplay = (oscTas != null && oscTad != null && !isArrest) ? `${oscTas}/${oscTad}` : (isArrest ? '--' : (oscTas ?? oscTad ?? null));
+  const taSub = map != null ? `(${map})` : null;
 
   // Pick ECG template and display based on rhythm
   const ecgTemplate = isVF ? WAVE_VF : isAsystole ? WAVE_ASYSTOLE : BEAT_ECG;
@@ -576,52 +712,94 @@ function MonitorPanel({ vitals, deterioration = 0 }) {
   const ecgValue = isVF ? 'FV' : isAsystole ? '--' : oscFc;
   const ecgColor = isVF ? '#ef4444' : isAsystole ? '#ef4444' : '#22c55e';
 
-  // Header label for rhythm
-  const rhythmLabel = isVF ? 'FV \u26A0' : isAsystole ? 'ASISTOLIA \u26A0' : (rhythm || 'DII');
-  const headerColor = isArrest ? '#ef444488' : '#4ade8055';
+  // Header label for rhythm / alarm pill
+  const rhythmLabel = isVF ? 'FV \u26A0' : isAsystole ? 'ASISTOLIA \u26A0' : (rhythm || 'II');
+
+  // Tiempo en pantalla (hh:mm) — sólo decorativo; se inicia cuando monta
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setElapsed((v) => v + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
 
   return (
     <div className="rounded-lg overflow-hidden flex flex-col shadow-lg" style={{ background: '#050f0a', border: `1px solid ${isArrest ? '#7f1d1d' : '#0d2818'}` }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-2 py-1" style={{ background: isArrest ? '#1a0505' : '#081a10', borderBottom: `1px solid ${isArrest ? '#7f1d1d' : '#0d2818'}` }}>
-        <span className="text-[7px] font-black uppercase tracking-[0.2em]" style={{ color: headerColor }}>Monitor</span>
-        <span className={`text-[7px] font-mono font-black ${isArrest ? 'animate-pulse' : ''}`} style={{ color: isArrest ? '#ef4444' : '#4ade8033' }}>{rhythmLabel}</span>
+      {/* Status bar — Adulto · tiempo · ritmo · alarma */}
+      <div className="flex items-center justify-between px-2 py-1 gap-2" style={{ background: isArrest ? '#1a0505' : '#0a1f13', borderBottom: `1px solid ${isArrest ? '#7f1d1d' : '#0d2818'}` }}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[8px] font-black uppercase tracking-[0.15em]" style={{ color: '#4ade80aa' }}>Adulto</span>
+          <span className="text-[8px] font-mono tabular-nums" style={{ color: '#4ade8088' }}>{mm}:{ss}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isArrest && (
+            <span className="text-[7px] font-black px-1 py-0.5 rounded animate-pulse" style={{ color: '#fff', background: '#b91c1c' }}>ALARMA !!!</span>
+          )}
+          <span className={`text-[8px] font-mono font-black ${isArrest ? 'animate-pulse' : ''}`} style={{ color: isArrest ? '#ef4444' : '#4ade80bb' }}>{rhythmLabel}</span>
+        </div>
       </div>
 
       {/* Channel rows */}
       <div className="flex-1 flex flex-col">
         {/* ECG — green normally, red in VF/asystole */}
-        <MonitorChannel label={isVF ? "FV" : "ECG"} unit={isArrest ? "" : "lpm"} value={ecgValue} color={ecgColor}
-          rate={fc} template={ecgTemplate} abnormal={isArrest} height={52} freerun={ecgFreerun} />
+        <MonitorChannel
+          label={isVF ? "FV" : "ECG"}
+          sublabel={isArrest ? null : "HR"}
+          unit={isArrest ? "" : "lpm"}
+          value={ecgValue} color={ecgColor}
+          rate={fc} template={ecgTemplate} abnormal={isArrest} height={56} freerun={ecgFreerun}
+          alarmHigh={!isArrest ? 120 : null} alarmLow={!isArrest ? 50 : null}
+          leadTag={!isArrest ? "II" : null}
+        />
 
         {/* SpO2 pleth — cyan (show flat in arrest) */}
         {sat != null && (
-          <MonitorChannel label={"SpO\u2082"} unit="%" value={isArrest && sat === 0 ? '--' : oscSat} color="#22d3ee"
+          <MonitorChannel
+            label={"SpO\u2082"} sublabel="Pleth" unit="%"
+            value={isArrest && sat === 0 ? '--' : oscSat}
+            subvalue={isArrest ? null : (pulseRate != null ? `\u2665 ${pulseRate}` : null)}
+            color="#22d3ee"
             rate={isArrest ? 0 : fc} template={isArrest ? WAVE_ASYSTOLE : BEAT_PLETH}
-            abnormal={isArrest || isVitalAbnormal("sat", sat)} height={40} freerun={isArrest} />
+            abnormal={isArrest || isVitalAbnormal("sat", sat)} height={42} freerun={isArrest}
+            alarmHigh={!isArrest ? 100 : null} alarmLow={!isArrest ? 92 : null}
+          />
         )}
 
         {/* Arterial pressure — red (flat in arrest) */}
         {tas != null && tad != null && (
-          <MonitorChannel label="ART" unit="mmHg" value={taDisplay} color="#f87171"
+          <MonitorChannel
+            label="ART" sublabel="PAM" unit="mmHg"
+            value={taDisplay} subvalue={taSub}
+            color="#f87171"
             rate={isArrest ? 0 : fc} template={isArrest ? WAVE_ASYSTOLE : BEAT_ART}
-            abnormal={isArrest || isVitalAbnormal("tas", tas)} height={40} freerun={isArrest} />
+            abnormal={isArrest || isVitalAbnormal("tas", tas)} height={42} freerun={isArrest}
+            alarmHigh={!isArrest ? 160 : null} alarmLow={!isArrest ? 80 : null}
+          />
         )}
 
         {/* Capnography — yellow: show EtCO₂ if available, else FR */}
         {(fr != null || etco2 != null) && (
-          <MonitorChannel label={capnoLabel} unit={capnoUnit} value={capnoValue} color="#facc15"
+          <MonitorChannel
+            label={capnoLabel} sublabel={etco2 != null ? "Resp" : null} unit={capnoUnit}
+            value={capnoValue} color="#facc15"
             rate={isArrest ? 0 : (fr || 12)} template={isArrest && !etco2 ? WAVE_ASYSTOLE : BEAT_CAPNO}
-            abnormal={isArrest || (etco2 != null ? etco2 < 20 : isVitalAbnormal("fr", fr))} height={36} freerun={isArrest && !etco2} />
+            abnormal={isArrest || (etco2 != null ? etco2 < 20 : isVitalAbnormal("fr", fr))}
+            height={36} freerun={isArrest && !etco2}
+            alarmHigh={!isArrest ? (etco2 != null ? 45 : 30) : null}
+            alarmLow={!isArrest ? (etco2 != null ? 30 : 10) : null}
+          />
         )}
         {/* FR as numeric row when EtCO₂ is shown on the waveform */}
         {etco2 != null && fr != null && (
-          <MonitorNumericRow label="FR" unit="rpm" value={isArrest && fr === 0 ? '--' : oscFr} color="#facc15" abnormal={isVitalAbnormal("fr", fr)} />
+          <MonitorNumericRow label="FR" unit="rpm" value={isArrest && fr === 0 ? '--' : oscFr} color="#facc15"
+            abnormal={isVitalAbnormal("fr", fr)} alarmHigh={30} alarmLow={10} />
         )}
 
         {/* Temperature — numeric only, pink */}
         {temp != null && (
-          <MonitorNumericRow label={"T\u00BA"} unit={"\u00BAC"} value={oscTemp} color="#f472b6" abnormal={isVitalAbnormal("temp", temp)} />
+          <MonitorNumericRow label={"T\u00BA"} sublabel="Core" unit={"\u00BAC"} value={oscTemp} color="#f472b6"
+            abnormal={isVitalAbnormal("temp", temp)} alarmHigh={38.5} alarmLow={35} />
         )}
       </div>
     </div>

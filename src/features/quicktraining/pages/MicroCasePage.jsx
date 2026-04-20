@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import Navbar from "../../../components/Navbar.jsx";
 import MicroCasePlayer from "../components/MicroCasePlayer.jsx";
 import { useAuth } from "../../../auth";
@@ -16,11 +16,12 @@ function profileRole(profile) {
 
 export default function MicroCasePage() {
   const { caseId } = useParams();
-  const { session, ready, profile } = useAuth();
+  const { session, ready, profile, isAdmin } = useAuth();
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const participantRole = useMemo(() => profileRole(profile), [profile]);
+  const isNursing = String(profile?.rol || "").toLowerCase().includes("enfer");
 
   const token = session?.access_token ?? null;
 
@@ -87,6 +88,8 @@ export default function MicroCasePage() {
       </div>
     );
   }
+
+  if (isNursing && !isAdmin) return <Navigate to="/panel" replace />;
 
   return (
     <div className="min-h-screen bg-slate-50">

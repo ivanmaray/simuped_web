@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../auth";
 import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
@@ -126,8 +126,9 @@ function CaseCard({ microCase, onSelect, bestScore }) {
 
 /* ─── QuickTraining page ────────────────────────────────────── */
 export default function QuickTraining() {
-  const { session, ready, profile } = useAuth();
+  const { session, ready, profile, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const isNursing = String(profile?.rol || "").toLowerCase().includes("enfer");
   const [loading, setLoading]               = useState(true);
   const [cases, setCases]                   = useState(EMPTY_STATE);
   const [error, setError]                   = useState("");
@@ -237,6 +238,8 @@ export default function QuickTraining() {
   /* Stats for hero */
   const completedCount = Object.keys(bestScores).length;
 
+  if (ready && isNursing && !isAdmin) return <Navigate to="/panel" replace />;
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar variant="private" />
@@ -253,12 +256,6 @@ export default function QuickTraining() {
               <p className="opacity-80 mt-2 text-sm max-w-xl">
                 Toma de decisiones con consecuencias clínicas reales. Cada opción puntúa.
               </p>
-              {participantRole && (
-                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white/70" />
-                  Rol: {ROLE_LABELS[participantRole] || participantRole}
-                </div>
-              )}
             </div>
             {/* Stats mini */}
             {cases.length > 0 && (
