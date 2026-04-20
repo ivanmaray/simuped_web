@@ -11,7 +11,252 @@ import {
   CheckIcon,
   PlusIcon,
   TrashIcon,
+  PhotoIcon,
+  ArrowUpTrayIcon,
 } from "@heroicons/react/24/outline";
+
+const MODALITIES = [
+  { value: "",      label: "— modalidad —" },
+  { value: "RX",    label: "Radiografía" },
+  { value: "TC",    label: "TC" },
+  { value: "RM",    label: "RM" },
+  { value: "ECO",   label: "Ecografía" },
+  { value: "ECG",   label: "ECG" },
+  { value: "FOTO",  label: "Foto clínica" },
+];
+
+/* ── ImagingEditor ──────────────────────────────────────────────── */
+function ImagingEditor({ imaging, onChange, nodeId }) {
+  const [uploadingIdx, setUploadingIdx] = useState(null);
+  const list = Array.isArray(imaging) ? imaging : [];
+
+  function update(idx, patch) {
+    const next = list.map((item, i) => i === idx ? { ...item, ...patch } : item);
+    onChange(next);
+  }
+  function remove(idx) {
+    onChange(list.filter((_, i) => i !== idx));
+  }
+  function add() {
+    onChange([...list, { name: "", modality: "", url: "", finding: "", attribution: "", attribution_url: "", hotspots: [] }]);
+  }
+
+  async function handleUpload(idx, file) {
+    if (!file) return;
+    setUploadingIdx(idx);
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `${nodeId || "node"}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("microcase-images")
+        .upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("microcase-images").getPublicUrl(path);
+      update(idx, { url: pub?.publicUrl || "" });
+    } catch (err) {
+      alert(`Error subiendo imagen: ${err.message || err}`);
+    } finally {
+      setUploadingIdx(null);
+    }
+  }
+
+  function addHotspot(idx) {
+    const item = list[idx];
+    const hs = Array.isArray(item.hotspots) ? item.hotspots : [];
+    update(idx, { hotspots: [...hs, { x: 50, y: 50, label: "" }] });
+  }
+  function updateHotspot(idx, hIdx, patch) {
+    const item = list[idx];
+    const hs = (item.hotspots || []).map((h, i) => i === hIdx ? { ...h, ...patch } : h);
+    update(idx, { hotspots: hs });
+  }
+  function removeHotspot(idx, hIdx) {
+    const item = list[idx];
+    update(idx, { hotspots: (item.hotspots || []).filter((_, i) => i !== hIdx) });
+  }
+
+  function handlePreviewClick(e, idx) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+    const item = list[idx];
+    const hs = Array.isArray(item.hotspots) ? item.hotspots : [];
+    update(idx, { hotspots: [...hs, { x, y, label: "Nuevo hallazgo" }] });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-[10px] uppercase tracking-wide text-slate-400 font-medium flex items-center gap-1.5">
+          <PhotoIcon className="h-3.5 w-3.5" />
+          Imágenes ({list.length})
+        </label>
+        <button
+          type="button"
+          onClick={add}
+          className="inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-500 hover:border-[#0A3D91] hover:text-[#0A3D91] transition"
+        >
+          <PlusIcon className="h-3.5 w-3.5" />
+          Añadir imagen
+        </button>
+      </div>
+
+      {list.length === 0 && (
+        <p className="text-xs text-slate-400 italic">Sin imágenes. Añade TC, Rx, ECG, foto clínica…</p>
+      )}
+
+      {list.map((img, idx) => (
+        <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <select
+              value={img.modality || ""}
+              onChange={(e) => update(idx, { modality: e.target.value })}
+              className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs bg-white"
+            >
+              {MODALITIES.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Nombre (p. ej. TC craneal sin contraste)"
+              value={img.name || ""}
+              onChange={(e) => update(idx, { name: e.target.value })}
+              className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs bg-white"
+            />
+            <button
+              type="button"
+              onClick={() => remove(idx)}
+              className="text-rose-500 hover:text-rose-700 p-1.5"
+              title="Eliminar imagen"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          </div>
+
+          <textarea
+            placeholder="Hallazgo (mostrado en el viewer)"
+            value={img.finding || ""}
+            onChange={(e) => update(idx, { finding: e.target.value })}
+            rows={2}
+            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs bg-white"
+          />
+
+          <input
+            type="text"
+            placeholder="Atribución (p. ej. © Dr. Doe, Radiopaedia.org, CC-BY-NC-SA 3.0 — rID 12345)"
+            value={img.attribution || ""}
+            onChange={(e) => update(idx, { attribution: e.target.value })}
+            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white italic"
+          />
+          <input
+            type="url"
+            placeholder="URL de la fuente (cumplimiento CC-BY)"
+            value={img.attribution_url || ""}
+            onChange={(e) => update(idx, { attribution_url: e.target.value })}
+            className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-mono"
+          />
+
+          <div className="flex items-center gap-2">
+            <input
+              type="url"
+              placeholder="URL de la imagen"
+              value={img.url || ""}
+              onChange={(e) => update(idx, { url: e.target.value })}
+              className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs bg-white font-mono"
+            />
+            <label className="inline-flex items-center gap-1 rounded-lg bg-[#0A3D91] hover:bg-[#0A3D91]/90 text-white px-3 py-1.5 text-xs font-medium cursor-pointer transition">
+              <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+              {uploadingIdx === idx ? "Subiendo…" : "Subir"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleUpload(idx, e.target.files?.[0])}
+                disabled={uploadingIdx === idx}
+              />
+            </label>
+          </div>
+
+          {img.url && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-slate-500">
+                Clic en la imagen para añadir un hotspot · arrastra para reposicionar (editando x/y abajo)
+              </p>
+              <div
+                className="relative inline-block max-w-full cursor-crosshair border border-slate-200 rounded-lg overflow-hidden bg-black"
+                onClick={(e) => handlePreviewClick(e, idx)}
+              >
+                <img src={img.url} alt="" className="block max-w-full max-h-64 object-contain" />
+                {(img.hotspots || []).map((h, hIdx) => (
+                  <div
+                    key={hIdx}
+                    className="absolute pointer-events-none"
+                    style={{ left: `${h.x}%`, top: `${h.y}%`, transform: "translate(-50%, -50%)" }}
+                  >
+                    <div className="w-5 h-5 rounded-full border-2 border-yellow-400 bg-yellow-400/30" />
+                    <div className="absolute left-1/2 top-full mt-0.5 -translate-x-1/2 bg-yellow-400 text-black text-[9px] font-bold px-1 rounded whitespace-nowrap">
+                      {hIdx + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(img.hotspots || []).length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-wide text-slate-400 font-medium">
+                Hotspots ({(img.hotspots || []).length})
+              </p>
+              {(img.hotspots || []).map((h, hIdx) => (
+                <div key={hIdx} className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-yellow-600 w-4">{hIdx + 1}</span>
+                  <input
+                    type="number" min={0} max={100}
+                    value={h.x ?? 0}
+                    onChange={(e) => updateHotspot(idx, hIdx, { x: Number(e.target.value) })}
+                    className="w-14 rounded border border-slate-200 px-1.5 py-0.5 text-[11px] bg-white"
+                    placeholder="x%"
+                  />
+                  <input
+                    type="number" min={0} max={100}
+                    value={h.y ?? 0}
+                    onChange={(e) => updateHotspot(idx, hIdx, { y: Number(e.target.value) })}
+                    className="w-14 rounded border border-slate-200 px-1.5 py-0.5 text-[11px] bg-white"
+                    placeholder="y%"
+                  />
+                  <input
+                    type="text"
+                    value={h.label || ""}
+                    onChange={(e) => updateHotspot(idx, hIdx, { label: e.target.value })}
+                    className="flex-1 rounded border border-slate-200 px-1.5 py-0.5 text-[11px] bg-white"
+                    placeholder="Etiqueta del hallazgo"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeHotspot(idx, hIdx)}
+                    className="text-rose-500 hover:text-rose-700 p-0.5"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => addHotspot(idx)}
+            className="text-[10px] text-[#0A3D91] hover:underline"
+          >
+            + Añadir hotspot manual
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /* ── helpers ────────────────────────────────────────────────────── */
 const KIND_META = {
@@ -250,6 +495,18 @@ function NodeCard({ node, allNodes, onChange, onSave, onDelete, onAddOption, onD
             <span className="text-sm text-slate-600">Nodo terminal (finaliza el caso)</span>
           </label>
 
+          {/* Imaging editor */}
+          <div className="pt-3 border-t border-slate-100">
+            <ImagingEditor
+              nodeId={node.id}
+              imaging={node.metadata?.imaging || []}
+              onChange={(nextImaging) => onChange({
+                ...node,
+                metadata: { ...(node.metadata || {}), imaging: nextImaging },
+              })}
+            />
+          </div>
+
           {/* Options (decision nodes) */}
           {node.kind === "decision" && (
             <div className="space-y-3">
@@ -403,6 +660,7 @@ export default function Admin_CasoRapidoEditor() {
         order_index:     node.order_index,
         is_terminal:     node.is_terminal,
         auto_advance_to: node.auto_advance_to || null,
+        metadata:        node.metadata || {},
       }).eq("id", node.id);
       if (nodeErr) throw nodeErr;
 

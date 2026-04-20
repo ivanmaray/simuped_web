@@ -782,20 +782,163 @@ function GasometryPanel({ gas }) {
   );
 }
 
-/* ─── Imaging tags ───────────────────────────────────────────── */
-function ImagingTags({ imaging }) {
+/* ─── Imaging viewer ─────────────────────────────────────────── */
+const MODALITY_LABEL = {
+  RX: "Rx",
+  TC: "TC",
+  RM: "RM",
+  ECO: "Eco",
+  ECG: "ECG",
+  FOTO: "Foto",
+};
+
+function ImagingModal({ image, onClose }) {
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const hotspots = Array.isArray(image?.hotspots) ? image.hotspots : [];
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative max-w-5xl w-full max-h-[92vh] bg-slate-900 rounded-xl overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
+          <div className="flex items-center gap-2 text-white">
+            {image.modality && (
+              <span className="text-[10px] font-black uppercase tracking-[0.15em] text-cyan-300 bg-cyan-900/40 px-2 py-0.5 rounded">
+                {MODALITY_LABEL[image.modality] || image.modality}
+              </span>
+            )}
+            <span className="text-sm font-semibold">{image.name}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {hotspots.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setRevealed((v) => !v)}
+                className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded transition"
+              >
+                {revealed ? "Ocultar hallazgos" : `Revelar hallazgos (${hotspots.length})`}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-white/80 hover:text-white text-2xl leading-none w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+              aria-label="Cerrar"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="relative bg-black flex items-center justify-center" style={{ maxHeight: "calc(92vh - 110px)" }}>
+          {image.url ? (
+            <div className="relative inline-block max-w-full max-h-full">
+              <img
+                src={image.url}
+                alt={image.name}
+                className="block max-w-full max-h-[calc(92vh-110px)] object-contain"
+              />
+              {revealed && hotspots.map((h, i) => (
+                <div
+                  key={i}
+                  className="absolute pointer-events-none"
+                  style={{ left: `${h.x}%`, top: `${h.y}%`, transform: "translate(-50%, -50%)" }}
+                >
+                  <div className="w-6 h-6 rounded-full border-2 border-yellow-400 bg-yellow-400/20 animate-pulse" />
+                  <div className="absolute left-1/2 top-full mt-1 -translate-x-1/2 bg-yellow-400 text-black text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
+                    {h.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center text-slate-400 text-sm">
+              Imagen no disponible. El administrador debe asignar una URL.
+            </div>
+          )}
+        </div>
+        {(image.finding || image.attribution) && (
+          <div className="px-4 py-2 bg-slate-800 border-t border-slate-700 text-xs text-slate-200 space-y-1">
+            {image.finding && (
+              <div><span className="font-bold text-blue-300">Hallazgo:</span> {image.finding}</div>
+            )}
+            {image.attribution && (
+              <div className="text-[10px] text-slate-400 italic">
+                {image.attribution_url ? (
+                  <a href={image.attribution_url} target="_blank" rel="noopener noreferrer"
+                     className="underline hover:text-slate-200">{image.attribution}</a>
+                ) : image.attribution}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ImagingViewer({ imaging }) {
+  const [open, setOpen] = useState(null);
   if (!imaging || imaging.length === 0) return null;
   return (
     <div className="mt-3">
       <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 mb-1.5">Imagen</p>
-      <div className="flex flex-wrap gap-1.5">
-        {imaging.map((img, i) => (
-          <div key={i} className="rounded border border-blue-200 bg-blue-50 px-2.5 py-1">
-            <span className="text-[10px] font-bold text-blue-700">{img.name}</span>
-            {img.finding && <span className="text-[10px] text-blue-500 ml-1">- {img.finding}</span>}
-          </div>
-        ))}
+      <div className="flex flex-wrap gap-2">
+        {imaging.map((img, i) => {
+          const hasImage = Boolean(img.url);
+          const modLabel = img.modality ? (MODALITY_LABEL[img.modality] || img.modality) : null;
+          if (hasImage) {
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setOpen(img)}
+                className="group relative flex items-center gap-2 rounded border-2 border-blue-300 bg-blue-50 hover:border-blue-500 hover:bg-blue-100 px-2 py-1.5 transition text-left"
+                title="Pulsa para ampliar"
+              >
+                <img
+                  src={img.url}
+                  alt=""
+                  className="w-12 h-12 object-cover rounded bg-black"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1">
+                    {modLabel && (
+                      <span className="text-[8px] font-black uppercase tracking-[0.1em] text-cyan-700 bg-cyan-100 px-1 rounded">
+                        {modLabel}
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold text-blue-800 truncate">{img.name}</span>
+                  </div>
+                  {img.finding && (
+                    <span className="block text-[9px] text-blue-600 truncate max-w-[160px]">{img.finding}</span>
+                  )}
+                </div>
+              </button>
+            );
+          }
+          return (
+            <div key={i} className="rounded border border-blue-200 bg-blue-50 px-2.5 py-1">
+              {modLabel && (
+                <span className="text-[8px] font-black uppercase tracking-[0.1em] text-cyan-700 mr-1">
+                  {modLabel}
+                </span>
+              )}
+              <span className="text-[10px] font-bold text-blue-700">{img.name}</span>
+              {img.finding && <span className="text-[10px] text-blue-500 ml-1">- {img.finding}</span>}
+            </div>
+          );
+        })}
       </div>
+      {open && <ImagingModal image={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -978,7 +1121,8 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     currentNode && currentNode.auto_advance_to && currentNode.kind !== "decision" && currentNodeId !== startId
   );
 
-  /* Time pressure: deteriorate vitals on decision nodes after delay */
+  /* Time pressure: deteriorate vitals on decision nodes after delay.
+     Persisted in sessionStorage so un refresh no regala tiempo al jugador. */
   useEffect(() => {
     if (currentNode?.kind !== 'decision' || selectedOptionId) {
       setDeterioration(0);
@@ -987,11 +1131,28 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     const hasCritical = currentNode.options?.some(o => o.is_critical);
     if (!hasCritical) { setDeterioration(0); return; }
 
-    const t1 = setTimeout(() => setDeterioration(1), 30000);  // 30s: mild
-    const t2 = setTimeout(() => setDeterioration(2), 60000);  // 60s: moderate
-    const t3 = setTimeout(() => setDeterioration(3), 90000);  // 90s: severe
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [currentNode?.id, currentNode?.kind, selectedOptionId]);
+    const storageKey = `mc_det_${microCase?.id}_${currentNode.id}`;
+    let startAt = Date.now();
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = Number(stored);
+        if (Number.isFinite(parsed) && parsed > 0) startAt = parsed;
+      } else {
+        sessionStorage.setItem(storageKey, String(startAt));
+      }
+    } catch { /* storage unavailable, fall back to now() */ }
+
+    const elapsed = Math.max(0, Date.now() - startAt);
+    const initialLevel = elapsed >= 90000 ? 3 : elapsed >= 60000 ? 2 : elapsed >= 30000 ? 1 : 0;
+    setDeterioration(initialLevel);
+
+    const timers = [];
+    if (initialLevel < 1) timers.push(setTimeout(() => setDeterioration(1), Math.max(0, 30000 - elapsed)));
+    if (initialLevel < 2) timers.push(setTimeout(() => setDeterioration(2), Math.max(0, 60000 - elapsed)));
+    if (initialLevel < 3) timers.push(setTimeout(() => setDeterioration(3), Math.max(0, 90000 - elapsed)));
+    return () => timers.forEach(clearTimeout);
+  }, [currentNode?.id, currentNode?.kind, selectedOptionId, microCase?.id]);
 
   /* ── Handle option select ─────────────────────────────────── */
   function handleOptionSelect(option) {
@@ -1026,6 +1187,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setTimeout(() => setToast(null), 1900);
 
     const elapsedMs = Math.max(0, Date.now() - nodeEnteredAtRef.current);
+    try { sessionStorage.removeItem(`mc_det_${microCase?.id}_${currentNode.id}`); } catch { /* noop */ }
     setHistory(prev => [...prev, {
       nodeId: currentNode.id,
       nodeBody: currentNode.body_md || "",
@@ -1080,6 +1242,9 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
       scoreDelta: h.scoreDelta || 0,
       elapsedMs: h.elapsedMs ?? null,
     }));
+    if (stepsPayload.length === 0 && score !== 0) {
+      console.warn('[MicroCasePlayer] submit inconsistente: score≠0 con historia vacía', { caseId: microCase.id, score, nodeTrailLength: nodeTrail.length });
+    }
     Promise.resolve(
       onSubmitAttempt?.({ caseId: microCase.id, steps: stepsPayload, scoreTotal: score, completed: true, durationSeconds })
     )
@@ -1128,6 +1293,13 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   }
 
   function handleRestart() {
+    try {
+      const prefix = `mc_det_${microCase?.id}_`;
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith(prefix)) sessionStorage.removeItem(key);
+      }
+    } catch { /* noop */ }
     setCurrentNodeId(startId);
     setHistory([]);
     setNodeTrail([]);
@@ -1727,7 +1899,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             <GasometryPanel gas={gasometry} />
 
             {/* Imaging */}
-            <ImagingTags imaging={imaging} />
+            <ImagingViewer imaging={imaging} />
 
             {/* Ventilation */}
             <VentilationPanel vent={ventilation} />

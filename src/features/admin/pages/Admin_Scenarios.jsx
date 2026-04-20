@@ -11,6 +11,7 @@ import {
   FunnelIcon,
   CalendarIcon,
   ClockIcon,
+  UserCircleIcon,
 } from "@heroicons/react/24/outline";
 
 function mapScenarios(rows) {
@@ -40,6 +41,7 @@ async function fetchScenarioList() {
       level,
       difficulty,
       estimated_minutes,
+      reviewer,
       created_at,
       steps(id,questions(id))
     `;
@@ -62,6 +64,7 @@ async function fetchScenarioList() {
       level,
       difficulty,
       estimated_minutes,
+      reviewer,
       created_at,
       steps(id,questions(id))
       `;
@@ -117,6 +120,11 @@ function ScenarioRow({ scenario, onOpen }) {
             {scenario.item_count != null ? (
               <span className="inline-flex items-center gap-1">{scenario.item_count} ítem{scenario.item_count === 1 ? "" : "s"}</span>
             ) : null}
+            {scenario.reviewer ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-blue-700 font-medium">
+                <UserCircleIcon className="h-3.5 w-3.5" />{scenario.reviewer}
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -142,6 +150,7 @@ export default function Admin_Scenarios() {
   const [profile, setProfile] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [reviewerFilter, setReviewerFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -250,6 +259,12 @@ export default function Admin_Scenarios() {
     }
   }
 
+  const reviewers = useMemo(() => {
+    const set = new Set();
+    scenarios.forEach((s) => { if (s.reviewer) set.add(s.reviewer); });
+    return [...set].sort((a, b) => a.localeCompare(b, "es"));
+  }, [scenarios]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return scenarios
@@ -258,6 +273,9 @@ export default function Admin_Scenarios() {
           const statusValue = (scenario.status || "").trim().toLowerCase();
           if (statusValue !== statusFilter) return false;
         }
+        if (reviewerFilter !== "all") {
+          if ((scenario.reviewer || "") !== reviewerFilter) return false;
+        }
         if (!query) return true;
         const levelLabel = formatLevel(scenario.level);
         const haystack = [
@@ -265,6 +283,7 @@ export default function Admin_Scenarios() {
           scenario.summary,
           scenario.level,
           levelLabel,
+          scenario.reviewer,
         ]
           .filter(Boolean)
           .join(" ")
@@ -272,7 +291,7 @@ export default function Admin_Scenarios() {
         return haystack.includes(query);
       })
       .sort((a, b) => (a.title || "").localeCompare(b.title || "", "es", { sensitivity: "base" }));
-  }, [scenarios, search, statusFilter]);
+  }, [scenarios, search, statusFilter, reviewerFilter]);
 
   const busy = loading || refreshing || creating;
 
@@ -351,6 +370,23 @@ export default function Admin_Scenarios() {
                   <option value="en construcción: sin iniciar">En construcción: sin iniciar</option>
                 </select>
               </div>
+              {reviewers.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label htmlFor="reviewer-filter" className="text-xs font-medium text-slate-500">Revisor</label>
+                  <select
+                    id="reviewer-filter"
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                    value={reviewerFilter}
+                    onChange={(event) => setReviewerFilter(event.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="all">Todos</option>
+                    {reviewers.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="ml-auto text-xs text-slate-500">
                 {filtered.length} escenario{filtered.length === 1 ? "" : "s"}
               </div>

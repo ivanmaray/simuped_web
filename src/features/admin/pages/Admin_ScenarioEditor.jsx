@@ -1024,7 +1024,7 @@ export default function Admin_ScenarioEditor() {
       try {
         const { data, error: fetchErr } = await supabase
           .from("scenarios")
-          .select("id,title,summary,status,mode,level,difficulty,estimated_minutes,max_attempts,created_at")
+          .select("id,title,summary,status,mode,level,difficulty,estimated_minutes,max_attempts,reviewer,created_at")
           .eq("id", scenarioId)
           .maybeSingle();
         if (fetchErr) throw fetchErr;
@@ -1098,6 +1098,7 @@ export default function Admin_ScenarioEditor() {
           level: normalizeLevelValue(data.level),
           estimated_minutes: data.estimated_minutes ?? 10,
           max_attempts: data.max_attempts ?? 3,
+          reviewer: data.reviewer || "",
         };
         setForm(formData);
         setInitialForm(formData);
@@ -2561,7 +2562,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
     }
     setSaving(true);
     try {
-      const oldScenarioState = scenario ? { title: scenario.title, summary: scenario.summary, status: scenario.status, mode: scenario.mode, level: scenario.level, estimated_minutes: scenario.estimated_minutes, max_attempts: scenario.max_attempts } : {};
+      const oldScenarioState = scenario ? { title: scenario.title, summary: scenario.summary, status: scenario.status, mode: scenario.mode, level: scenario.level, estimated_minutes: scenario.estimated_minutes, max_attempts: scenario.max_attempts, reviewer: scenario.reviewer } : {};
       const estimated = Number.parseInt(form.estimated_minutes, 10);
       const attempts = Number.parseInt(form.max_attempts, 10);
       // time_limit_minutes no longer used; use estimated_minutes only
@@ -2575,7 +2576,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
         level: levelValue || null,
         estimated_minutes: Number.isFinite(estimated) ? estimated : 10,
         max_attempts: Number.isFinite(attempts) ? attempts : 3,
-        // time_limit_minutes: Number.isFinite(tl) ? tl : null,
+        reviewer: form.reviewer?.trim() || null,
       };
       // If saving as published and scenario includes online, require brief triangle and alarm signs
       if (Array.isArray(payload.mode) && payload.mode.includes('online') && (payload.status === 'Publicado' || payload.status === 'Disponible')) {
@@ -2732,7 +2733,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                   setSaving(true);
                   supabase
                     .from("scenarios")
-                    .select("id,title,summary,status,mode,level,difficulty,estimated_minutes,max_attempts,created_at")
+                    .select("id,title,summary,status,mode,level,difficulty,estimated_minutes,max_attempts,reviewer,created_at")
                     .eq("id", scenarioId)
                     .maybeSingle()
                     .then(({ data, error: fetchErr }) => {
@@ -2747,6 +2748,7 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                           level: data.level ? String(data.level).trim().toLowerCase() : "basico",
                           estimated_minutes: data.estimated_minutes ?? 10,
                           max_attempts: data.max_attempts ?? 3,
+                          reviewer: data.reviewer || "",
                         };
                         setForm(reloadForm);
                         setInitialForm(reloadForm);
@@ -2892,6 +2894,16 @@ criticalRationale: updatedRowObj.critical_rationale || "",
                     })}
                   </div>
                 </div>
+                <label className="block text-sm text-slate-600">
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Revisor asignado</span>
+                  <input
+                    type="text"
+                    value={form.reviewer || ""}
+                    onChange={(event) => handleFieldChange("reviewer", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    placeholder="Nombre del revisor (ej: Sara, Mateo...)"
+                  />
+                </label>
               </div>
             ) : null}
           </div>

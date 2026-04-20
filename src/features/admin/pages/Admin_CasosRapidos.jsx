@@ -233,6 +233,13 @@ function CasoRow({ mc, nodeCount, stats, onEdit, onTogglePublished }) {
             {stats && stats.attempts > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
                 {stats.attempts} intento{stats.attempts === 1 ? "" : "s"} · media {stats.avgScore}
+                {stats.pct != null && (
+                  <span className={`ml-1 rounded px-1 text-[10px] ${
+                    stats.pct >= 70 ? "bg-emerald-100 text-emerald-700"
+                    : stats.pct >= 40 ? "bg-amber-100 text-amber-700"
+                    : "bg-rose-100 text-rose-700"
+                  }`}>{stats.pct}%</span>
+                )}
               </span>
             )}
           </div>
@@ -289,19 +296,40 @@ export default function Admin_CasosRapidos() {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError("");
     try {
-      const [casesRes, nodesRes, attemptsRes] = await Promise.all([
+      const [casesRes, nodesRes, attemptsRes, optionsRes] = await Promise.all([
         supabase.from("micro_cases").select("*").order("title", { ascending: true }),
-        supabase.from("micro_case_nodes").select("case_id"),
+        supabase.from("micro_case_nodes").select("id, case_id, kind"),
         supabase.from("micro_case_attempts").select("case_id, score_total, status"),
+        supabase.from("micro_case_options").select("node_id, score_delta"),
       ]);
       if (casesRes.error) throw casesRes.error;
       setCases(casesRes.data || []);
-      // Count nodes per case
+      // Count nodes per case + build decision-node → case map for min/max calc
       const counts = {};
+      const decisionNodeToCase = {};
       for (const n of nodesRes.data || []) {
         counts[n.case_id] = (counts[n.case_id] || 0) + 1;
+        if (n.kind === "decision") decisionNodeToCase[n.id] = n.case_id;
       }
       setNodeCounts(counts);
+      // Build per-node best/worst delta across its options, aggregated per case
+      const nodeDeltas = {};
+      for (const o of optionsRes?.data || []) {
+        if (!decisionNodeToCase[o.node_id]) continue;
+        const d = typeof o.score_delta === "number" ? o.score_delta : 0;
+        if (!nodeDeltas[o.node_id]) nodeDeltas[o.node_id] = { best: d, worst: Math.min(0, d) };
+        else {
+          nodeDeltas[o.node_id].best  = Math.max(nodeDeltas[o.node_id].best, d);
+          nodeDeltas[o.node_id].worst = Math.min(nodeDeltas[o.node_id].worst, d, 0);
+        }
+      }
+      const bounds = {};
+      for (const [nodeId, { best, worst }] of Object.entries(nodeDeltas)) {
+        const caseId = decisionNodeToCase[nodeId];
+        if (!bounds[caseId]) bounds[caseId] = { ceiling: 0, floor: 0 };
+        bounds[caseId].ceiling += best;
+        bounds[caseId].floor   += worst;
+      }
       // Aggregate attempt stats per case (only completed)
       const agg = {};
       for (const a of attemptsRes?.data || []) {
@@ -312,7 +340,11 @@ export default function Admin_CasosRapidos() {
       }
       const statsMap = {};
       for (const [id, { attempts, sum }] of Object.entries(agg)) {
-        statsMap[id] = { attempts, avgScore: attempts > 0 ? (sum / attempts).toFixed(1) : "0" };
+        const avg = attempts > 0 ? sum / attempts : 0;
+        const b = bounds[id];
+        const range = b ? b.ceiling - b.floor : 0;
+        const pct = b && range > 0 ? Math.round(Math.max(0, Math.min(1, (avg - b.floor) / range)) * 100) : null;
+        statsMap[id] = { attempts, avgScore: avg.toFixed(1), pct };
       }
       setCaseStats(statsMap);
     } catch (err) {
