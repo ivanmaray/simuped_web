@@ -33,7 +33,13 @@ export function AuthProvider({ children }) {
   // Helper to read the auth user and set email confirmation timestamp
   const readAuthUser = useCallback(async () => {
     // Do not call getUser if there's no active session to avoid AuthSessionMissingError
-    const { data: sessData } = await supabase.auth.getSession();
+    let sessData;
+    try {
+      ({ data: sessData } = await withTimeout(supabase.auth.getSession(), 6000, 'getSession'));
+    } catch (e) {
+      console.warn('[Auth] getSession timeout in readAuthUser:', e?.message || e);
+      return null;
+    }
     const hasSession = !!sessData?.session;
     if (!hasSession) {
       setEmailConfirmedAt(null);
@@ -43,9 +49,17 @@ export function AuthProvider({ children }) {
     // Intento con 1 reintento si el error es un 403 posiblemente transitorio
     // (token en refresh, latencia de red, etc.). Solo cerramos sesión local si
     // el segundo intento también falla con un error claramente fatal.
-    async function callGetUser() { return await supabase.auth.getUser(); }
+    async function callGetUser() {
+      return await withTimeout(supabase.auth.getUser(), 6000, 'getUser');
+    }
 
-    let { data, error } = await callGetUser();
+    let data, error;
+    try {
+      ({ data, error } = await callGetUser());
+    } catch (e) {
+      console.warn('[Auth] getUser timeout/throw:', e?.message || e);
+      return null;
+    }
     if (error) {
       const msg1 = (error.message || "").toLowerCase();
       const looksFatal = msg1.includes("sub claim") || msg1.includes("does not exist");
@@ -149,6 +163,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
+    // Safety net: si algo en init() se cuelga (red, supabase down), liberamos
+    // la UI tras 10s para que ProtectedRoute pueda mostrar su fallback de
+    // "Cargando perfil…" o redirigir a "/" en vez de quedar en "Cargando…".
+    const readyFallback = setTimeout(() => {
+      if (!mounted) return;
+      console.warn('[Auth] init stalled >10s, forcing ready=true');
+      setReady(true);
+    }, 10000);
+
     async function init() {
       console.log("[Auth] init start");
       log("Supabase URL:", supabase?.rest?.url ?? "(unknown)");
@@ -213,8 +236,14 @@ export function AuthProvider({ children }) {
           }
         } catch {}
 
-        // 2) Carga sesión actual
-        const { data: sessRes } = await supabase.auth.getSession();
+        // 2) Carga sesión actual (con timeout para no bloquear init)
+        let sessRes;
+        try {
+          ({ data: sessRes } = await withTimeout(supabase.auth.getSession(), 6000, 'init_getSession'));
+        } catch (e) {
+          console.warn('[Auth] init getSession timeout:', e?.message || e);
+          sessRes = null;
+        }
         const sess = sessRes ?? null;
         if (!mounted) return;
         setSession(sess?.session ?? null);
@@ -259,6 +288,7 @@ export function AuthProvider({ children }) {
         unsubRef.current = sub;
       } finally {
         // ¡Muy importante! No bloquear UI: marcamos ready aunque el perfil aún esté cargando
+        clearTimeout(readyFallback);
         if (mounted) setReady(true);
       }
     }
@@ -295,6 +325,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false;
+      clearTimeout(readyFallback);
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVisibilityChange);
       }
