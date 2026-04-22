@@ -73,19 +73,26 @@ export default function Admin_QualityReview() {
   const [loading, setLoading] = useState(true);
   const [filterSeverity, setFilterSeverity] = useState("all");
   const [filterScenario, setFilterScenario] = useState("all");
+  const [scenarioTitles, setScenarioTitles] = useState({});
 
   useEffect(() => {
     async function loadHistory() {
       setLoading(true);
-      const { data } = await supabase
-        .from("quality_reports")
-        .select("id, created_at, summary, total_scenarios_reviewed, findings, scores")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (data && data.length > 0) {
-        setHistory(data);
+      const [{ data: reports }, { data: scens }] = await Promise.all([
+        supabase
+          .from("quality_reports")
+          .select("id, created_at, summary, total_scenarios_reviewed, findings, scores")
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase.from("scenarios").select("id, title"),
+      ]);
+      const titleMap = {};
+      for (const s of scens || []) titleMap[s.id] = s.title;
+      setScenarioTitles(titleMap);
+      if (reports && reports.length > 0) {
+        setHistory(reports);
         // Auto-load the most recent report
-        loadHistoryReport(data[0]);
+        loadHistoryReport(reports[0]);
       }
       setLoading(false);
     }
@@ -234,7 +241,7 @@ export default function Admin_QualityReview() {
                           <span className="text-sm font-medium text-slate-700">
                             #{s.scenario_id}{" "}
                           </span>
-                          <span className="text-sm text-slate-500">{s.scenario_title}</span>
+                          <span className="text-sm text-slate-500">{scenarioTitles[s.scenario_id] || s.scenario_title}</span>
                         </div>
                         <ScoreBar score={s.score || 0} />
                       </div>
@@ -298,7 +305,7 @@ export default function Admin_QualityReview() {
                                 {CATEGORY_LABELS[f.category] || f.category}
                               </span>
                               <span className="text-xs text-slate-500">
-                                #{f.scenario_id} — {f.scenario_title}
+                                #{f.scenario_id} — {scenarioTitles[f.scenario_id] || f.scenario_title}
                               </span>
                             </div>
                             <p className={`mt-1.5 text-sm ${sev.text}`}>{f.description}</p>
