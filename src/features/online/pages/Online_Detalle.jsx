@@ -1473,64 +1473,117 @@ export default function Online_Detalle() {
                       }}
                     />
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-                    <div className="font-semibold text-slate-700 mb-2">Selecciona tu valoración</div>
-                    <div className="text-xs text-slate-500 mb-2">
-                      El triángulo se muestra en gris hasta que elijas una opción. Marca cada vértice (Apariencia, Respiración, Circulación) y luego pulsa <strong>Comprobar</strong>.
-                    </div>
-                    <div className="mb-3 flex items-center gap-2">
-                      {tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation ? (
-                        tepCorrect ? (
-                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-emerald-200 bg-emerald-50 text-emerald-700">TEP correcto ✅</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-xs ring-1 ring-amber-200 bg-amber-50 text-amber-800">TEP completo</span>
-                        )
-                      ) : (
-                        <span className="text-xs text-slate-500">Pulsa en cada vértice o usa los botones.</span>
-                      )}
+                  <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 text-sm shadow-sm">
+                    <div className="flex items-start justify-between gap-3 mb-1">
+                      <div>
+                        <div className="font-semibold text-slate-800 text-[15px]">Selecciona tu valoración</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Marca cada vértice (Apariencia, Respiración, Circulación) y pulsa <strong>Comprobar</strong>.
+                        </div>
+                      </div>
                       <button
                         type="button"
-                        className="ml-auto text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
+                        className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300 transition"
                         onClick={() => { setTepAnswer({ appearance: null, breathing: null, circulation: null }); setTepChecked(false); }}
                       >
-                        Reset TEP
+                        Reset
                       </button>
                     </div>
-                    {(["appearance", "breathing", "circulation"]).map((k) => (
-                      <div key={k} className="mb-3">
-                        <div className="text-xs text-slate-500 mb-1">
-                          {k === "appearance" ? "Apariencia" : k === "breathing" ? "Respiración / Trabajo resp." : "Circulación cutánea"}
-                        </div>
-                        <div>
-                          {tepOptions.map((op) => (
-                            <ChipButton key={op.k} active={tepAnswer[k] === op.k} onClick={() => { setTepAnswer((t) => ({ ...t, [k]: op.k })); setTepChecked(false); }}>
-                              {op.label}
-                            </ChipButton>
-                          ))}
-                        </div>
-                        {tepChecked && tepAnswer[k] && (
-                          <div className={`inline-flex items-center text-xs px-2 py-0.5 rounded border mt-2 ${
-                            tepAnswer[k] === correctTep[k]
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                              : "border-rose-200 bg-rose-50 text-rose-800"
-                          }`}>
-                            {tepAnswer[k] === correctTep[k] ? "Correcto" : "Incorrecto"}
+
+                    {/* Banner de estado */}
+                    <div className="my-3">
+                      {tepAnswer.appearance && tepAnswer.breathing && tepAnswer.circulation ? (
+                        tepCorrect ? (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-emerald-200 bg-emerald-50 text-emerald-800 text-sm">
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            <span className="font-semibold">TEP correcto</span>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                    <div className="mt-2 flex items-center gap-2">
+                        ) : (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-amber-200 bg-amber-50 text-amber-800 text-sm">
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                            <span>TEP completo — pulsa Comprobar</span>
+                          </div>
+                        )
+                      ) : (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl ring-1 ring-slate-200 bg-white text-slate-500 text-xs">
+                          <span className="inline-block w-2 h-2 rounded-full bg-slate-300" />
+                          Pulsa en cada vértice del triángulo o usa los botones.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Vértices */}
+                    {(["appearance", "breathing", "circulation"]).map((k, idx) => {
+                      const selected = tepAnswer[k];
+                      const dotClass = selected === 'green' ? 'bg-emerald-500' : selected === 'amber' ? 'bg-amber-500' : selected === 'red' ? 'bg-rose-500' : 'bg-slate-300';
+                      const isCorrect = tepChecked && selected && selected === correctTep[k];
+                      const isWrong = tepChecked && selected && selected !== correctTep[k];
+                      return (
+                        <div key={k} className="mb-3 last:mb-2">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-slate-100 text-[11px] font-semibold text-slate-500">{idx + 1}</span>
+                            <span className={`inline-block w-2.5 h-2.5 rounded-full ${dotClass} ring-2 ring-white shadow-sm`} />
+                            <span className="text-[13px] font-medium text-slate-700">
+                              {k === "appearance" ? "Apariencia" : k === "breathing" ? "Respiración / Trabajo resp." : "Circulación cutánea"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {tepOptions.map((op) => {
+                              const active = selected === op.k;
+                              const palette = op.k === 'green'
+                                ? { activeBg: 'bg-emerald-500', activeText: 'text-white', activeRing: 'ring-emerald-500', idleText: 'text-emerald-700', idleBg: 'bg-emerald-50 hover:bg-emerald-100', idleRing: 'ring-emerald-200' }
+                                : op.k === 'amber'
+                                ? { activeBg: 'bg-amber-500', activeText: 'text-white', activeRing: 'ring-amber-500', idleText: 'text-amber-800', idleBg: 'bg-amber-50 hover:bg-amber-100', idleRing: 'ring-amber-200' }
+                                : { activeBg: 'bg-rose-500', activeText: 'text-white', activeRing: 'ring-rose-500', idleText: 'text-rose-700', idleBg: 'bg-rose-50 hover:bg-rose-100', idleRing: 'ring-rose-200' };
+                              const cls = active
+                                ? `${palette.activeBg} ${palette.activeText} ring-2 ${palette.activeRing} shadow-sm`
+                                : `${palette.idleBg} ${palette.idleText} ring-1 ${palette.idleRing}`;
+                              return (
+                                <button
+                                  key={op.k}
+                                  type="button"
+                                  onClick={() => { setTepAnswer((t) => ({ ...t, [k]: op.k })); setTepChecked(false); }}
+                                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${cls}`}
+                                >
+                                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${active ? 'bg-white/90' : op.k === 'green' ? 'bg-emerald-500' : op.k === 'amber' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+                                  {op.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {isCorrect && (
+                            <div className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full mt-2 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                              Correcto
+                            </div>
+                          )}
+                          {isWrong && (
+                            <div className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full mt-2 bg-rose-50 text-rose-700 ring-1 ring-rose-200">
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                              Revisa
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    <div className="mt-4 pt-3 border-t border-slate-200 flex items-center gap-3">
                       <button
                         onClick={() => setTepChecked(true)}
                         disabled={!tepComplete}
-                        className="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-40"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0A3D91] text-white text-sm font-medium shadow-sm hover:bg-[#0b4cb0] disabled:opacity-40 disabled:cursor-not-allowed transition"
                       >
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         Comprobar
                       </button>
                       {tepChecked && (
-                        <span className="text-xs text-slate-600">
+                        <span className={`text-xs font-medium ${
+                          tepAnswer.appearance === correctTep.appearance && tepAnswer.breathing === correctTep.breathing && tepAnswer.circulation === correctTep.circulation
+                            ? "text-emerald-700"
+                            : "text-rose-700"
+                        }`}>
                           {tepAnswer.appearance === correctTep.appearance && tepAnswer.breathing === correctTep.breathing && tepAnswer.circulation === correctTep.circulation
-                            ? "Todas correctas"
+                            ? "Todas correctas ✨"
                             : "Revisa los apartados en rojo"}
                         </span>
                       )}
