@@ -1,5 +1,5 @@
 // src/components/Navbar.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useOptionalAuth } from "../auth.jsx";
@@ -219,14 +219,56 @@ function EntrenamientoDropdown() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const isActive = location.pathname.startsWith("/entrenamiento");
+  const closeTimerRef = useRef(null);
+  const containerRef = useRef(null);
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const scheduleClose = () => {
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => setOpen(false), 200);
+  };
+
+  useEffect(() => () => clearCloseTimer(), []);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Close after navigating to a submenu item
+  useEffect(() => { setOpen(false); }, [location.pathname]);
 
   return (
     <div
+      ref={containerRef}
       className="relative"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseEnter={() => { clearCloseTimer(); setOpen(true); }}
+      onMouseLeave={scheduleClose}
     >
       <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open ? "true" : "false"}
+        onClick={() => setOpen(v => !v)}
         className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium rounded-lg nav-link transition whitespace-nowrap ${isActive ? "active text-slate-900" : "text-slate-700"}`}
       >
         Entrenamiento
@@ -236,25 +278,34 @@ function EntrenamientoDropdown() {
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-52 rounded-xl border border-slate-200 bg-white shadow-lg py-1 z-50">
-          <NavLink
-            to="/entrenamiento-rapido"
-            className={({ isActive }) =>
-              `flex flex-col px-4 py-2.5 text-sm hover:bg-slate-50 transition ${isActive ? "text-[#0A3D91] font-medium" : "text-slate-700"}`
-            }
-          >
-            <span>Casos rápidos</span>
-            <span className="text-xs text-amber-600 font-normal">En desarrollo</span>
-          </NavLink>
-          <NavLink
-            to="/entrenamiento-interactivo"
-            className={({ isActive }) =>
-              `flex flex-col px-4 py-2.5 text-sm hover:bg-slate-50 transition ${isActive ? "text-[#0A3D91] font-medium" : "text-slate-700"}`
-            }
-          >
-            <span>Simulación virtual</span>
-            <span className="text-xs text-amber-600 font-normal">En desarrollo</span>
-          </NavLink>
+        <div
+          role="menu"
+          className="absolute top-full left-0 pt-1 w-52 z-50"
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
+        >
+          <div className="rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+            <NavLink
+              to="/entrenamiento-rapido"
+              onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex flex-col px-4 py-2.5 text-sm hover:bg-slate-50 transition ${isActive ? "text-[#0A3D91] font-medium" : "text-slate-700"}`
+              }
+            >
+              <span>Casos rápidos</span>
+              <span className="text-xs text-amber-600 font-normal">En desarrollo</span>
+            </NavLink>
+            <NavLink
+              to="/entrenamiento-interactivo"
+              onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex flex-col px-4 py-2.5 text-sm hover:bg-slate-50 transition ${isActive ? "text-[#0A3D91] font-medium" : "text-slate-700"}`
+              }
+            >
+              <span>Simulación virtual</span>
+              <span className="text-xs text-amber-600 font-normal">En desarrollo</span>
+            </NavLink>
+          </div>
         </div>
       )}
     </div>
