@@ -1,9 +1,54 @@
 // src/ProtectedRoute.jsx
+import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./auth.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+
+function LoadingWithRecovery({ message, onRetry }) {
+  const [stuckSecs, setStuckSecs] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setStuckSecs((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const showRetry = stuckSecs >= 8;
+
+  return (
+    <div className="min-h-screen grid place-items-center px-4">
+      <div className="max-w-sm w-full text-center">
+        <div className="flex items-center justify-center gap-3 text-slate-600">
+          <span className="inline-block h-4 w-4 rounded-full border-2 border-slate-300 border-t-slate-600 animate-spin" />
+          <span>{message}</span>
+        </div>
+        {showRetry && (
+          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left">
+            <p className="text-sm text-amber-900">
+              Está tardando más de lo normal. Puedes reintentar sin recargar la página.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#0A3D91] text-white text-sm px-3 py-1.5 hover:bg-[#0b4cb0] transition"
+              >
+                Reintentar
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 text-slate-700 text-sm px-3 py-1.5 hover:bg-white transition"
+              >
+                Recargar página
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ProtectedRoute() {
-  const { ready, session, profile } = useAuth();
+  const { ready, session, profile, refreshProfile } = useAuth();
   const location = useLocation();
 
   const isOnPending = location.pathname.startsWith("/pendiente");
@@ -12,9 +57,10 @@ export default function ProtectedRoute() {
   // 1) Mientras el contexto no esté listo, no decidir
   if (!ready) {
     return (
-      <div className="min-h-screen grid place-items-center text-slate-600">
-        Cargando…
-      </div>
+      <LoadingWithRecovery
+        message="Cargando…"
+        onRetry={() => window.location.reload()}
+      />
     );
   }
 
@@ -26,9 +72,10 @@ export default function ProtectedRoute() {
   // 3) Necesitamos el perfil para saber `approved` / `is_admin`
   if (!profile) {
     return (
-      <div className="min-h-screen grid place-items-center text-slate-600">
-        Cargando perfil…
-      </div>
+      <LoadingWithRecovery
+        message="Cargando perfil…"
+        onRetry={() => { refreshProfile?.(); }}
+      />
     );
   }
 
@@ -55,6 +102,12 @@ export default function ProtectedRoute() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  // 6) OK → renderizar ruta protegida
-  return <Outlet />;
+  // 6) OK → renderizar ruta protegida, envuelta en un ErrorBoundary que
+  //    se reinicia al cambiar de ruta (key={pathname}) para que un fallo
+  //    en una página no bloquee toda la app hasta un F5.
+  return (
+    <ErrorBoundary key={location.pathname}>
+      <Outlet />
+    </ErrorBoundary>
+  );
 }

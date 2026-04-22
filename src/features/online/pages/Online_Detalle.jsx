@@ -745,6 +745,12 @@ export default function Online_Detalle() {
 
   useEffect(() => {
     let mounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+        setErr((prev) => prev || "La carga tardó demasiado. Comprueba tu conexión y recarga.");
+      }
+    }, 15000);
 
     async function init() {
       const { data, error } = await supabase.auth.getSession();
@@ -753,6 +759,7 @@ export default function Online_Detalle() {
       const sess = data?.session ?? null;
       setSession(sess);
       if (!sess) {
+        clearTimeout(safetyTimer);
         setLoading(false);
         return;
       }
@@ -875,6 +882,7 @@ export default function Online_Detalle() {
       const esc = await getScenarioCached(supabase, scenarioIdNumeric ?? scenarioIdParam);
       if (!esc) {
         setErr("Escenario no encontrado");
+        clearTimeout(safetyTimer);
         setLoading(false);
         return;
       }
@@ -943,6 +951,7 @@ export default function Online_Detalle() {
 
       if (relErr) {
         setErr(relErr.message || "Error cargando pasos/preguntas");
+        clearTimeout(safetyTimer);
         setLoading(false);
         return;
       }
@@ -1007,6 +1016,7 @@ export default function Online_Detalle() {
         const m = performance.getEntriesByName('sim:data:steps+questions')[0];
         if (m) console.log('[Perf] steps+questions ms =', Math.round(m.duration));
       } catch {}
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
 
@@ -1024,6 +1034,7 @@ export default function Online_Detalle() {
     });
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       try {
         sub?.subscription?.unsubscribe?.();
       } catch {}

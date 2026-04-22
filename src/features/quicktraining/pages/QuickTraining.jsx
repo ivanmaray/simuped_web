@@ -64,7 +64,7 @@ function CaseCard({ microCase, onSelect, bestScore }) {
       {/* Completado badge */}
       {isCompleted && (
         <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5">
-          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wide">✓ {bestScore} pts</span>
+          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wide">✓ {Math.max(0, bestScore)} pts</span>
         </div>
       )}
 

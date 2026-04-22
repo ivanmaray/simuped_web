@@ -40,11 +40,29 @@ export function AuthProvider({ children }) {
       return null;
     }
 
-    const { data, error } = await supabase.auth.getUser();
+    // Intento con 1 reintento si el error es un 403 posiblemente transitorio
+    // (token en refresh, latencia de red, etc.). Solo cerramos sesión local si
+    // el segundo intento también falla con un error claramente fatal.
+    async function callGetUser() { return await supabase.auth.getUser(); }
+
+    let { data, error } = await callGetUser();
+    if (error) {
+      const msg1 = (error.message || "").toLowerCase();
+      const looksFatal = msg1.includes("sub claim") || msg1.includes("does not exist");
+      const transient = error.status === 403 && !looksFatal;
+      if (transient) {
+        try { console.debug("[Auth] getUser 403 transitorio, reintentando…"); } catch {}
+        // breve espera (300ms) para dejar acabar un posible refresh en curso
+        await new Promise((r) => setTimeout(r, 300));
+        ({ data, error } = await callGetUser());
+      }
+    }
+
     if (error) {
       try { console.debug("[Auth] getUser error (non-fatal):", error); } catch {}
       const msg = (error.message || "").toLowerCase();
-      if (error.status === 403 || msg.includes("sub claim") || msg.includes("does not exist")) {
+      const fatal = msg.includes("sub claim") || msg.includes("does not exist");
+      if (fatal) {
         // Token apunta a un usuario que ya no existe en Auth → limpiar sesión local
         try { await supabase.auth.signOut({ scope: "local" }); } catch {}
         clearBrokenSessionStorage();
@@ -52,7 +70,9 @@ export function AuthProvider({ children }) {
         setProfile(null);
         setEmailConfirmedAt(null);
       } else {
-        setEmailConfirmedAt(null);
+        // 403 transitorio persistente u otro error: no cerramos sesión,
+        // solo dejamos emailConfirmedAt como estaba (o null si no teníamos).
+        setEmailConfirmedAt((prev) => prev ?? null);
       }
       return null;
     }
@@ -61,17 +81,32 @@ export function AuthProvider({ children }) {
     return u;
   }, []);
 
+  // Race a promise against a timeout; rejects if the promise doesn't settle in time.
+  function withTimeout(promise, ms, label) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => {
+        reject(new Error(`${label || 'operation'}_timeout_${ms}ms`));
+      }, ms);
+      promise.then(
+        (v) => { clearTimeout(t); resolve(v); },
+        (e) => { clearTimeout(t); reject(e); }
+      );
+    });
+  }
+
   // Carga el perfil desde RLS; si no existe, lo crea (upsert) con id/email del auth user.
-  const loadProfile = useCallback(async (uid, email) => {
-    if (!uid || loadingProfileRef.current) return;
+  // force=true permite saltarse el guard in-flight (útil para reintentos manuales).
+  const loadProfile = useCallback(async (uid, email, { force = false } = {}) => {
+    if (!uid) return;
+    if (loadingProfileRef.current && !force) return;
     loadingProfileRef.current = true;
     try {
       const sel = "id,email,nombre,apellidos,rol,unidad,approved,approved_at,is_admin,updated_at";
-      const { data, error, status } = await supabase
-        .from("profiles")
-        .select(sel)
-        .eq("id", uid)
-        .maybeSingle();
+      const { data, error, status } = await withTimeout(
+        supabase.from("profiles").select(sel).eq("id", uid).maybeSingle(),
+        10000,
+        'loadProfile_select'
+      );
 
       if (!error && data) {
         setProfile(data);
@@ -82,11 +117,11 @@ export function AuthProvider({ children }) {
       const missing = (!data && !error) || status === 406 || (error && (error.code === "PGRST116"));
       if (missing) {
         log("profile missing, creating minimal row for", uid);
-        const { data: up, error: upErr } = await supabase
-          .from("profiles")
-          .upsert({ id: uid, email: email ?? null }, { onConflict: "id" })
-          .select(sel)
-          .maybeSingle();
+        const { data: up, error: upErr } = await withTimeout(
+          supabase.from("profiles").upsert({ id: uid, email: email ?? null }, { onConflict: "id" }).select(sel).maybeSingle(),
+          10000,
+          'loadProfile_upsert'
+        );
 
         if (upErr) {
           console.warn("[Auth] upsert profile failed:", upErr);
@@ -102,6 +137,10 @@ export function AuthProvider({ children }) {
         console.warn("[Auth] loadProfile error:", error);
         setProfile(null);
       }
+    } catch (e) {
+      // Timeout u otro error de red: no dejes la app colgada, permite reintento.
+      console.warn("[Auth] loadProfile failed:", e?.message || e);
+      setProfile(null);
     } finally {
       loadingProfileRef.current = false;
     }
@@ -225,8 +264,40 @@ export function AuthProvider({ children }) {
     }
 
     init();
+
+    // Revalidar al volver a la pestaña (tokens caducados tras background, etc.)
+    let lastVisibleAt = Date.now();
+    async function onVisibilityChange() {
+      if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
+        lastVisibleAt = Date.now();
+        return;
+      }
+      const awaySecs = Math.floor((Date.now() - lastVisibleAt) / 1000);
+      lastVisibleAt = Date.now();
+      // Solo revalida si la pestaña ha estado oculta más de 60 s
+      if (awaySecs < 60) return;
+      try {
+        const { data: sessRes } = await supabase.auth.getSession();
+        const sess = sessRes?.session ?? null;
+        if (!mounted) return;
+        setSession(sess);
+        if (sess?.user) {
+          await readAuthUser();
+          await loadProfile(sess.user.id, sess.user.email || null, { force: true });
+        }
+      } catch (e) {
+        console.warn('[Auth] visibility revalidation failed:', e?.message || e);
+      }
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+
     return () => {
       mounted = false;
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
       try { unsubRef.current?.subscription?.unsubscribe?.(); } catch {}
     };
   }, [loadProfile, readAuthUser]);
@@ -234,7 +305,7 @@ export function AuthProvider({ children }) {
   const refreshProfile = useCallback(async () => {
     const uid = session?.user?.id;
     const email = session?.user?.email || null;
-    if (uid) await loadProfile(uid, email);
+    if (uid) await loadProfile(uid, email, { force: true });
   }, [session, loadProfile]);
 
   const refreshAuthUser = useCallback(async () => {

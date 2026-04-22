@@ -205,6 +205,12 @@ export default function Evaluacion_Main() {
 
   useEffect(() => {
     let mounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+        setErr((prev) => prev || "La carga tardó demasiado. Comprueba tu conexión y recarga.");
+      }
+    }, 12000);
     (async () => {
       // Lee ?user=... o ?user_id=... del querystring (modo admin para revisar a otra persona)
       const requestedUserId = searchParams.get("user") || searchParams.get("user_id");
@@ -565,13 +571,14 @@ export default function Evaluacion_Main() {
       try {
         if (targetUserId) await loadMicroCasesFor(targetUserId);
       } catch {}
+      clearTimeout(safetyTimer);
       setLoading(false);
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
       if (!sess) navigate("/", { replace: true });
     });
-    return () => { mounted = false; try { sub?.subscription?.unsubscribe?.(); } catch {} };
+    return () => { mounted = false; clearTimeout(safetyTimer); try { sub?.subscription?.unsubscribe?.(); } catch {} };
   }, [navigate, location.search, location.state, searchParams]);
 
   function fmtDate(d) {

@@ -1619,7 +1619,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-center">
                   <div className="rounded border border-yellow-500/40 bg-yellow-950/50 px-4 py-2 text-center min-w-[75px]">
-                    <p className="text-lg font-black text-yellow-400">{score}<span className="text-yellow-600/60 text-xs">/{maxPossibleScore}</span></p>
+                    <p className="text-lg font-black text-yellow-400">{Math.max(0, score)}<span className="text-yellow-600/60 text-xs">/{maxPossibleScore}</span></p>
                     <p className="text-[8px] font-black text-yellow-600/60 uppercase tracking-widest">PUNTOS</p>
                   </div>
                   <div className="rounded border border-slate-500/40 bg-slate-900/50 px-4 py-2 text-center min-w-[75px]">
@@ -1966,7 +1966,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
                       <span className="font-mono">{dayjs(att.completed_at || att.created_at).format("DD/MM/YY HH:mm")}</span>
                       <div className="flex items-center gap-2">
                         {g && <span className={`font-black ${g.colorText}`}>{'\u2B50'.repeat(g.stars)}</span>}
-                        <span className="font-black text-slate-700">{att.score_total} pts</span>
+                        <span className="font-black text-slate-700">{Math.max(0, att.score_total ?? 0)} pts</span>
                       </div>
                     </div>
                   );
@@ -2040,7 +2040,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               <span className="font-mono text-[10px] text-slate-500 tabular-nums">{"\u23F1"} {formatTime(elapsed)}</span>
               <div className="relative flex-shrink-0">
                 <span key={flashKey} className={`font-mono text-[10px] font-black text-amber-600 ${coinAnim ? 'coin-spin inline-block' : ''}`}>
-                  {score} pts
+                  {Math.max(0, score)} pts
                 </span>
                 {deltaAnim && (
                   <span key={deltaAnim.key}

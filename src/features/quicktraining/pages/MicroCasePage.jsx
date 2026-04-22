@@ -28,6 +28,14 @@ export default function MicroCasePage() {
   useEffect(() => {
     if (!ready || !token || !caseId) return;
 
+    let cancelled = false;
+    const safetyTimer = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setError((prev) => prev || "La carga tardó demasiado. Comprueba tu conexión y recarga.");
+      }
+    }, 12000);
+
     async function fetchCase() {
       setLoading(true);
       setError("");
@@ -43,16 +51,18 @@ export default function MicroCasePage() {
         if (!json?.ok) {
           throw new Error(json?.error || 'Respuesta inválida del servidor');
         }
-        setCaseData(json.case);
+        if (!cancelled) setCaseData(json.case);
       } catch (err) {
         console.error('[MicroCasePage] fetch error', err);
-        setError(err.message || 'No se pudo cargar el microcaso.');
+        if (!cancelled) setError(err.message || 'No se pudo cargar el microcaso.');
       } finally {
-        setLoading(false);
+        clearTimeout(safetyTimer);
+        if (!cancelled) setLoading(false);
       }
     }
 
     fetchCase();
+    return () => { cancelled = true; clearTimeout(safetyTimer); };
   }, [ready, token, caseId]);
 
   async function handleSubmitAttempt(payload) {
