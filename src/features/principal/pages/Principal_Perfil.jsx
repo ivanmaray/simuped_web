@@ -224,7 +224,7 @@ function validarDNI(v) {
 export default function Principal_Perfil() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, refreshProfile } = useAuth();
 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -734,6 +734,7 @@ export default function Principal_Perfil() {
 
     setErrorMsg("");
     setOkMsg("Guardado correctamente ✔");
+    await refreshProfile();
     setTimeout(() => navigate("/dashboard"), 600);
   }
 

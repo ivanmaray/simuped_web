@@ -16,7 +16,7 @@ import {
 
 console.debug("[Simulacion] componente cargado");
 
-const ROLES_VALIDOS = ["medico", "enfermeria", "farmacia"];
+const ROLES_VALIDOS = ["medico", "enfermeria", "farmacia", "admin"];
 const MAX_ATTEMPTS = 3; // denominador para "Intentos usados"
 const NEW_THRESHOLD_DAYS = 30;
 
