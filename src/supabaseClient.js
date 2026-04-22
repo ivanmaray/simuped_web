@@ -14,10 +14,17 @@ if (isBrowser && isDev) {
   console.debug("[supabase] anon key presente:", Boolean(key));
 }
 
+// Passthrough lock: evita el cuelgue de `navigator.locks` cuando una pestaña
+// previa dejó el lock sin liberar (cierre brusco, crash, iOS). Sin este
+// override, getSession/getUser pueden quedar esperando el lock indefinidamente
+// y la app se queda en "Cargando…".
+const passthroughLock = async (_name, _acquireTimeout, fn) => fn();
+
 export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    lock: passthroughLock,
   },
 });
