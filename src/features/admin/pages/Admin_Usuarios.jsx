@@ -41,6 +41,78 @@ function getDni(u) {
   return String(value).trim();
 }
 
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function activityBucket(u) {
+  const ts = u?.last_sign_in_at;
+  if (!ts) return "never";
+  const diffDays = Math.floor((Date.now() - new Date(ts).getTime()) / MS_PER_DAY);
+  if (diffDays > 90) return "gt90";
+  if (diffDays > 30) return "gt30";
+  return "active";
+}
+
+function ActivityChip({ user }) {
+  const bucket = activityBucket(user);
+  if (bucket === "active") return null;
+  const palette = {
+    never: "bg-slate-100 text-slate-600 border-slate-200",
+    gt90: "bg-red-50 text-red-700 border-red-200",
+    gt30: "bg-amber-50 text-amber-700 border-amber-200",
+  };
+  const label = {
+    never: "Nunca ha entrado",
+    gt90: "Inactivo >90 d",
+    gt30: "Inactivo >30 d",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${palette[bucket]}`}>
+      {label[bucket]}
+    </span>
+  );
+}
+
+function sortValueFor(u, key) {
+  switch (key) {
+    case "email": return (u?.email || "").toLowerCase();
+    case "nombre": return `${u?.nombre || ""} ${u?.apellidos || ""}`.trim().toLowerCase();
+    case "rol": return `${u?.rol || ""} ${u?.unidad || ""}`.toLowerCase();
+    case "dni": return (u?.dni || "").toString().toLowerCase();
+    case "last_sign_in_at": return u?.last_sign_in_at ? new Date(u.last_sign_in_at).getTime() : 0;
+    case "approved_at": return (u?.approved_at || u?.updated_at) ? new Date(u.approved_at || u.updated_at).getTime() : 0;
+    case "created_at":
+    default: return u?.created_at ? new Date(u.created_at).getTime() : 0;
+  }
+}
+
+function sortRows(rows, { key, dir }) {
+  const mult = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const va = sortValueFor(a, key);
+    const vb = sortValueFor(b, key);
+    if (va < vb) return -1 * mult;
+    if (va > vb) return 1 * mult;
+    return 0;
+  });
+}
+
+function SortableTh({ label, sortKey, sortState, onToggle, className = "" }) {
+  const active = sortState.key === sortKey;
+  const arrow = active ? (sortState.dir === "asc" ? "▲" : "▼") : "⇅";
+  return (
+    <th className={`text-left px-3 py-2 ${className}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(sortKey)}
+        className="inline-flex items-center gap-1 font-semibold hover:text-slate-900 text-slate-600"
+      >
+        {label}
+        <span className={`text-[10px] ${active ? "text-slate-900" : "text-slate-400"}`}>{arrow}</span>
+      </button>
+    </th>
+  );
+}
+
 function StatusPills({ verified, approved, notifiedAt, verifiedAt, isAdmin = false }) {
   return (
     <div className="flex flex-col gap-1 min-w-[110px]">
@@ -142,6 +214,12 @@ export default function Admin_Usuarios() {
   const [rolFilter, setRolFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");
   const [adminFilter, setAdminFilter] = useState("");
+  const [activityFilter, setActivityFilter] = useState("");
+  const [sortPend, setSortPend] = useState({ key: "created_at", dir: "desc" });
+  const [sortApr, setSortApr] = useState({ key: "approved_at", dir: "desc" });
+  const [detailUser, setDetailUser] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState({ simAttempts: [], microAttempts: [], simCount: 0, microCount: 0 });
 
   useEffect(() => {
     let mounted = true;
@@ -182,19 +260,14 @@ export default function Admin_Usuarios() {
       }
       setSelfId(me?.id || null);
 
-      // 3) Usuarios (usar RPC admin_list_users para evitar RLS sobre profiles)
+      // 3) Usuarios vía RPC admin_list_users (incluye last_sign_in_at de auth.users)
       try {
-        const { data, error: listErr } = await supabase
-          .from("profiles")
-          .select(`
-            id, email, nombre, apellidos, rol, unidad, dni, approved, approved_at,
-            is_admin, created_at, updated_at, verified_at, notified_at
-          `)
-          .order("created_at", { ascending: false });
-
+        const { data, error: listErr } = await supabase.rpc("admin_list_users");
         if (listErr) throw listErr;
-
-        setRows((data || []).filter((r) => r?.id));
+        const sorted = (data || [])
+          .filter((r) => r?.id)
+          .sort((a, b) => new Date(b?.created_at || 0) - new Date(a?.created_at || 0));
+        setRows(sorted);
       } catch (e) {
         setErr(e?.message || "Error cargando usuarios (profiles).");
         setLoading(false);
@@ -266,13 +339,27 @@ export default function Admin_Usuarios() {
         }
         if (adminFilter === 'admins' && !isAdminUser) return false;
         if (adminFilter === 'nonadmins' && isAdminUser) return false;
+        if (activityFilter) {
+          const bucket = activityBucket(r);
+          if (activityFilter === 'never' && bucket !== 'never') return false;
+          if (activityFilter === 'gt30' && !(bucket === 'gt30' || bucket === 'gt90' || bucket === 'never')) return false;
+          if (activityFilter === 'gt90' && !(bucket === 'gt90' || bucket === 'never')) return false;
+          if (activityFilter === 'active' && bucket !== 'active') return false;
+        }
         return true;
       });
 
-    const pend = filt(rows.filter((r) => !isApprovedUser(r)));
-    const apr = filt(rows.filter((r) => isApprovedUser(r)));
+    const pend = sortRows(filt(rows.filter((r) => !isApprovedUser(r))), sortPend);
+    const apr = sortRows(filt(rows.filter((r) => isApprovedUser(r))), sortApr);
     return { pendientes: pend, aprobados: apr };
-  }, [rows, dq, rolFilter, verifiedFilter, adminFilter]);
+  }, [rows, dq, rolFilter, verifiedFilter, adminFilter, activityFilter, sortPend, sortApr]);
+
+  function togglePendSort(key) {
+    setSortPend((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  }
+  function toggleAprSort(key) {
+    setSortApr((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  }
 
   const heroMetrics = useMemo(() => {
     const total = rows.length;
@@ -380,6 +467,76 @@ export default function Admin_Usuarios() {
     } catch (e) {
       console.error("[Admin] aprobar error:", e);
       setErr(e?.message || "No se pudo aprobar al usuario. Revisa permisos RLS.");
+    } finally {
+      setProcessingIds((prev) => {
+        const n = { ...prev };
+        delete n[u.id];
+        return n;
+      });
+    }
+  }
+
+  async function openDetail(u) {
+    if (!u?.id) return;
+    setDetailUser(u);
+    setDetailLoading(true);
+    setDetailData({ simAttempts: [], microAttempts: [], simCount: 0, microCount: 0 });
+    try {
+      const [simRes, microRes] = await Promise.all([
+        supabase
+          .from("attempts")
+          .select("id, scenario_id, started_at, finished_at, score, correct_count, total_count, scenarios(title)")
+          .eq("user_id", u.id)
+          .order("started_at", { ascending: false })
+          .limit(10),
+        supabase
+          .from("micro_case_attempts")
+          .select("id, case_id, score_total, duration_seconds, status, started_at, completed_at, micro_cases(title)")
+          .eq("user_id", u.id)
+          .order("started_at", { ascending: false })
+          .limit(10),
+      ]);
+      const [simCountRes, microCountRes] = await Promise.all([
+        supabase.from("attempts").select("id", { count: "exact", head: true }).eq("user_id", u.id),
+        supabase.from("micro_case_attempts").select("id", { count: "exact", head: true }).eq("user_id", u.id),
+      ]);
+      setDetailData({
+        simAttempts: simRes.data || [],
+        microAttempts: microRes.data || [],
+        simCount: simCountRes.count || 0,
+        microCount: microCountRes.count || 0,
+      });
+    } catch (e) {
+      console.error("[Admin] detail load error", e);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  function closeDetail() {
+    setDetailUser(null);
+    setDetailData({ simAttempts: [], microAttempts: [], simCount: 0, microCount: 0 });
+  }
+
+  async function reinvitar(u) {
+    if (!u?.id || processingIds[u.id]) return;
+    setErr("");
+    setOk("");
+    setProcessingIds((prev) => ({ ...prev, [u.id]: true }));
+    try {
+      const resp = await fetch("/api/admin?action=reinvite_user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: u.id, email: u.email }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || data?.ok === false) {
+        throw new Error(data?.error || "No se pudo reenviar la invitación");
+      }
+      setOk(`Invitación reenviada a ${u.email} ✔`);
+    } catch (e) {
+      console.error("[Admin] reinvite error:", e);
+      setErr(e?.message || "No se pudo reenviar la invitación");
     } finally {
       setProcessingIds((prev) => {
         const n = { ...prev };
@@ -618,7 +775,7 @@ export default function Admin_Usuarios() {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_1fr] gap-4 px-5 py-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_1fr_1fr] gap-4 px-5 py-5">
             <label className="block text-sm text-slate-600">
               <span className="text-xs uppercase tracking-wide text-slate-400">Buscar</span>
               <div className="mt-1 relative flex items-center">
@@ -669,6 +826,20 @@ export default function Admin_Usuarios() {
                 <option value="nonadmins">Solo no administradores</option>
               </select>
             </label>
+            <label className="block text-sm text-slate-600">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Actividad</span>
+              <select
+                value={activityFilter}
+                onChange={(e) => setActivityFilter(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E6ACB]/70 focus:border-transparent"
+              >
+                <option value="">Todas</option>
+                <option value="never">Nunca ha entrado</option>
+                <option value="gt30">Inactivos &gt;30 días</option>
+                <option value="gt90">Inactivos &gt;90 días</option>
+                <option value="active">Activos (≤30 días)</option>
+              </select>
+            </label>
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4 text-xs text-slate-500">
             <span>Usuarios mostrados: {pendientes.length + aprobados.length}</span>
@@ -679,6 +850,7 @@ export default function Admin_Usuarios() {
                 setRolFilter("");
                 setVerifiedFilter("");
                 setAdminFilter("");
+                setActivityFilter("");
               }}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
             >
@@ -710,11 +882,11 @@ export default function Admin_Usuarios() {
                 </colgroup>
                 <thead className="bg-slate-50/80 sticky top-0 z-10">
                   <tr>
-                    <th className="text-left px-3 py-2">Email</th>
-                    <th className="text-left px-3 py-2">Nombre</th>
-                    <th className="text-left px-3 py-2">Rol / Unidad</th>
-                    <th className="text-left px-3 py-2">DNI</th>
-                    <th className="text-left px-3 py-2">Alta</th>
+                    <SortableTh label="Email" sortKey="email" sortState={sortPend} onToggle={togglePendSort} />
+                    <SortableTh label="Nombre" sortKey="nombre" sortState={sortPend} onToggle={togglePendSort} />
+                    <SortableTh label="Rol / Unidad" sortKey="rol" sortState={sortPend} onToggle={togglePendSort} />
+                    <SortableTh label="DNI" sortKey="dni" sortState={sortPend} onToggle={togglePendSort} />
+                    <SortableTh label="Alta / Últ. acceso" sortKey="created_at" sortState={sortPend} onToggle={togglePendSort} />
                     <th className="text-left px-3 py-2">Estado</th>
                     <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
@@ -737,7 +909,13 @@ export default function Admin_Usuarios() {
                           </div>
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">{getDni(u) || "—"}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">{fmtDateShort(u.created_at)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="text-[11px] leading-tight space-y-0.5">
+                            <div>Alta: {fmtDateShort(u.created_at)}</div>
+                            <div>Últ. acceso: {fmtDateShort(u.last_sign_in_at)}</div>
+                            <ActivityChip user={u} />
+                          </div>
+                        </td>
                         <td className="px-3 py-2">
                           <StatusPills
                             verified={verif}
@@ -749,6 +927,13 @@ export default function Admin_Usuarios() {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => openDetail(u)}
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs"
+                              title="Ver detalle del usuario"
+                            >
+                              Detalle
+                            </button>
                             <button
                               onClick={() => aprobar(u)}
                               disabled={!!processingIds[u.id] || !!u.approved}
@@ -769,6 +954,16 @@ export default function Admin_Usuarios() {
                                 </button>
                               );
                             })()}
+                            {!u.last_sign_in_at ? (
+                              <button
+                                onClick={() => reinvitar(u)}
+                                disabled={!!processingIds[u.id]}
+                                className="px-2.5 py-1.5 rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50 disabled:opacity-60 text-xs"
+                                title="Reenviar invitación con nuevo enlace"
+                              >
+                                {processingIds[u.id] ? "…" : "Reinvitar"}
+                              </button>
+                            ) : null}
                             <button
                               onClick={() => openDeleteModal(u)}
                               disabled={deleteLoading || u.id === selfId}
@@ -811,11 +1006,11 @@ export default function Admin_Usuarios() {
                 </colgroup>
                 <thead className="bg-slate-50/80 sticky top-0 z-10">
                   <tr>
-                    <th className="text-left px-3 py-2">Email</th>
-                    <th className="text-left px-3 py-2">Nombre</th>
-                    <th className="text-left px-3 py-2">Rol / Unidad</th>
-                    <th className="text-left px-3 py-2">DNI</th>
-                    <th className="text-left px-3 py-2">Fechas</th>
+                    <SortableTh label="Email" sortKey="email" sortState={sortApr} onToggle={toggleAprSort} />
+                    <SortableTh label="Nombre" sortKey="nombre" sortState={sortApr} onToggle={toggleAprSort} />
+                    <SortableTh label="Rol / Unidad" sortKey="rol" sortState={sortApr} onToggle={toggleAprSort} />
+                    <SortableTh label="DNI" sortKey="dni" sortState={sortApr} onToggle={toggleAprSort} />
+                    <SortableTh label="Fechas" sortKey="approved_at" sortState={sortApr} onToggle={toggleAprSort} />
                     <th className="text-left px-3 py-2">Estado</th>
                     <th className="text-left px-3 py-2">Acciones</th>
                   </tr>
@@ -835,9 +1030,11 @@ export default function Admin_Usuarios() {
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">{getDni(u) || "—"}</td>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          <div className="text-[11px] leading-tight">
+                          <div className="text-[11px] leading-tight space-y-0.5">
                             <div>Aprob.: {fmtDateShort(u.approved_at || u.updated_at)}</div>
                             <div>Alta: {fmtDateShort(u.created_at)}</div>
+                            <div>Últ. acceso: {fmtDateShort(u.last_sign_in_at)}</div>
+                            <ActivityChip user={u} />
                           </div>
                         </td>
                         <td className="px-3 py-2">
@@ -852,12 +1049,29 @@ export default function Admin_Usuarios() {
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
                             <button
+                              onClick={() => openDetail(u)}
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs"
+                              title="Ver detalle del usuario"
+                            >
+                              Detalle
+                            </button>
+                            <button
                               onClick={() => verIntentos(u)}
                               className="px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs"
                               title="Ver intentos del usuario"
                             >
                               Ver
                             </button>
+                            {!u.last_sign_in_at ? (
+                              <button
+                                onClick={() => reinvitar(u)}
+                                disabled={!!processingIds[u.id]}
+                                className="px-2.5 py-1.5 rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50 disabled:opacity-60 text-xs"
+                                title="Reenviar invitación con nuevo enlace"
+                              >
+                                {processingIds[u.id] ? "…" : "Reinvitar"}
+                              </button>
+                            ) : null}
                             <button
                               onClick={() => openDeleteModal(u)}
                               disabled={deleteLoading || u.id === selfId}
@@ -877,6 +1091,148 @@ export default function Admin_Usuarios() {
           )}
         </Card>
       </main>
+      {detailUser ? (
+        <div className="fixed inset-0 z-[1200] flex justify-end bg-slate-900/40 backdrop-blur-sm" onClick={closeDetail}>
+          <div
+            className="h-full w-full max-w-xl bg-white shadow-2xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-6 py-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-slate-900 truncate">
+                  {[detailUser.nombre, detailUser.apellidos].filter(Boolean).join(" ") || detailUser.email || "Usuario"}
+                </h3>
+                <p className="text-xs text-slate-500 truncate">{detailUser.email || "—"}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDetail}
+                className="text-sm text-slate-500 hover:text-slate-700 shrink-0"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              <section>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Perfil</h4>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <dt className="text-slate-500">Rol</dt>
+                  <dd className="text-slate-900">{detailUser.rol || "—"}</dd>
+                  <dt className="text-slate-500">Unidad</dt>
+                  <dd className="text-slate-900">{detailUser.unidad || "—"}</dd>
+                  <dt className="text-slate-500">DNI</dt>
+                  <dd className="text-slate-900">{getDni(detailUser) || "—"}</dd>
+                  <dt className="text-slate-500">Admin</dt>
+                  <dd className="text-slate-900">{detailUser.is_admin ? "Sí" : "No"}</dd>
+                  <dt className="text-slate-500">Aprobado</dt>
+                  <dd className="text-slate-900">{isApprovedUser(detailUser) ? "Sí" : "No"}</dd>
+                  <dt className="text-slate-500">Verificado</dt>
+                  <dd className="text-slate-900">{isVerifiedUser(detailUser) ? "Sí" : "No"}</dd>
+                </dl>
+              </section>
+
+              <section>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Fechas</h4>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <dt className="text-slate-500">Alta</dt>
+                  <dd className="text-slate-900">{fmtDateShort(detailUser.created_at)}</dd>
+                  <dt className="text-slate-500">Aprobado</dt>
+                  <dd className="text-slate-900">{fmtDateShort(detailUser.approved_at)}</dd>
+                  <dt className="text-slate-500">Verificado</dt>
+                  <dd className="text-slate-900">{fmtDateShort(verifiedTimestamp(detailUser))}</dd>
+                  <dt className="text-slate-500">Notificado</dt>
+                  <dd className="text-slate-900">{fmtDateShort(notifiedTimestamp(detailUser, mailTime[detailUser.id]))}</dd>
+                  <dt className="text-slate-500">Último acceso</dt>
+                  <dd className="text-slate-900">
+                    {fmtDateShort(detailUser.last_sign_in_at)}
+                    <div className="mt-1"><ActivityChip user={detailUser} /></div>
+                  </dd>
+                </dl>
+              </section>
+
+              <section>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Actividad</h4>
+                {detailLoading ? (
+                  <div className="text-sm text-slate-500">Cargando…</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div className="rounded-xl border border-slate-200 px-3 py-2">
+                        <div className="text-[11px] uppercase text-slate-500">Simulaciones</div>
+                        <div className="text-xl font-semibold text-slate-900">{detailData.simCount}</div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 px-3 py-2">
+                        <div className="text-[11px] uppercase text-slate-500">Microcasos</div>
+                        <div className="text-xl font-semibold text-slate-900">{detailData.microCount}</div>
+                      </div>
+                    </div>
+
+                    {detailData.simAttempts.length > 0 && (
+                      <div className="mb-4">
+                        <h5 className="text-xs font-semibold text-slate-600 mb-1.5">Últimas simulaciones</h5>
+                        <ul className="space-y-1 text-xs">
+                          {detailData.simAttempts.map((a) => (
+                            <li key={a.id} className="flex justify-between gap-2 border-b border-slate-100 py-1">
+                              <span className="truncate text-slate-700">{a.scenarios?.title || a.scenario_id}</span>
+                              <span className="text-slate-500 whitespace-nowrap">
+                                {a.score != null ? `${a.score} pts` : (a.correct_count != null ? `${a.correct_count}/${a.total_count}` : "—")}
+                                {" · "}{fmtDateShort(a.started_at)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {detailData.microAttempts.length > 0 && (
+                      <div>
+                        <h5 className="text-xs font-semibold text-slate-600 mb-1.5">Últimos microcasos</h5>
+                        <ul className="space-y-1 text-xs">
+                          {detailData.microAttempts.map((a) => (
+                            <li key={a.id} className="flex justify-between gap-2 border-b border-slate-100 py-1">
+                              <span className="truncate text-slate-700">{a.micro_cases?.title || a.case_id}</span>
+                              <span className="text-slate-500 whitespace-nowrap">
+                                {a.score_total != null ? `${a.score_total} pts` : "—"}
+                                {" · "}{a.status}
+                                {" · "}{fmtDateShort(a.started_at)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {detailData.simAttempts.length === 0 && detailData.microAttempts.length === 0 && (
+                      <div className="text-sm text-slate-500">Sin actividad registrada.</div>
+                    )}
+                  </>
+                )}
+              </section>
+
+              <section className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { closeDetail(); verIntentos(detailUser); }}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs"
+                >
+                  Ver intentos completos
+                </button>
+                {!detailUser.last_sign_in_at ? (
+                  <button
+                    type="button"
+                    onClick={() => reinvitar(detailUser)}
+                    disabled={!!processingIds[detailUser.id]}
+                    className="px-3 py-1.5 rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50 disabled:opacity-60 text-xs"
+                  >
+                    {processingIds[detailUser.id] ? "…" : "Reinvitar"}
+                  </button>
+                ) : null}
+              </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {inviteOpen ? (
         <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-900/50 px-4 py-6 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl">

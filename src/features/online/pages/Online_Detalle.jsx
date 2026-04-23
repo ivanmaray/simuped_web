@@ -1958,9 +1958,6 @@ export default function Online_Detalle() {
                             }`}
                         >
                           <div className="text-sm font-medium">{s.description || `Bloque ${idx + 1}`}</div>
-                          {s.role_specific && (
-                            <div className="text-xs text-slate-500">Específico de rol</div>
-                          )}
                         </button>
                       </li>
                     );

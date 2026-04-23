@@ -1229,6 +1229,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   const [selectedOptionId, setSelectedOptionId] = useState(null);
   const [isLocked, setIsLocked]                 = useState(false);
   const [pendingAdvance, setPendingAdvance]     = useState(null); // { nextNodeId, completed }
+  const [absorbedInfo, setAbsorbedInfo]         = useState(null); // info node absorbido en la siguiente decisión: { body_md, metadata }
   const [toast, setToast]                       = useState(null);
   const [screenFlash, setScreenFlash] = useState(null);
   const [coinAnim, setCoinAnim]     = useState(false);
@@ -1253,6 +1254,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setSelectedOptionId(null);
     setIsLocked(false);
     setPendingAdvance(null);
+    setAbsorbedInfo(null);
     setStreak(0);
     setDeltaAnim(null);
     setShowConfetti(false);
@@ -1441,9 +1443,28 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     if (completed || !nextNodeId) {
       setIsCompleted(true);
       setCurrentNodeId(null);
-    } else {
-      setCurrentNodeId(nextNodeId);
+      setAbsorbedInfo(null);
+      return;
     }
+    // Fusión info→decisión: si el siguiente nodo es un info de transición que
+    // auto-avanza a una decisión, absorbemos su body/metadata y saltamos
+    // directamente a la decisión para evitar un clic intermedio.
+    const nextNode = nodeMap.get(nextNodeId);
+    if (
+      nextNode &&
+      nextNode.kind === 'info' &&
+      !nextNode.is_terminal &&
+      nextNode.auto_advance_to
+    ) {
+      const target = nodeMap.get(nextNode.auto_advance_to);
+      if (target && target.kind === 'decision') {
+        setAbsorbedInfo({ body_md: nextNode.body_md || "", metadata: nextNode.metadata || null });
+        setCurrentNodeId(nextNode.auto_advance_to);
+        return;
+      }
+    }
+    setAbsorbedInfo(null);
+    setCurrentNodeId(nextNodeId);
   }
 
   /* ── Handle terminal node reached — auto-register ──────────── */
@@ -1540,6 +1561,7 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
     setSelectedOptionId(null);
     setIsLocked(false);
     setPendingAdvance(null);
+    setAbsorbedInfo(null);
     setStreak(0);
     setDeltaAnim(null);
     setShowConfetti(false);
@@ -2006,11 +2028,17 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
   /* ════════════════════════════════════════════════════════════
      PLAYER — 3-Column Clinical Monitor Layout
   ════════════════════════════════════════════════════════════ */
-  const vitals = currentNode?.metadata?.vitals || null;
-  const labs = currentNode?.metadata?.labs || null;
-  const gasometry = currentNode?.metadata?.gasometry || null;
-  const imaging = currentNode?.metadata?.imaging || null;
-  const ventilation = currentNode?.metadata?.ventilation || null;
+  // Al fusionar info→decisión, los vitals viven en la decisión y labs/gasometría
+  // en el info absorbido. Mezclamos ambos dando prioridad al info (más reciente).
+  const activeMetadata = useMemo(
+    () => ({ ...(currentNode?.metadata || {}), ...(absorbedInfo?.metadata || {}) }),
+    [currentNode, absorbedInfo]
+  );
+  const vitals = activeMetadata?.vitals || null;
+  const labs = activeMetadata?.labs || null;
+  const gasometry = activeMetadata?.gasometry || null;
+  const imaging = activeMetadata?.imaging || null;
+  const ventilation = activeMetadata?.ventilation || null;
   const patientInfo = microCase?.patient_info || null;
 
   return (
@@ -2116,6 +2144,13 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
               <PatientDemographics info={patientInfo} />
             </div>
 
+            {/* Prólogo narrativo del info fusionado (evolución del paciente) */}
+            {absorbedInfo?.body_md && (
+              <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 prose prose-sm max-w-none text-slate-700 [&>p]:leading-relaxed [&>p]:mb-1 [&>p:last-child]:mb-0 [&>p]:text-[0.82rem] [&_strong]:text-slate-900 [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:tracking-wide">
+                <ReactMarkdown>{formatInfoBody(absorbedInfo.body_md)}</ReactMarkdown>
+              </div>
+            )}
+
             {/* Narrative text — shown for ALL node types in the center panel */}
             {currentNode.body_md && (
               <div className="prose prose-sm max-w-none text-slate-700 [&>p]:leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0 [&>p]:text-[0.85rem] [&_strong]:text-slate-900 [&_h3]:text-slate-800 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:tracking-wide [&_ul]:text-slate-600 [&_li]:text-[0.83rem]">
@@ -2142,19 +2177,18 @@ export default function MicroCasePlayer({ microCase, onSubmitAttempt, participan
             {/* ── INFO node action ── */}
             {currentNode.kind === 'info' && (
               <div className="flex flex-col h-full min-h-[200px] space-y-3">
-                {/* Feedback de la decisión anterior — persiste hasta la próxima pregunta */}
-                {lastFeedback && currentNodeId !== startId && (
-                  <div className={`rounded-lg border px-3 py-2.5 text-xs ${lastFeedback.positive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
-                    <p className="text-[9px] font-black uppercase tracking-[0.15em] mb-1 opacity-70">Feedback de tu decisión</p>
-                    <div className="prose prose-xs max-w-none [&_p]:text-inherit [&_strong]:font-bold [&_p]:mb-1 [&_p:last-child]:mb-0">
-                      <ReactMarkdown>{lastFeedback.content}</ReactMarkdown>
-                    </div>
-                  </div>
-                )}
                 <div className="flex-1 flex items-center justify-center">
                   {currentNode.auto_advance_to ? (
                     <button type="button"
-                      onClick={() => setCurrentNodeId(currentNode.auto_advance_to)}
+                      onClick={() => {
+                        // Si saltamos a una decisión, arrastramos los labs/gasometría/imagen
+                        // del nodo de presentación para que sigan visibles en la decisión.
+                        const target = nodeMap.get(currentNode.auto_advance_to);
+                        if (target && target.kind === 'decision' && currentNode.metadata) {
+                          setAbsorbedInfo({ body_md: '', metadata: currentNode.metadata });
+                        }
+                        setCurrentNodeId(currentNode.auto_advance_to);
+                      }}
                       autoFocus
                       className="inline-flex items-center gap-2 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 px-6 py-3 text-sm font-bold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20 tracking-wide">
                       {currentNodeId === startId ? `\u25B6 Comenzar caso` : `Continuar \u2192`}

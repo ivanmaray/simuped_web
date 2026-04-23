@@ -64,6 +64,8 @@ export default async function handler(req, res) {
       return await handleDeleteUser(req, res);
     case 'invite_user':
       return await handleInviteUser(req, res);
+    case 'reinvite_user':
+      return await handleReinviteUser(req, res);
     case 'seed_profile':
       return await handleSeedProfile(req, res);
     case 'cleanup_email':
@@ -77,6 +79,60 @@ export default async function handler(req, res) {
     default:
       return res.status(400).json({ ok: false, error: 'invalid_action' });
   }
+}
+
+function buildInvitationEmailHtml({ logoUrl, email, nombre, apellidos, roleLabel, unidadLabel, magicLink, recoveryLink, expiryLabel }) {
+  return `
+      <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(15,23,42,0.12);">
+          <tr>
+            <td bgcolor="#0A3D91" style="background-color:#0A3D91;background-image:linear-gradient(135deg,#0A3D91,#1E6ACB);padding:18px;text-align:center;color:#ffffff;">
+              ${logoUrl
+                ? `<img src="${logoUrl}" alt="SimuPed" style="width:96px;max-width:100%;display:block;margin:0 auto 8px;" />
+                   <div style="font-size:16px;font-weight:600;letter-spacing:0.2px;">Simulación Pediátrica</div>`
+                : '<div style="font-size:22px;font-weight:700;letter-spacing:0.3px;">SimuPed</div>'}
+              <div style="margin-top:4px;font-size:13px;opacity:0.85;">Hospital Universitario Central de Asturias</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 36px;color:#1f2937;">
+              <h1 style="margin:10px 0 14px;font-size:22px;color:#0f172a;">Has sido invitado/a a SimuPed</h1>
+              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Hola ${nombre} ${apellidos},</p>
+              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Has sido invitado/a a la plataforma <strong style="color:#0A3D91;">SimuPed</strong>. Ya puedes acceder y completar tu perfil para empezar.</p>
+
+              <div style="margin:20px 0;padding:20px 24px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
+                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📧 Email:</strong> ${email}</p>
+                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">👤 Rol:</strong> ${roleLabel}</p>
+                <p style="margin:0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">🏥 Unidad:</strong> ${unidadLabel}</p>
+              </div>
+
+              <div style="text-align:center;margin:28px 0;">
+                <a href="${recoveryLink}" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Establecer contraseña y entrar</a>
+              </div>
+
+              <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#64748b;">Recuerda: el enlace de activación caduca en ${expiryLabel}. Si expira, pide a tu coordinador que te reenvíe la invitación.</p>
+
+              <p style="margin:12px 0 0;font-size:13px;line-height:1.6;color:#64748b;">¿Prefieres entrar sin contraseña? Usa el <a href="${magicLink}" style="color:#0A3D91;text-decoration:none;">acceso directo</a>.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
+              <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
+              <p style="margin:6px 0;font-size:13px;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a></p>
+              <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+}
+
+function roleLabelForEmail(value) {
+  const raw = (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (raw.startsWith('medic')) return 'Médico';
+  if (raw.startsWith('enfermer')) return 'Enfermería';
+  if (raw.startsWith('farmac')) return 'Farmacia';
+  return value || 'No especificado';
 }
 
 async function handleDeleteUser(req, res) {
@@ -389,65 +445,23 @@ async function handleInviteUser(req, res) {
       console.warn('[admin_invite_user] recovery link generation failed', e);
     }
 
-    const roleLabel = (v) => {
-      const k = stripAccents((v || '').toString()).toLowerCase();
-      if (k.startsWith('medic')) return 'Médico';
-      if (k.startsWith('enfermer')) return 'Enfermería';
-      if (k.startsWith('farmac')) return 'Farmacia';
-      return v || 'No especificado';
-    };
+    const roleForEmail = roleLabelForEmail(rolNorm || rol);
+    const unidadForEmail = unidadNorm || (unidad || '').toString().trim() || 'No especificada';
+    const nombreForEmail = nombreClean || nombre || '';
+    const apellidosForEmail = apellidosClean || apellidos || '';
+    const expiryLabel = TOKEN_EXPIRATION_DAYS === 1 ? '24 horas' : `${TOKEN_EXPIRATION_DAYS} días`;
 
-  const roleForEmail = roleLabel(rolNorm || rol);
-  const unidadForEmail = unidadNorm || (unidad || '').toString().trim() || 'No especificada';
-  const nombreForEmail = nombreClean || nombre || '';
-  const apellidosForEmail = apellidosClean || apellidos || '';
-  const expiryLabel = TOKEN_EXPIRATION_DAYS === 1 ? '24 horas' : `${TOKEN_EXPIRATION_DAYS} días`;
-
-    const html = `
-      <div style="background-color:#f5f7fb;padding:20px 0;margin:0;font-family:'Segoe UI',Arial,sans-serif;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px;margin:0 auto;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(15,23,42,0.12);">
-          <tr>
-            <td bgcolor="#0A3D91" style="background-color:#0A3D91;background-image:linear-gradient(135deg,#0A3D91,#1E6ACB);padding:18px;text-align:center;color:#ffffff;">
-              ${logoUrl
-                ? `<img src="${logoUrl}" alt="SimuPed" style="width:96px;max-width:100%;display:block;margin:0 auto 8px;" />
-                   <div style="font-size:16px;font-weight:600;letter-spacing:0.2px;">Simulación Pediátrica</div>`
-                : '<div style="font-size:22px;font-weight:700;letter-spacing:0.3px;">SimuPed</div>'}
-              <div style="margin-top:4px;font-size:13px;opacity:0.85;">Hospital Universitario Central de Asturias</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px 36px;color:#1f2937;">
-              <h1 style="margin:10px 0 14px;font-size:22px;color:#0f172a;">Has sido invitado/a a SimuPed</h1>
-              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Hola ${nombreForEmail} ${apellidosForEmail},</p>
-              <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Has sido invitado/a a la plataforma <strong style="color:#0A3D91;">SimuPed</strong>. Ya puedes acceder y completar tu perfil para empezar.</p>
-
-              <div style="margin:20px 0;padding:20px 24px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
-                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">📧 Email:</strong> ${email}</p>
-                <p style="margin:0 0 8px;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">👤 Rol:</strong> ${roleForEmail}</p>
-                <p style="margin:0;font-size:15px;color:#0f172a;"><strong style="color:#0A3D91;">🏥 Unidad:</strong> ${unidadForEmail}</p>
-              </div>
-
-              <div style="text-align:center;margin:28px 0;">
-                <a href="${recoveryLink}" style="display:inline-block;background:#0A3D91;color:#ffffff;padding:14px 32px;border-radius:999px;font-size:16px;font-weight:600;text-decoration:none;box-shadow:0 10px 25px rgba(10,61,145,0.35);">Establecer contraseña y entrar</a>
-              </div>
-
-              <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#64748b;">Recuerda: el enlace de activación caduca en ${expiryLabel}. Si expira, pide a tu coordinador que te reenvíe la invitación.</p>
-
-              <p style="margin:12px 0 0;font-size:13px;line-height:1.6;color:#64748b;">¿Prefieres entrar sin contraseña? Usa el <a href="${magicLink}" style="color:#0A3D91;text-decoration:none;">acceso directo</a>.</p>
-
-              
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color:#f1f5f9;padding:20px 32px;text-align:center;color:#64748b;font-size:13px;">
-              <p style="margin:0 0 6px;">Equipo SimuPed · UCI Pediátrica & UGC Farmacia HUCA</p>
-              <p style="margin:6px 0;font-size:13px;color:#64748b;">¿Dudas? Escríbenos a <a href="mailto:contacto@simuped.com" style="color:#0A3D91;text-decoration:none;">contacto@simuped.com</a></p>
-              <p style="margin:0;font-size:12px;opacity:0.75;">Este mensaje se envió automáticamente desde la plataforma SimuPed.</p>
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
+    const html = buildInvitationEmailHtml({
+      logoUrl,
+      email,
+      nombre: nombreForEmail,
+      apellidos: apellidosForEmail,
+      roleLabel: roleForEmail,
+      unidadLabel: unidadForEmail,
+      magicLink,
+      recoveryLink,
+      expiryLabel,
+    });
 
     await resend.emails.send({
       from: 'SimuPed <notificaciones@simuped.com>',
@@ -471,6 +485,114 @@ async function handleInviteUser(req, res) {
     });
   } catch (err) {
     console.error('[admin_invite_user] error', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+}
+
+async function handleReinviteUser(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  try {
+    const { id, email } = req.body || {};
+    if (!id && !email) {
+      return res.status(400).json({ ok: false, error: 'missing_user' });
+    }
+
+    const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+
+    if (!SUPABASE_URL || !SERVICE_KEY || !RESEND_API_KEY) {
+      console.error('[admin_reinvite_user] Missing configuration');
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    let user = null;
+    if (id) {
+      const { data } = await admin.auth.admin.getUserById(id);
+      user = data?.user || null;
+    }
+    if (!user && email) {
+      const emailNorm = String(email).trim().toLowerCase();
+      const { data: list } = await admin.auth.admin.listUsers();
+      user = list?.users?.find((u) => (u.email || '').toLowerCase() === emailNorm) || null;
+    }
+    if (!user) {
+      return res.status(404).json({ ok: false, error: 'user_not_found' });
+    }
+
+    const emailNorm = (user.email || '').toLowerCase();
+
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('nombre, apellidos, rol, unidad')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const meta = user.user_metadata || {};
+    const nombreForEmail = profile?.nombre || meta.nombre || '';
+    const apellidosForEmail = profile?.apellidos || meta.apellidos || '';
+    const roleForEmail = roleLabelForEmail(profile?.rol || meta.rol);
+    const unidadForEmail = ((profile?.unidad || meta.unidad || '').toString().trim()) || 'No especificada';
+
+    const resend = new Resend(RESEND_API_KEY);
+    const baseUrl = getAppBaseUrl();
+    const assetBaseUrl = getAssetBaseUrl(baseUrl);
+    const logoUrl = resolveAssetUrl(assetBaseUrl, '/logo-negative.png') || resolveAssetUrl(assetBaseUrl, '/logo-simuped-Dtpd4WLf.avif');
+
+    let magicLink = `${baseUrl}/auth`;
+    let recoveryLink = `${baseUrl}/auth`;
+    try {
+      const { data: magic } = await admin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: emailNorm,
+        options: { redirectTo: `${baseUrl}/dashboard?invited=1` }
+      });
+      magicLink = magic?.properties?.action_link || magicLink;
+    } catch (e) {
+      console.warn('[admin_reinvite_user] magiclink generation failed', e);
+    }
+    try {
+      const { data: rec } = await admin.auth.admin.generateLink({
+        type: 'recovery',
+        email: emailNorm,
+        options: { redirectTo: `${baseUrl}/perfil?set_password=1` }
+      });
+      recoveryLink = rec?.properties?.action_link || recoveryLink;
+    } catch (e) {
+      console.warn('[admin_reinvite_user] recovery link generation failed', e);
+    }
+
+    const expiryLabel = TOKEN_EXPIRATION_DAYS === 1 ? '24 horas' : `${TOKEN_EXPIRATION_DAYS} días`;
+
+    const html = buildInvitationEmailHtml({
+      logoUrl,
+      email: emailNorm,
+      nombre: nombreForEmail,
+      apellidos: apellidosForEmail,
+      roleLabel: roleForEmail,
+      unidadLabel: unidadForEmail,
+      magicLink,
+      recoveryLink,
+      expiryLabel,
+    });
+
+    await resend.emails.send({
+      from: 'SimuPed <notificaciones@simuped.com>',
+      to: emailNorm,
+      subject: 'Reenvío de invitación a SimuPed',
+      html,
+    });
+
+    return res.status(200).json({ ok: true, user_id: user.id, email: emailNorm });
+  } catch (err) {
+    console.error('[admin_reinvite_user] error', err);
     return res.status(500).json({ ok: false, error: 'internal_error' });
   }
 }
