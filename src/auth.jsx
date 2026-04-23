@@ -110,10 +110,14 @@ export function AuthProvider({ children }) {
 
   // Carga el perfil desde RLS; si no existe, lo crea (upsert) con id/email del auth user.
   // force=true permite saltarse el guard in-flight (útil para reintentos manuales).
-  const loadProfile = useCallback(async (uid, email, { force = false } = {}) => {
+  // keepOnError=true preserva el perfil previo si la recarga falla (p. ej. en
+  // revalidaciones de background al volver a la pestaña); evita desmontar el
+  // <Outlet> y perder estado de simulaciones en curso.
+  const loadProfile = useCallback(async (uid, email, { force = false, keepOnError = false } = {}) => {
     if (!uid) return;
     if (loadingProfileRef.current && !force) return;
     loadingProfileRef.current = true;
+    const clearProfileIfAllowed = () => { if (!keepOnError) setProfile(null); };
     try {
       const sel = "id,email,nombre,apellidos,rol,unidad,approved,approved_at,is_admin,updated_at";
       const { data, error, status } = await withTimeout(
@@ -139,7 +143,7 @@ export function AuthProvider({ children }) {
 
         if (upErr) {
           console.warn("[Auth] upsert profile failed:", upErr);
-          setProfile(null);
+          clearProfileIfAllowed();
           return;
         }
         setProfile(up ?? null);
@@ -149,12 +153,12 @@ export function AuthProvider({ children }) {
       // Otros errores (p.ej. 500 por CHECK/RLS) → no bloquear app, seguir sin perfil
       if (error) {
         console.warn("[Auth] loadProfile error:", error);
-        setProfile(null);
+        clearProfileIfAllowed();
       }
     } catch (e) {
       // Timeout u otro error de red: no dejes la app colgada, permite reintento.
       console.warn("[Auth] loadProfile failed:", e?.message || e);
-      setProfile(null);
+      clearProfileIfAllowed();
     } finally {
       loadingProfileRef.current = false;
     }
@@ -279,7 +283,10 @@ export function AuthProvider({ children }) {
             await readAuthUser();
             const uid = newSess.user.id;
             const email = newSess.user.email || null;
-            await loadProfile(uid, email);
+            // TOKEN_REFRESHED fires on tab wake/refresh — preserva perfil previo
+            // si la recarga falla para no desmontar el Outlet.
+            const keepOnError = evt === 'TOKEN_REFRESHED' || evt === 'INITIAL_SESSION';
+            await loadProfile(uid, email, { keepOnError });
           } else {
             setProfile(null);
             setEmailConfirmedAt(null);
@@ -296,6 +303,9 @@ export function AuthProvider({ children }) {
     init();
 
     // Revalidar al volver a la pestaña (tokens caducados tras background, etc.)
+    // Importante: si la revalidación falla (timeout, red intermitente), NO
+    // borramos session/profile — el usuario podría estar a medias de una
+    // simulación y perdería su progreso si el <Outlet> se desmonta.
     let lastVisibleAt = Date.now();
     async function onVisibilityChange() {
       if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
@@ -307,13 +317,19 @@ export function AuthProvider({ children }) {
       // Solo revalida si la pestaña ha estado oculta más de 60 s
       if (awaySecs < 60) return;
       try {
-        const { data: sessRes } = await supabase.auth.getSession();
+        const { data: sessRes } = await withTimeout(
+          supabase.auth.getSession(), 6000, 'visibility_getSession'
+        );
         const sess = sessRes?.session ?? null;
         if (!mounted) return;
-        setSession(sess);
-        if (sess?.user) {
-          await readAuthUser();
-          await loadProfile(sess.user.id, sess.user.email || null, { force: true });
+        // Solo actualizamos session si efectivamente hay una nueva (válida).
+        // Si Supabase responde null momentáneamente, conservamos la previa.
+        if (sess) {
+          setSession(sess);
+          if (sess.user) {
+            await readAuthUser();
+            await loadProfile(sess.user.id, sess.user.email || null, { force: true, keepOnError: true });
+          }
         }
       } catch (e) {
         console.warn('[Auth] visibility revalidation failed:', e?.message || e);

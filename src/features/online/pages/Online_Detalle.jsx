@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { supabase } from "../../../supabaseClient";
+import { useOptionalAuth } from "../../../auth.jsx";
 import { getNowUtcCached } from "../../../utils/supabaseCache.js";
 import Navbar from "../../../components/Navbar.jsx";
 import Spinner from "../../../components/Spinner.jsx";
@@ -489,6 +490,9 @@ export default function Online_Detalle() {
   } catch {}
 
   const [session, setSession] = useState(null);
+  const authCtx = useOptionalAuth();
+  // Modo revisión sin límite de tiempo para admins.
+  const isReviewMode = !!authCtx?.isAdmin;
   const [loading, setLoading] = useState(true);
   const [, setErr] = useState("");
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -600,6 +604,14 @@ export default function Online_Detalle() {
       return; // no ocultes el briefing por falta temporal de attemptId
     }
 
+    // Modo revisión (admin): sin contador ni expires_at.
+    if (isReviewMode) {
+      setExpiresAt(null);
+      setRemainingSecs(null);
+      setTimeUp(false);
+      return;
+    }
+
     try {
       let expISO = initialExpiresAt;
 
@@ -641,7 +653,7 @@ export default function Online_Detalle() {
     } finally {
       // no cerramos el briefing automáticamente; el usuario continúa con el botón
     }
-  }, [attemptId, attemptTimeLimit, initialExpiresAt, nowDrifted]);
+  }, [attemptId, attemptTimeLimit, initialExpiresAt, nowDrifted, isReviewMode]);
 
   // Auto-iniciar el contador si no hay briefing (una vez que tenemos el intento)
   useEffect(() => {
@@ -649,6 +661,7 @@ export default function Online_Detalle() {
     if (showSummary) return;            // si estamos en resumen, no arrancar
     if (showBriefing) return;           // mientras se muestra briefing, no arrancar
     if (!attemptId) return;
+    if (isReviewMode) return;           // admin revisando: sin contador
     if (expiresAt) return;              // ya arrancado
     if (initialExpiresAt || (attemptTimeLimit && Number(attemptTimeLimit) > 0)) {
       startAttemptCountdown();
@@ -668,6 +681,7 @@ export default function Online_Detalle() {
 
   useEffect(() => {
     if (!currentStep) return;
+    if (isReviewMode) return;             // admin revisando: sin timers por pregunta
     if (!isTimedStep(currentStep)) return; // Solo pasos urgentes tienen countdown
     setQTimers((prev) => {
       const next = { ...prev };
@@ -678,7 +692,7 @@ export default function Online_Detalle() {
       }
       return next;
     });
-  }, [currentStep]);
+  }, [currentStep, isReviewMode]);
 
   const totalQuestions = useMemo(() => {
     return steps.reduce((acc, s) => acc + (s.questions?.length || 0), 0);
@@ -808,8 +822,9 @@ export default function Online_Detalle() {
       const isClosedStatus = statusStr === 'finalizado' || !!att?.finished_at;
 
       // Si está expirado por tiempo y aún aparece como abierto, cerrarlo de forma idempotente
+      // (salvo que sea un admin en modo revisión: sin límite de tiempo)
       if (att) {
-        if (isExpiredByTime && !isClosedStatus) {
+        if (isExpiredByTime && !isClosedStatus && !isReviewMode) {
           try {
             await supabase
               .from("attempts")
@@ -823,8 +838,9 @@ export default function Online_Detalle() {
         }
       }
 
-      // si está expirado o ya cerrado, prepara vista de resumen (sin montar simulación)
-      const shouldShowSummary = isExpiredByTime || isClosedStatus;
+      // si está expirado o ya cerrado, prepara vista de resumen (sin montar simulación).
+      // En modo revisión admin, el vencimiento por tiempo NO fuerza resumen; sí lo fuerza el cierre explícito.
+      const shouldShowSummary = (isReviewMode ? false : isExpiredByTime) || isClosedStatus;
 
       setAttemptId(att?.id ?? null);
       // Guardamos info pero NO arrancamos el contador hasta que el usuario pulse "Comenzar simulación"
@@ -1043,6 +1059,7 @@ export default function Online_Detalle() {
 
   // Ticker para countdown (moved to top-level)
   useEffect(() => {
+    if (isReviewMode) return;           // admin revisando: sin countdown
     if (!expiresAt) return;
     if (timeUp) return;
 
@@ -1056,9 +1073,10 @@ export default function Online_Detalle() {
     }, 1000);
 
     return () => clearInterval(idInt);
-  }, [expiresAt, timeUp, nowDrifted]);
+  }, [expiresAt, timeUp, nowDrifted, isReviewMode]);
 
   useEffect(() => {
+    if (isReviewMode) return;           // admin revisando: sin ticker por pregunta
     if (!currentStep || showSummary || !isTimedStep(currentStep)) return;
     const int = setInterval(() => {
       setQTick((t) => t + 1);
@@ -1091,7 +1109,7 @@ export default function Online_Detalle() {
       });
     }, 1000);
     return () => clearInterval(int);
-  }, [currentStep, showSummary, nowDrifted]);
+  }, [currentStep, showSummary, nowDrifted, isReviewMode]);
 
   // Skeleton show delay effect
   useEffect(() => {
@@ -1319,7 +1337,7 @@ export default function Online_Detalle() {
                   {formatMode(scenario?.mode || "online")} · ~{(scenario?.estimated_minutes ?? brief?.estimated_minutes ?? 10)} min
                 </div>
                 {/* Cronómetro visible únicamente si existe un contador activo (expires_at o remainingSecs). */}
-                {Number(attemptTimeLimit) > 0 && (remainingSecs !== null || expiresAt) && (
+                {!isReviewMode && Number(attemptTimeLimit) > 0 && (remainingSecs !== null || expiresAt) && (
                   <div className="mt-3 flex items-center justify-end">
                     <div className="text-right">
                       <TimeDonut
@@ -1656,7 +1674,9 @@ export default function Online_Detalle() {
               );
             })()}
             <p className="ml-3 text-xs text-slate-500">
-              { (remainingSecs === null && !expiresAt) ? (
+              { isReviewMode ? (
+                <>🔎 Modo revisión admin — sin límite de tiempo.</>
+              ) : (remainingSecs === null && !expiresAt) ? (
                 <>⏱️ El tiempo comienza cuando pulses <b>Continuar</b>.</>
               ) : (
                 <>⏱️ Intento en curso — tiempo restante: <span className="font-medium">{formatMMSS(remainingSecs)}</span></>
@@ -1900,7 +1920,11 @@ export default function Online_Detalle() {
                 </h1>
 
                 {/* Tiempo */}
-                {remainingSecs !== null && Number(attemptTimeLimit) > 0 && (
+                {isReviewMode ? (
+                  <span className="shrink-0 text-[11px] px-2 py-1 rounded-full bg-white/15 ring-1 ring-white/30" title="Modo revisión admin">
+                    🔎 Revisión admin
+                  </span>
+                ) : remainingSecs !== null && Number(attemptTimeLimit) > 0 && (
                   <div className="shrink-0" title="Tiempo restante">
                     <TimeDonut
                       totalSecs={Number(attemptTimeLimit)}

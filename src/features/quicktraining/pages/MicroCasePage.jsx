@@ -2,7 +2,7 @@ import { Navigate, useParams } from "react-router-dom";
 import Navbar from "../../../components/Navbar.jsx";
 import MicroCasePlayer from "../components/MicroCasePlayer.jsx";
 import { useAuth } from "../../../auth";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // Keep the same env var and fallback used across the quicktraining pages
 const API_BASE_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MICROCASE_API_BASE_URL) || "/api";
@@ -24,9 +24,14 @@ export default function MicroCasePage() {
   const isNursing = String(profile?.rol || "").toLowerCase().includes("enfer");
 
   const token = session?.access_token ?? null;
+  // Guardamos el token en un ref para que el refresco periódico de Supabase
+  // (o al volver de una pestaña en background) no re-dispare el fetch del
+  // caso y desmonte el MicroCasePlayer perdiendo history/score.
+  const tokenRef = useRef(token);
+  useEffect(() => { tokenRef.current = token; }, [token]);
 
   useEffect(() => {
-    if (!ready || !token || !caseId) return;
+    if (!ready || !tokenRef.current || !caseId) return;
 
     let cancelled = false;
     const safetyTimer = setTimeout(() => {
@@ -42,7 +47,7 @@ export default function MicroCasePage() {
       try {
         const params = new URLSearchParams({ action: 'get', id: caseId });
         const response = await fetch(`${API_BASE_URL}/micro_cases?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${tokenRef.current}` }
         });
         if (!response.ok) {
           throw new Error(`No se pudo cargar el microcaso (${response.status})`);
@@ -63,7 +68,7 @@ export default function MicroCasePage() {
 
     fetchCase();
     return () => { cancelled = true; clearTimeout(safetyTimer); };
-  }, [ready, token, caseId]);
+  }, [ready, caseId]);
 
   async function handleSubmitAttempt(payload) {
     if (!token) return { ok: false, error: 'missing_token' };
