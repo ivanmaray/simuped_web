@@ -6,10 +6,29 @@ const log = (...args) => { try { console.debug("[Auth]", ...args); } catch {} };
 
 const AuthCtx = createContext(null);
 
+const PROFILE_CACHE_KEY = "simuped_profile_cache_v1";
+
+function readCachedProfile() {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && parsed.id) return parsed;
+  } catch {}
+  return null;
+}
+
+function writeCachedProfile(p) {
+  try {
+    if (p && p.id) localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(p));
+    else localStorage.removeItem(PROFILE_CACHE_KEY);
+  } catch {}
+}
+
 export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(() => readCachedProfile());
   const [emailConfirmedAt, setEmailConfirmedAt] = useState(null);
 
   const unsubRef = useRef(null);
@@ -128,6 +147,7 @@ export function AuthProvider({ children }) {
 
       if (!error && data) {
         setProfile(data);
+        writeCachedProfile(data);
         return;
       }
 
@@ -147,6 +167,7 @@ export function AuthProvider({ children }) {
           return;
         }
         setProfile(up ?? null);
+        if (up) writeCachedProfile(up);
         return;
       }
 
@@ -277,6 +298,7 @@ export function AuthProvider({ children }) {
           if (evt === 'SIGNED_OUT') {
             setProfile(null);
             setEmailConfirmedAt(null);
+            writeCachedProfile(null);
             return;
           }
           if (newSess?.user) {
