@@ -106,10 +106,8 @@ export default function Presencial_Listado() {
       const scenarioStatus = e.status || "Disponible";
       let matchAcceso = true;
       if (!isAdmin) {
-        // Non-admin users can only see "Disponible" scenarios
-        matchAcceso = scenarioStatus === "Disponible";
+        matchAcceso = scenarioStatus === "Disponible" || scenarioStatus === "Pendiente de revisión";
       } else {
-        // Admin users can see everything except "sin iniciar"
         matchAcceso = scenarioStatus !== "En construcción: sin iniciar";
       }
 
